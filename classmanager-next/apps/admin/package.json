@@ -1,0 +1,11 @@
+{
+  "name": "@classmanager/admin",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "echo \"admin app scaffold pending\"",
+    "build": "echo \"admin build pending\"",
+    "lint": "echo \"admin lint pending\"",
+    "test": "echo \"admin test pending\""
+  }
+}

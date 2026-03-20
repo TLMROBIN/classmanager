@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly timer for classmanager-multi backup verification
+
+[Timer]
+OnCalendar=Mon *-*-* 02:30:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

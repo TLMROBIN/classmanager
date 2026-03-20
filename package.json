@@ -1,0 +1,26 @@
+{
+  "name": "classmanager-multi",
+  "version": "1.0.0",
+  "description": "班级管理系统 - 多用户版本",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init-db": "node database/init.js",
+    "backup:sqlite": "node scripts/backup-sqlite.js",
+    "backup:verify": "node scripts/verify-backup.js --latest",
+    "backup:prune": "node scripts/prune-backups.js",
+    "backup:prune:apply": "node scripts/prune-backups.js --apply",
+    "backup:daily": "node scripts/backup-sqlite.js && node scripts/prune-backups.js --apply",
+    "backup:check-freshness": "node scripts/check-backup-freshness.js",
+    "backup:alert:test": "node scripts/backup-failure-notify.js --unit manual-test --reason manual-test",
+    "restore:sqlite": "node scripts/restore-sqlite.js",
+    "restore:sqlite:dry-run": "node scripts/restore-sqlite.js --dry-run"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "better-sqlite3": "^9.4.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

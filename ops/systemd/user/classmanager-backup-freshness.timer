@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic timer for classmanager backup freshness checks
+
+[Timer]
+OnCalendar=*-*-* 03,09,15,21:30:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

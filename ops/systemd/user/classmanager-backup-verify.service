@@ -1,0 +1,10 @@
+[Unit]
+Description=Run classmanager-multi weekly backup verification
+Wants=network-online.target
+After=network-online.target
+OnFailure=classmanager-backup-verify-alert.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/classmanager-multi
+ExecStart=/usr/bin/npm run backup:verify

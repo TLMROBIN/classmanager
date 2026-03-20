@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">班级自在管理系统 (多用户版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        window.__MULTI_USER_MODE__ = true;
+        window.__checkAuth__ = function() {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/login.html'; return false; }
+            return true;
+        };
+        window.__getAuthHeaders__ = function() {
+            const token = localStorage.getItem('token');
+            return token ? { 'Authorization': 'Bearer ' + token } : {};
+        };
+        window.__handleAuthError__ = function(res) {
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/login.html';
+                return true;
+            }
+            return false;
+        };
+        window.__logout__ = function() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        };
+        window.__getCurrentUser__ = function() {
+            try {
+                const userStr = localStorage.getItem('user');
+                return userStr ? JSON.parse(userStr) : null;
+            } catch { return null; }
+        };
+        window.__isAdmin__ = function() {
+            try {
+                const userStr = localStorage.getItem('user');
+                const user = userStr ? JSON.parse(userStr) : null;
+                return user && user.role === 'admin';
+            } catch { return false; }
+        };
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script>if (!window.__checkAuth__()) { throw new Error('Not authenticated'); }</script>
+    <script src="script.js"></script>
+</body>
+</html>

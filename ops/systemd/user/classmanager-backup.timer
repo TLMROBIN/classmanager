@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily timer for classmanager-multi backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Check classmanager backup freshness
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/classmanager-multi
+ExecStart=/usr/bin/npm run backup:check-freshness

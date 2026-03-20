@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs and runtime files
+*.log
+*.pid
+npm-debug.log*
+
+# Build output
+dist/
+build/
+coverage/
+.next/
+.turbo/
+
+# Legacy database and backups
+backups/
+database/*.db
+database/*.db-*
+database/*.backup*
+database/*backup*.db
+database/*corrupted*.db
+database/*.sql
+
+# Exported or generated data
+admin_data_backup.json
+admin_data_export.json
+battle_v81.json
+classmanager-next/out/*
+!classmanager-next/out/.gitkeep
+
+# Ignore classmanager-next entirely as requested by user
+classmanager-next/
+classmanager-next
+
+# OS / editor
+.DS_Store
+Thumbs.db

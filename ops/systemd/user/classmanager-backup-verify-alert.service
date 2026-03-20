@@ -1,0 +1,7 @@
+[Unit]
+Description=Alert when classmanager backup verification fails
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/classmanager-multi
+ExecStart=/usr/bin/node scripts/backup-failure-notify.js --unit classmanager-backup-verify.service --reason verify-failed

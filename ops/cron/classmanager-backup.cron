@@ -1,0 +1,9 @@
+# classmanager-multi backup cron template
+# 使用前请先把下面路径替换为你的实际仓库目录。
+#
+# 安装示例：
+#   crontab -e
+#   然后粘贴以下两行
+
+15 2 * * * cd /path/to/classmanager-multi && /usr/bin/npm run backup:daily >> backups/backup.log 2>&1
+30 2 * * 1 cd /path/to/classmanager-multi && /usr/bin/npm run backup:verify >> backups/backup.log 2>&1
