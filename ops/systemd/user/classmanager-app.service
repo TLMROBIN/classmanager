@@ -1,0 +1,16 @@
+[Unit]
+Description=ClassManager Multi application
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+Environment=NODE_ENV=production
+Environment=PORT=3002
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

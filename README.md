@@ -43,6 +43,26 @@ npm start
 - `start.bat` / `start.sh`
 - `stop.bat` / `stop.sh`
 
+### 5. 配置开机自启动
+
+项目已提供用户级 `systemd` 安装脚本：
+
+```bash
+./ops/systemd/user/install-classmanager-app-autostart.sh
+```
+
+安装完成后可用下面命令查看状态：
+
+```bash
+systemctl --user status classmanager-app.service
+```
+
+如果你希望机器开机后在未登录前也自动启动，需要再执行一次：
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
 ## 内置脚本和工具
 
 项目中包含了一套完整的数据库备份和恢复工具体系：
