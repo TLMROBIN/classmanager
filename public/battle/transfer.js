@@ -185,17 +185,17 @@
     };
 
     const buildBattleSnapshotEntry = ({ reason, battle, examArchives, students, now }) => ({
-            id: `battle_snap_${now}`,
-            reason: reason || '手动快照',
-            ts: now,
-            payload: buildBattleBackup({
-                battle,
-                examArchives,
-                students,
-                now,
-                getTodayStr: () => new Date(now).toISOString().slice(0, 10)
-            }).payload
-        });
+        id: `battle_snap_${now}`,
+        reason: reason || '手动快照',
+        ts: now,
+        payload: buildBattleBackup({
+            battle,
+            examArchives,
+            students,
+            now,
+            getTodayStr: () => new Date(now).toISOString().slice(0, 10)
+        }).payload
+    });
 
     const createBattleSnapshot = ({ reason, battle, examArchives, students, now }) => {
         const list = readLegacySnapshots();
