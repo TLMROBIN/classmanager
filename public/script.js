@@ -4970,8 +4970,11 @@ const INITIAL_TREASURES = [
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
+        const [transferPreview, setTransferPreview] = useState({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
+        const [battleSnapshotTick, setBattleSnapshotTick] = useState(0);
         const data = battleNormalize(battle);
         const archiveData = normalizeExamArchives(examArchives, battle);
+        const battleTransfer = window.BattleTransfer || {};
         const teams = data.teams;
         const squads = data.squads;
         const battles = data.battles;
@@ -4985,9 +4988,38 @@ const INITIAL_TREASURES = [
         const totalStudents = Math.max(Array.isArray(students) ? students.length : 0, 1);
         const [selectedSettlementId, setSelectedSettlementId] = useState('');
         const [selectedTeamId, setSelectedTeamId] = useState('');
+        const battleSnapshots = useMemo(
+            () => (typeof battleTransfer.listBattleSnapshots === 'function' ? battleTransfer.listBattleSnapshots() : []),
+            [battleSnapshotTick]
+        );
 
         const setBattlePatch = (patch) => {
             setBattle(prev => ({ ...battleNormalize(prev), ...patch }));
+        };
+
+        const bumpBattleSnapshotTick = () => setBattleSnapshotTick(prev => prev + 1);
+
+        const createBattleSnapshotEntry = (reason) => {
+            if (typeof battleTransfer.createBattleSnapshot !== 'function') return null;
+            const snap = battleTransfer.createBattleSnapshot({
+                reason,
+                battle: data,
+                examArchives: archiveData,
+                students,
+                now: Date.now()
+            });
+            bumpBattleSnapshotTick();
+            return snap;
+        };
+
+        const applyBattleTransferPatch = (parsed, successMessage) => {
+            const nextBattle = {
+                ...battleNormalize(data),
+                ...parsed.battlePatch
+            };
+            setBattle(nextBattle);
+            setExamArchives(normalizeExamArchives(parsed.examArchivesPatch, nextBattle));
+            if (successMessage) alert(successMessage);
         };
 
         useEffect(() => {
@@ -5193,24 +5225,22 @@ const INITIAL_TREASURES = [
         };
 
         const handleExport = () => {
-            const payload = {
-                version: 1,
-                students: (Array.isArray(students) ? students : []).map(s => ({ id: s.id, name: s.name })),
-                teams,
-                squads,
-                battles,
-                logs,
-                history,
-                settlements,
-                season,
-                exams,
-                teamBaseExamId,
-                settleExamId
-            };
+            if (typeof battleTransfer.buildBattleBackup !== 'function') {
+                alert("对战备份工具未加载");
+                return;
+            }
+            const exported = battleTransfer.buildBattleBackup({
+                battle: data,
+                examArchives: archiveData,
+                students,
+                now: Date.now(),
+                getTodayStr
+            });
+            const payload = exported.payload;
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "battle_backup_" + getTodayStr() + ".json");
+            downloadAnchorNode.setAttribute("download", exported.filename);
             document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
@@ -5222,56 +5252,55 @@ const INITIAL_TREASURES = [
             const reader = new FileReader();
             reader.onload = (evt) => {
                 try {
-                    const raw = JSON.parse(evt.target.result);
-                    const payload = raw.battle ? raw.battle : raw;
-                    const importStudents = Array.isArray(raw.students) ? raw.students : (Array.isArray(payload.students) ? payload.students : []);
-                    const nameToId = new Map((Array.isArray(students) ? students : []).map(s => [s.name, s.id]));
-                    const oldIdToName = new Map(importStudents.map(s => [s.id, s.name]));
-                    const mapMember = (oldId) => {
-                        const name = oldIdToName.get(oldId);
-                        return name ? (nameToId.get(name) || '') : '';
-                    };
-                    const mapRanks = (ranks) => {
-                        const mapped = {};
-                        Object.keys(ranks || {}).forEach(oldId => {
-                            const name = oldIdToName.get(oldId);
-                            const newId = name ? nameToId.get(name) : null;
-                            if (newId) mapped[newId] = ranks[oldId];
-                        });
-                        return mapped;
-                    };
-                    const mappedTeams = (payload.teams || []).map(t => ({
-                        ...t,
-                        memberIds: (t.memberIds || []).map(mapMember)
-                    }));
-                    const mappedExams = (payload.exams || []).map(ex => ({
-                        ...ex,
-                        ranks: mapRanks(ex.ranks || {})
-                    }));
-                    const next = {
-                        teams: mappedTeams,
-                        squads: Array.isArray(payload.squads) ? payload.squads : [],
-                        battles: Array.isArray(payload.battles) ? payload.battles : [],
-                        logs: Array.isArray(payload.logs) ? payload.logs : [],
-                        history: Array.isArray(payload.history) ? payload.history : [],
-                        settlements: Array.isArray(payload.settlements) ? payload.settlements : [],
-                        season: Number(payload.season) || 1,
-                        teamBaseExamId: payload.teamBaseExamId || '',
-                        settleExamId: payload.settleExamId || ''
-                    };
-                    setBattle(prev => ({ ...battleNormalize(prev), ...next }));
-                    setExamArchives(prev => normalizeExamArchives({
-                        ...prev,
-                        exams: mappedExams,
-                        latestExamId: mappedExams[0]?.id || ''
-                    }, next));
-                    alert("对战数据已导入");
+                    if (typeof battleTransfer.parseBattleBackupText !== 'function') throw new Error("对战备份工具未加载");
+                    const parsed = battleTransfer.parseBattleBackupText({
+                        text: evt.target.result,
+                        students
+                    });
+                    setTransferPreview({
+                        open: true,
+                        title: "导入对战备份",
+                        summary: parsed.summary,
+                        missingStudents: parsed.missingStudents || [],
+                        confirmText: "确认导入",
+                        onConfirm: () => {
+                            createBattleSnapshotEntry('导入对战备份前');
+                            applyBattleTransferPatch(parsed, "对战数据已导入");
+                            setTransferPreview({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
+                        }
+                    });
                 } catch (err) {
                     alert("导入失败：" + err.message);
                 }
             };
             reader.readAsText(file);
             e.target.value = '';
+        };
+
+        const handleRestoreBattleSnapshot = (snapshotId) => {
+            if (!snapshotId || typeof battleTransfer.getBattleSnapshotById !== 'function') return;
+            const snap = battleTransfer.getBattleSnapshotById(snapshotId);
+            if (!snap?.payload) return alert("未找到该快照");
+            try {
+                const parsed = battleTransfer.parseBattleBackupText({
+                    text: JSON.stringify(snap.payload),
+                    students
+                });
+                setTransferPreview({
+                    open: true,
+                    title: `恢复战况快照：${snap.reason || ''}`,
+                    summary: parsed.summary,
+                    missingStudents: parsed.missingStudents || [],
+                    confirmText: "确认恢复",
+                    onConfirm: () => {
+                        createBattleSnapshotEntry(`恢复快照前-${snap.reason || '未命名'}`);
+                        applyBattleTransferPatch(parsed, "双子星快照已恢复");
+                        setTransferPreview({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
+                    }
+                });
+            } catch (err) {
+                alert("快照恢复失败：" + err.message);
+            }
         };
 
         const handleAddChallenge = () => {
@@ -5430,6 +5459,7 @@ const INITIAL_TREASURES = [
         const confirmSettlement = () => {
             if (!results) return alert("请先进行结算模拟");
             if (!confirm("确定生效？")) return;
+            createBattleSnapshotEntry('确认结算前');
             const settlementTs = Date.now();
             const newTeams = teams.map(t => {
                 const r = results.tRes.find(x => x.id === t.id);
@@ -5486,6 +5516,7 @@ const INITIAL_TREASURES = [
         const startNewSeason = () => {
             if (!results) return alert("请先进行结算模拟");
             if (!confirm("确定归档并开启新赛季吗？")) return;
+            createBattleSnapshotEntry('开启新赛季前');
             const seasonRecord = {
                 id: history.length + 1,
                 date: new Date().toLocaleDateString(),
@@ -5514,9 +5545,27 @@ const INITIAL_TREASURES = [
                     h("button", { onClick: handleResetPoints, className: "px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs" }, "重置战队积分"),
                     h("button", { onClick: handleExport, className: "px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs flex items-center gap-1" }, h(Icon, { name: "download", size: 14 }), "导出对战备份"),
                     h("label", { className: "px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-xs cursor-pointer flex items-center gap-1" }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
+                    h("button", { onClick: () => { createBattleSnapshotEntry('手动快照'); alert('已生成双子星快照'); }, className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "保存战况快照"),
                     !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
                     examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "锁定排名")
                 )
+            ),
+            h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
+                h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
+                    h("div", { className: "font-bold text-slate-100" }, "战况快照"),
+                    h("div", { className: "text-xs text-slate-400" }, "自动记录导入备份、确认结算、开启新赛季前的双子星状态")
+                ),
+                battleSnapshots.length === 0
+                    ? h("div", { className: "text-xs text-slate-500" }, "暂无双子星快照")
+                    : h("div", { className: "space-y-2 max-h-44 overflow-y-auto" },
+                        battleSnapshots.slice(0, 8).map(item => h("div", { key: item.id, className: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/60 bg-slate-950/40 px-3 py-2 text-xs" },
+                            h("div", null,
+                                h("div", { className: "text-slate-100 font-medium" }, item.reason || '未命名快照'),
+                                h("div", { className: "text-slate-400 mt-1" }, new Date(item.ts || Date.now()).toLocaleString('zh-CN', { hour12: false }))
+                            ),
+                            h("button", { onClick: () => handleRestoreBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-cyan-500/20 border border-cyan-400/40 text-cyan-100" }, "预览恢复")
+                        ))
+                    )
             ),
             h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
                 h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
@@ -5748,6 +5797,29 @@ const INITIAL_TREASURES = [
                             );
                         })
                     )
+                )
+            ),
+            h(Modal, {
+                isOpen: transferPreview.open,
+                title: transferPreview.title || "双子星导入预览",
+                onClose: () => setTransferPreview({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' }),
+                onConfirm: transferPreview.onConfirm,
+                confirmText: transferPreview.confirmText || "确认"
+            },
+                h("div", { className: "space-y-3 text-sm text-gray-700" },
+                    transferPreview.summary && h("div", { className: "grid grid-cols-2 gap-2 text-xs" },
+                        h("div", { className: "rounded bg-gray-50 p-2" }, `战队 ${transferPreview.summary.teams}`),
+                        h("div", { className: "rounded bg-gray-50 p-2" }, `共鸣 ${transferPreview.summary.squads}`),
+                        h("div", { className: "rounded bg-gray-50 p-2" }, `对战 ${transferPreview.summary.battles}`),
+                        h("div", { className: "rounded bg-gray-50 p-2" }, `结算 ${transferPreview.summary.settlements}`),
+                        h("div", { className: "rounded bg-gray-50 p-2 col-span-2" }, `考试 ${transferPreview.summary.exams}`)
+                    ),
+                    transferPreview.missingStudents && transferPreview.missingStudents.length > 0
+                        ? h("div", { className: "rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700" },
+                            h("div", { className: "font-bold mb-1" }, "以下学生未能映射到当前名单"),
+                            h("div", null, transferPreview.missingStudents.join('、'))
+                        )
+                        : h("div", { className: "rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700" }, "学生映射检查通过，可安全导入或恢复。")
                 )
             )
         );
