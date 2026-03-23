@@ -1703,7 +1703,7 @@ const INITIAL_TREASURES = [
                         dailyWage: Number.isFinite(Number(role.dailyWage)) ? Number(role.dailyWage) : 0
                     };
                 })
-                .filter(role => role.name || role.studentName || role.dailyWage);
+                .filter(role => role.studentName);
         }, [config, students]);
         const commissionerAnnouncements = useMemo(() => {
             return getCommissionerRoles(config)
@@ -1715,7 +1715,7 @@ const INITIAL_TREASURES = [
                         studentName: student ? student.name : ""
                     };
                 })
-                .filter(item => item.name || item.studentName);
+                .filter(item => item.studentName);
         }, [config, students]);
         const psychologyAnnouncements = useMemo(() => {
             return [0, 1, 2, 3]
@@ -1790,40 +1790,34 @@ const INITIAL_TREASURES = [
                             ))
                         )
                     ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                    hygieneDutyAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日公示"),
-                        hygieneDutyAnnouncements.length === 0
-                            ? h("div", { className: "text-sm text-gray-400" }, "暂无卫生值日安排")
-                            : h("div", { className: "space-y-2" },
-                                hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
-                                    h("div", { className: "text-xs text-gray-500 text-right" }, item.members.join("、"))
-                                ))
-                            ),
+                        h("div", { className: "space-y-2" },
+                            hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                h("div", { className: "text-xs text-gray-500 text-right" }, item.members.join("、"))
+                            ))
+                        ),
                         h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
                     ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                    commissionerAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员公示"),
-                        commissionerAnnouncements.length === 0
-                            ? h("div", { className: "text-sm text-gray-400" }, "暂无纪律专员设置")
-                            : h("div", { className: "space-y-2" },
-                                commissionerAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
-                                    h("div", { className: "text-xs text-gray-500" }, item.studentName || "未设置")
-                                ))
-                            ),
+                        h("div", { className: "space-y-2" },
+                            commissionerAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                h("div", { className: "text-xs text-gray-500" }, item.studentName)
+                            ))
+                        ),
                         h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
                     ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                    psychologyAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "smile" }), "心理委员公示"),
-                        psychologyAnnouncements.length === 0
-                            ? h("div", { className: "text-sm text-gray-400" }, "暂无心理委员设置")
-                            : h("div", { className: "space-y-2" },
-                                psychologyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
-                                    h("div", { className: "text-xs text-gray-500" }, item.studentName || "未设置")
-                                ))
-                            ),
+                        h("div", { className: "space-y-2" },
+                            psychologyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                h("div", { className: "text-xs text-gray-500" }, item.studentName)
+                            ))
+                        ),
                         h("div", { className: "text-xs text-gray-400 mt-3" }, "心理委员每次发工资时额外获得 +1 分；编辑请到维护区")
                     ),
                 ),
@@ -1945,19 +1939,17 @@ const INITIAL_TREASURES = [
                             })
                         )
                     ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                    customRoleAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "clipboard" }), "班级职务公示"),
-                        customRoleAnnouncements.length === 0
-                            ? h("div", { className: "text-sm text-gray-400" }, "暂无已公示职务")
-                            : h("div", { className: "space-y-2" },
-                                customRoleAnnouncements.map(role => h("div", { key: role.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", null,
-                                        h("div", { className: "text-sm font-medium text-gray-800" }, role.name),
-                                        h("div", { className: "text-xs text-gray-500" }, role.studentName || "暂未任命")
-                                    ),
-                                    h("div", { className: "text-xs text-emerald-600 whitespace-nowrap" }, `日薪 ${role.dailyWage} 分`)
-                                ))
-                            )
+                        h("div", { className: "space-y-2" },
+                            customRoleAnnouncements.map(role => h("div", { key: role.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                h("div", null,
+                                    h("div", { className: "text-sm font-medium text-gray-800" }, role.name),
+                                    h("div", { className: "text-xs text-gray-500" }, role.studentName)
+                                ),
+                                h("div", { className: "text-xs text-emerald-600 whitespace-nowrap" }, `日薪 ${role.dailyWage} 分`)
+                            ))
+                        )
                     ),
                     h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-2 text-sm" }, "近期动态 (Top 100)"),
