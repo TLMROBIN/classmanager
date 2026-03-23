@@ -81,7 +81,7 @@ const DEFAULT_SYSTEM_CONFIG = {
             { id: 'attend', name: '考勤专员' },
             { id: 'homework', name: '作业专员' }
         ],
-        studentCouncilRoles: []
+        customRoles: []
     },
     
     // 积分系统配置
@@ -145,6 +145,14 @@ const DEFAULT_POINT_CATEGORY = "纪律";
 
 const normalizePointScene = (scene) => POINT_SCENES.includes(scene) ? scene : DEFAULT_POINT_SCENE;
 const normalizePointCategory = (category) => POINT_CATEGORIES.includes(category) ? category : DEFAULT_POINT_CATEGORY;
+const normalizeCustomRoles = (roles, fallbackDailyWage = 0) => (
+    Array.isArray(roles) ? roles : []
+).map((role, idx) => ({
+    id: role?.id || `custom_role_${idx + 1}`,
+    name: role?.name || "",
+    studentId: role?.studentId != null && role.studentId !== "" ? Number(role.studentId) : null,
+    dailyWage: Number.isFinite(Number(role?.dailyWage)) ? Number(role.dailyWage) : fallbackDailyWage
+}));
 
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
@@ -178,7 +186,11 @@ const getSystemConfig = (config) => {
         if (userConfig.organization.groups) merged.organization.groups = userConfig.organization.groups;
         if (userConfig.organization.dorms) merged.organization.dorms = userConfig.organization.dorms;
         if (userConfig.organization.commissionerRoles) merged.organization.commissionerRoles = userConfig.organization.commissionerRoles;
-        if (Array.isArray(userConfig.organization.studentCouncilRoles)) merged.organization.studentCouncilRoles = userConfig.organization.studentCouncilRoles;
+        if (Array.isArray(userConfig.organization.customRoles)) {
+            merged.organization.customRoles = normalizeCustomRoles(userConfig.organization.customRoles);
+        } else if (Array.isArray(userConfig.organization.studentCouncilRoles)) {
+            merged.organization.customRoles = normalizeCustomRoles(userConfig.organization.studentCouncilRoles, 2);
+        }
     }
     
     // 合并积分系统配置
@@ -251,9 +263,9 @@ const getCommissionerRoles = (config) => {
     return systemConfig.organization.commissionerRoles;
 };
 
-const getStudentCouncilRoles = (config) => {
+const getCustomRoles = (config) => {
     const systemConfig = getSystemConfig(config);
-    return systemConfig.organization.studentCouncilRoles || [];
+    return normalizeCustomRoles(systemConfig.organization.customRoles || []);
 };
 
 // 获取积分理由预设
@@ -1726,6 +1738,19 @@ const INITIAL_TREASURES = [
                 })
                 .sort((a, b) => a.diff - b.diff);
         }, [countdownEvents]);
+        const customRoleAnnouncements = useMemo(() => {
+            return getCustomRoles(config)
+                .map((role, idx) => {
+                    const student = students.find(s => s.id === role.studentId);
+                    return {
+                        id: role.id || `custom_role_${idx + 1}`,
+                        name: role.name || `职务${idx + 1}`,
+                        studentName: student ? student.name : "",
+                        dailyWage: Number.isFinite(Number(role.dailyWage)) ? Number(role.dailyWage) : 0
+                    };
+                })
+                .filter(role => role.name || role.studentName || role.dailyWage);
+        }, [config, students]);
 
         const penaltyLastMap = useMemo(() => {
             const map = new Map();
@@ -1816,7 +1841,7 @@ const INITIAL_TREASURES = [
                             ),
                             h("div", { className: "text-xs text-gray-400 mt-2" }, "心理委员每次发工资时额外获得 +1 分")
                         )
-                    )
+                    ),
                 ),
                 h("div", { className: "space-y-6" },
                     h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex flex-col" },
@@ -1935,6 +1960,20 @@ const INITIAL_TREASURES = [
                                 );
                             })
                         )
+                    ),
+                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "clipboard" }), "班级职务公示"),
+                        customRoleAnnouncements.length === 0
+                            ? h("div", { className: "text-sm text-gray-400" }, "暂无已公示职务")
+                            : h("div", { className: "space-y-2" },
+                                customRoleAnnouncements.map(role => h("div", { key: role.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                    h("div", null,
+                                        h("div", { className: "text-sm font-medium text-gray-800" }, role.name),
+                                        h("div", { className: "text-xs text-gray-500" }, role.studentName || "暂未任命")
+                                    ),
+                                    h("div", { className: "text-xs text-emerald-600 whitespace-nowrap" }, `日薪 ${role.dailyWage} 分`)
+                                ))
+                            )
                     ),
                     h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                         h("h3", { className: "font-bold text-gray-800 mb-2 text-sm" }, "近期动态 (Top 100)"),
@@ -4406,40 +4445,45 @@ const INITIAL_TREASURES = [
                             ),
                             h("div", null,
                                 h("div", { className: "flex justify-between items-center mb-2" },
-                                    h("span", { className: "text-sm font-medium text-gray-700" }, "学生会专员职位"),
+                                    h("span", { className: "text-sm font-medium text-gray-700" }, "班级自定义角色"),
                                     h("button", { onClick: () => updateSystemConfig(sc => {
-                                        const list = [...(sc.organization.studentCouncilRoles || [])];
-                                        list.push({ id: `student_council_${Date.now()}`, name: "新职位", studentId: null });
-                                        return { ...sc, organization: { ...sc.organization, studentCouncilRoles: list } };
-                                    }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增职位")
+                                        const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                        list.push({ id: `custom_role_${Date.now()}`, name: "新职务", dailyWage: 2, studentId: null });
+                                        return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                    }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增职务")
                                 ),
-                                h("p", { className: "text-xs text-gray-500 mb-3" }, "可增删学生会专员职位，并为每个职位指定学生。每日工资时每个已设置职位额外发放 2 分。"),
+                                h("p", { className: "text-xs text-gray-500 mb-3" }, "可自由设置班级职务名称、每日工资，并为每个职务指定任职学生。支持从旧的学生会专员职位自动兼容迁移。"),
                                 h("div", { className: "space-y-3" },
-                                    (systemConfig.organization.studentCouncilRoles || []).length === 0
-                                        ? h("div", { className: "bg-white p-3 rounded border text-sm text-gray-400" }, "暂无学生会专员职位")
-                                        : (systemConfig.organization.studentCouncilRoles || []).map((role, idx) => h("div", { key: role.id || idx, className: "grid grid-cols-1 md:grid-cols-4 gap-2 bg-white p-3 rounded border" },
+                                    getCustomRoles(config).length === 0
+                                        ? h("div", { className: "bg-white p-3 rounded border text-sm text-gray-400" }, "暂无班级自定义角色")
+                                        : getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "grid grid-cols-1 md:grid-cols-5 gap-2 bg-white p-3 rounded border" },
                                             h("input", { className: "border rounded p-2 text-sm", value: role.id || "", onChange: e => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.studentCouncilRoles || [])];
+                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                 list[idx] = { ...list[idx], id: e.target.value };
-                                                return { ...sc, organization: { ...sc.organization, studentCouncilRoles: list } };
+                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                             }), placeholder: "id" }),
                                             h("input", { className: "border rounded p-2 text-sm", value: role.name || "", onChange: e => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.studentCouncilRoles || [])];
+                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                 list[idx] = { ...list[idx], name: e.target.value };
-                                                return { ...sc, organization: { ...sc.organization, studentCouncilRoles: list } };
-                                            }), placeholder: "职位名称" }),
+                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                            }), placeholder: "职务名称" }),
+                                            h("input", { type: "number", className: "border rounded p-2 text-sm", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
+                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                list[idx] = { ...list[idx], dailyWage: Number(e.target.value) };
+                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                            }), placeholder: "每日工资" }),
                                             h("select", { className: "border rounded p-2 text-sm", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.studentCouncilRoles || [])];
+                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                 list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
-                                                return { ...sc, organization: { ...sc.organization, studentCouncilRoles: list } };
+                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                             }) },
                                                 h("option", { value: "" }, "未设置"),
                                                 (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
                                             ),
                                             h("button", { onClick: () => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.studentCouncilRoles || [])];
+                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                 list.splice(idx, 1);
-                                                return { ...sc, organization: { ...sc.organization, studentCouncilRoles: list } };
+                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                             }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除")
                                         ))
                                 )
@@ -6693,9 +6737,9 @@ const updates = [];
             const targets = students.filter(s => wageGroups.includes(s.group));
             const psychologyCommitteeIds = config.psychologyCommittee || [null, null, null, null];
             const validPsychologyIds = psychologyCommitteeIds.filter(id => id != null);
-            const studentCouncilRoles = getStudentCouncilRoles(config);
-            const validStudentCouncilRoles = studentCouncilRoles.filter(role => role && role.studentId != null);
-            if (targets.length === 0 && validPsychologyIds.length === 0 && validStudentCouncilRoles.length === 0) {
+            const customRoles = getCustomRoles(config);
+            const paidCustomRoles = customRoles.filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
+            if (targets.length === 0 && validPsychologyIds.length === 0 && paidCustomRoles.length === 0) {
                 return alert("没有找到可发放工资或津贴的对象");
             }
                 
@@ -6719,11 +6763,11 @@ const updates = [];
                 });
             });
 
-            validStudentCouncilRoles.forEach(role => {
+            paidCustomRoles.forEach(role => {
                 updates.push({
                     id: role.studentId,
-                    val: 2,
-                    reason: `学生会专员津贴${role.name ? `: ${role.name}` : ''}`,
+                    val: Number(role.dailyWage) || 0,
+                    reason: `班级职务津贴${role.name ? `: ${role.name}` : ''}`,
                     type: 'bonus',
                     scene: "班级",
                     category: "班务"
@@ -6734,7 +6778,7 @@ const updates = [];
             setConfig({ ...config, lastWageDate: today });
             const extraNotes = [];
             if (validPsychologyIds.length > 0) extraNotes.push(`${validPsychologyIds.length}位心理委员津贴`);
-            if (validStudentCouncilRoles.length > 0) extraNotes.push(`${validStudentCouncilRoles.length}个学生会专员职位津贴`);
+            if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
             alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
         };
 
