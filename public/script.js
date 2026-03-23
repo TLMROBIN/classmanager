@@ -789,6 +789,24 @@ const INITIAL_TREASURES = [
         return window.__TasksViewComponent__;
     };
 
+    const getExamArchivesView = () => {
+        if (window.__ExamArchivesViewComponent__) return window.__ExamArchivesViewComponent__;
+        if (typeof window.createExamArchivesView !== 'function') return null;
+        window.__ExamArchivesViewComponent__ = window.createExamArchivesView({
+            h,
+            useState,
+            useEffect,
+            Icon,
+            requireAdminAuth,
+            getTodayStr,
+            getNow,
+            battleParseRank,
+            battleNormalize,
+            normalizeExamArchives
+        });
+        return window.__ExamArchivesViewComponent__;
+    };
+
     // --- Attendance Module ---
     const AttendanceModule = ({ students, updatePoints, config, adminPassword, quotes, teacherMessages, setTeacherMessages, studentMessages, setStudentMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess }) => {
         const isFrozen = !!(config && config.frozen);
@@ -2997,7 +3015,7 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const SettingsView = ({ students, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
@@ -3020,7 +3038,10 @@ const INITIAL_TREASURES = [
         const [recordScene, setRecordScene] = useState(DEFAULT_POINT_SCENE);
         const [recordCategory, setRecordCategory] = useState(DEFAULT_POINT_CATEGORY);
         const [showPendingOnly, setShowPendingOnly] = useState(false);
+        const [showExamArchivesManager, setShowExamArchivesManager] = useState(false);
+        const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
         const systemConfig = getSystemConfig(config);
+        const ExamArchivesView = examArchivesModuleStatus === 'ready' ? getExamArchivesView() : null;
         const formatDateTimeLocal = (ts) => {
             const d = new Date(ts);
             if (isNaN(d.getTime())) return "";
@@ -3392,7 +3413,8 @@ const INITIAL_TREASURES = [
                 attendance_records: latestAttendance || {},
                 class_treasure_data: { treasures, storage, logs },
                 quotes: quotes,
-                battle: battle
+                battle: battle,
+                examArchives: examArchives
             };
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullData));
             const downloadAnchorNode = document.createElement('a');
@@ -3429,6 +3451,7 @@ const INITIAL_TREASURES = [
                         }
                         if (data.quotes) setQuotes(data.quotes);
                         if (data.battle) setBattle(data.battle);
+                        if (data.examArchives) setExamArchives(normalizeExamArchives(data.examArchives, data.battle || battle));
                         alert("恢复成功！");
                     }
                 } catch (err) { alert("文件格式错误"); }
@@ -3468,6 +3491,7 @@ const INITIAL_TREASURES = [
             if (d.dailyUsageCounts) setDailyUsageCounts(d.dailyUsageCounts || {});
             if (d.tasks) setTasks(d.tasks || []);
             if (d.battle) setBattle(d.battle);
+            if (d.examArchives) setExamArchives(normalizeExamArchives(d.examArchives, d.battle || battle));
             if (typeof persistData === 'function') persistData(d);
             setSelectedSnapshotId(null);
             alert("已恢复为选中快照！");
@@ -3814,6 +3838,63 @@ const INITIAL_TREASURES = [
             }
         };
 
+        const ensureExamArchivesModule = () => {
+            if (examArchivesModuleStatus === 'ready' || examArchivesModuleStatus === 'loading') return;
+            setExamArchivesModuleStatus('loading');
+            loadScriptOnce('exam-archives-module.js')
+                .then(() => {
+                    if (typeof window.createExamArchivesView === 'function') {
+                        getExamArchivesView();
+                        setExamArchivesModuleStatus('ready');
+                    } else {
+                        setExamArchivesModuleStatus('error');
+                    }
+                })
+                .catch(err => {
+                    console.error('加载考试档案模块失败:', err);
+                    setExamArchivesModuleStatus('error');
+                });
+        };
+
+        const openExamArchivesManager = () => {
+            setShowExamArchivesManager(prev => !prev);
+            ensureExamArchivesModule();
+        };
+
+        const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
+            if (isDirtyRef) isDirtyRef.current = true;
+            if (typeof persistData !== 'function') {
+                if (isDirtyRef) isDirtyRef.current = false;
+                if (successMessage) alert(successMessage);
+                return Promise.resolve();
+            }
+            return persistData({
+                students,
+                history,
+                config,
+                attendanceRecords,
+                treasures,
+                storage,
+                logs,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks,
+                battle: nextBattle,
+                examArchives: nextExamArchives
+            }).then(() => {
+                if (isDirtyRef) isDirtyRef.current = false;
+                if (successMessage) alert(successMessage);
+            }).catch(err => {
+                if (isDirtyRef) isDirtyRef.current = false;
+                console.error('考试档案保存失败:', err);
+                alert(failureMessage || "考试档案已更新，但保存失败，请手动刷新确认");
+            });
+        };
+
         return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto space-y-8" },
             h("div", { className: "border-b pb-4 flex justify-between items-center" }, 
                 h("div", null,
@@ -3830,6 +3911,43 @@ const INITIAL_TREASURES = [
                 h("div", { className: "border rounded-xl p-4 bg-green-50 border-green-100" }, h("h3", { className: "font-bold text-green-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "clock" }), "考勤数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportAttendanceExcel, className: "w-full py-2 bg-white border border-green-200 text-green-600 rounded hover:bg-green-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportAttendanceExcel })))),
                 h("div", { className: "border rounded-xl p-4 bg-purple-50 border-purple-100" }, h("h3", { className: "font-bold text-purple-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "gift" }), "藏宝阁数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportTreasureExcel, className: "w-full py-2 bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportTreasureExcel })))),
                 h("div", { className: "border rounded-xl p-4 bg-yellow-50 border-yellow-100" }, h("h3", { className: "font-bold text-yellow-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "flame" }), "励志语录"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportQuotesExcel, className: "w-full py-2 bg-white border border-yellow-200 text-yellow-600 rounded hover:bg-yellow-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportQuotesExcel }))))
+            ),
+            h("div", { className: "border-t pt-6 space-y-4" },
+                h("div", { className: "border rounded-xl p-4 bg-indigo-50 border-indigo-100" },
+                    h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                        h("div", null,
+                            h("h3", { className: "font-bold text-indigo-800 mb-1 flex items-center gap-2" }, h(Icon, { name: "fileText" }), "考试档案"),
+                            h("p", { className: "text-sm text-indigo-700/80" }, "考试导入、删除和档案查看已从双子星移到这里。模块默认不加载，点开后才按需加载。")
+                        ),
+                        h("button", {
+                            onClick: openExamArchivesManager,
+                            className: "px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm font-medium"
+                        }, showExamArchivesManager ? "收起考试档案" : "打开考试档案")
+                    )
+                ),
+                showExamArchivesManager && (
+                    examArchivesModuleStatus === 'ready' && ExamArchivesView
+                        ? h(ExamArchivesView, {
+                            students,
+                            battle,
+                            examArchives,
+                            setBattle,
+                            setExamArchives,
+                            persistExamArchives: persistExamArchiveChanges,
+                            adminPassword: window.DEFAULT_ADMIN_PASSWORD
+                        })
+                        : h("div", { className: "border rounded-xl p-6 bg-gray-50 text-center space-y-2" },
+                            h("div", { className: "font-bold text-gray-800" }, examArchivesModuleStatus === 'error' ? "考试档案模块加载失败" : "考试档案模块加载中"),
+                            h("div", { className: "text-sm text-gray-500" }, examArchivesModuleStatus === 'error' ? "请重试加载考试档案模块。" : "首次打开维护页中的考试档案时会按需加载。"),
+                            examArchivesModuleStatus === 'error' && h("button", {
+                                onClick: () => {
+                                    setExamArchivesModuleStatus('idle');
+                                    setTimeout(ensureExamArchivesModule, 0);
+                                },
+                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                            }, "重试")
+                        )
+                )
             ),
             h("div", { className: "border-t pt-6" },
                 h("h3", { className: "font-bold text-gray-700 mb-3" }, "学生名单维护"),
@@ -4834,11 +4952,12 @@ const INITIAL_TREASURES = [
         return updates;
     };
 
-    const BattleView = ({ students, setStudents, battle, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
+    const BattleView = ({ students, setStudents, battle, examArchives, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
         const data = battleNormalize(battle);
+        const archiveData = normalizeExamArchives(examArchives, battle);
         const teams = data.teams;
         const squads = data.squads;
         const battles = data.battles;
@@ -4846,7 +4965,7 @@ const INITIAL_TREASURES = [
         const history = data.history;
         const settlements = data.settlements;
         const season = data.season;
-        const exams = data.exams;
+        const exams = archiveData.exams;
         const teamBaseExamId = data.teamBaseExamId;
         const settleExamId = data.settleExamId;
         const totalStudents = Math.max(Array.isArray(students) ? students.length : 0, 1);
@@ -5132,109 +5251,6 @@ const INITIAL_TREASURES = [
             e.target.value = '';
         };
 
-        const handleImportExam = (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const wb = XLSX.read(evt.target.result, { type: 'binary' });
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const data = XLSX.utils.sheet_to_json(ws);
-                if (data.length === 0) return alert("Excel为空");
-                const headers = Object.keys(data[0]);
-                const nameKey = headers.find(k => k.includes('姓名') || k.toLowerCase().includes('name'));
-                const classKey = headers.find(k => k.includes('班排'));
-                const gradeKey = headers.find(k => k.includes('级排'));
-                if (!nameKey) return alert("表头需包含'姓名'");
-                const ranks = {};
-                data.forEach((r, i) => {
-                    const sName = String(r[nameKey]);
-                    const s = (Array.isArray(students) ? students : []).find(stu => stu.name === sName);
-                    if (s) {
-                        let c = battleParseRank(r[classKey]);
-                        let g = battleParseRank(r[gradeKey]);
-                        if (isNaN(c)) c = i + 1;
-                        if (isNaN(g)) g = (i + 1) * 10;
-                        ranks[s.id] = { c, g };
-                    }
-                });
-                const defaultName = file.name ? file.name.replace(/\.[^/.]+$/, '') : `考试${getTodayStr()}`;
-                const name = prompt("请输入考试名称", defaultName) || defaultName;
-                const examId = `ex${Date.now()}`;
-                const nextExam = { id: examId, name, ts: Date.now(), ranks };
-                
-                if (isDirtyRef) isDirtyRef.current = true;
-                
-                setBattle(prev => {
-                    const b = battleNormalize(prev);
-                    const newBattle = {
-                        ...b,
-                        exams: [nextExam, ...b.exams],
-                        teamBaseExamId: b.teamBaseExamId || examId,
-                        settleExamId: b.settleExamId || examId
-                    };
-                    
-                    if (typeof persistData === 'function') {
-                        setTimeout(() => {
-                            let existingData = {};
-                            try {
-                                const raw = getStorageItem('class_manager_data');
-                                if (raw) existingData = JSON.parse(raw);
-                            } catch (_) {}
-                            
-                            const fullData = {
-                                students: existingData.students || students,
-                                history: existingData.history || [],
-                                config: existingData.config || {},
-                                attendanceRecords: existingData.attendanceRecords || {},
-                                treasures: existingData.treasures || [],
-                                storage: existingData.storage || {},
-                                logs: existingData.logs || [],
-                                quotes: existingData.quotes || [],
-                                messages: existingData.messages || [],
-                                teacherMessages: existingData.teacherMessages || [],
-                                redemptionHistory: existingData.redemptionHistory || {},
-                                dailyRedemptionCounts: existingData.dailyRedemptionCounts || {},
-                                dailyUsageCounts: existingData.dailyUsageCounts || {},
-                                tasks: existingData.tasks || [],
-                                battle: newBattle,
-                                examArchives: normalizeExamArchives(existingData.examArchives, newBattle)
-                            };
-                            persistData(fullData).then(() => {
-                                if (isDirtyRef) isDirtyRef.current = false;
-                                alert(`已导入 ${Object.keys(ranks).length} 条成绩并保存成功`);
-                            }).catch(err => {
-                                console.error('保存失败:', err);
-                                alert(`已导入 ${Object.keys(ranks).length} 条成绩，但保存失败，请手动刷新`);
-                            });
-                        }, 100);
-                    } else {
-                        alert(`已导入 ${Object.keys(ranks).length} 条成绩`);
-                    }
-                    
-                    return newBattle;
-                });
-            };
-            reader.readAsBinaryString(file);
-            e.target.value = '';
-        };
-
-        const handleDeleteExam = (examId) => {
-            if (!confirm("确定删除该考试数据？")) return;
-            setBattle(prev => {
-                const b = battleNormalize(prev);
-                const newExams = b.exams.filter(ex => ex.id !== examId);
-                const newTeamBaseExamId = b.teamBaseExamId === examId ? (newExams[0]?.id || '') : b.teamBaseExamId;
-                const newSettleExamId = b.settleExamId === examId ? (newExams[0]?.id || '') : b.settleExamId;
-                return {
-                    ...b,
-                    exams: newExams,
-                    teamBaseExamId: newTeamBaseExamId,
-                    settleExamId: newSettleExamId
-                };
-            });
-        };
-
         const handleAddChallenge = () => {
             const from = challengeForm.from;
             const to = challengeForm.to;
@@ -5483,34 +5499,18 @@ const INITIAL_TREASURES = [
                     h("button", { onClick: handleResetPoints, className: "px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs" }, "重置战队积分"),
                     h("button", { onClick: handleExport, className: "px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs flex items-center gap-1" }, h(Icon, { name: "download", size: 14 }), "导出对战备份"),
                     h("label", { className: "px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-xs cursor-pointer flex items-center gap-1" }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
-                    h("label", { className: "px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs cursor-pointer flex items-center gap-1" }, h(Icon, { name: "excel", size: 14 }), "导入考试成绩", h("input", { type: "file", className: "hidden", accept: ".xlsx,.xls", onChange: handleImportExam }))
+                    !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
+                    examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "锁定排名")
                 )
             ),
             h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
                 h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
-                    h("div", { className: "font-bold text-slate-100" }, "档案区"),
-                    h("div", { className: "flex flex-wrap gap-2" },
-                        h("label", { className: "px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700/60 cursor-pointer" }, "导入Excel", h("input", { type: "file", className: "hidden", accept: ".xlsx,.xls", onChange: handleImportExam })),
-                        !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-1 rounded-full text-xs bg-rose-500/20 border border-rose-400/40 text-rose-200" }, "解锁查看"),
-                        examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700/60" }, "锁定")
-                    )
+                    h("div", { className: "font-bold text-slate-100" }, "考试档案选择"),
+                    h("div", { className: "text-xs text-slate-400" }, "导入和删除请到维护页的考试档案模块")
                 ),
                 h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
-                    h("div", { className: "bg-slate-950/40 border border-slate-800/60 rounded-xl p-3" },
-                        h("div", { className: "text-xs text-slate-400 mb-2" }, "考试列表"),
-                        h("div", { className: "space-y-2 max-h-40 overflow-y-auto" },
-                            exams.length === 0 ? h("div", { className: "text-xs text-slate-500" }, "暂无考试成绩") :
-                            exams.map(ex => h("div", {
-                                key: ex.id,
-                                className: `flex items-center justify-between px-3 py-2 rounded-lg border text-xs ${teamBaseExamId === ex.id ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100' : 'bg-slate-900/60 border-slate-800/60 text-slate-300'}`
-                            },
-                                h("button", { onClick: () => setBattlePatch({ teamBaseExamId: ex.id }), className: "flex-1 text-left" }, `${ex.name} · ${Object.keys(ex.ranks || {}).length}人`),
-                                h("button", { onClick: () => handleDeleteExam(ex.id), className: "ml-2 px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/40 text-rose-200 hover:bg-rose-500/30" }, "删除")
-                            ))
-                        )
-                    ),
                     h("div", { className: "bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 space-y-2" },
-                        h("div", { className: "text-xs text-slate-400" }, "档案查看"),
+                        h("div", { className: "text-xs text-slate-400" }, "考试设置"),
                         h("div", { className: "flex flex-wrap gap-2" },
                             h("label", { className: "text-xs text-slate-400" }, "组队基准"),
                             h("select", { className: "bg-slate-900/60 border border-slate-700/60 rounded-lg px-2 py-1 text-xs", value: teamBaseExamId || '', onChange: e => setBattlePatch({ teamBaseExamId: e.target.value }) },
@@ -5523,6 +5523,20 @@ const INITIAL_TREASURES = [
                                 exams.map(ex => h("option", { key: ex.id, value: ex.id }, ex.name))
                             )
                         ),
+                        h("div", { className: "space-y-2 max-h-40 overflow-y-auto" },
+                            exams.length === 0
+                                ? h("div", { className: "text-xs text-slate-500" }, "暂无考试档案")
+                                : exams.map(ex => h("div", {
+                                    key: ex.id,
+                                    className: `flex items-center justify-between px-3 py-2 rounded-lg border text-xs ${teamBaseExamId === ex.id ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100' : 'bg-slate-900/60 border-slate-800/60 text-slate-300'}`
+                                },
+                                    h("button", { onClick: () => setBattlePatch({ teamBaseExamId: ex.id }), className: "flex-1 text-left" }, `${ex.name} · ${Object.keys(ex.ranks || {}).length}人`),
+                                    settleExamId === ex.id && h("span", { className: "ml-2 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-100 text-[10px]" }, "结算")
+                                ))
+                        )
+                    ),
+                    h("div", { className: "bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 space-y-2" },
+                        h("div", { className: "text-xs text-slate-400" }, "基准档案预览"),
                         h("div", { className: "max-h-40 overflow-y-auto border border-slate-800/60 rounded-lg" },
                             h("table", { className: "w-full text-xs text-left" },
                                 h("thead", { className: "bg-slate-900/80 text-slate-400 sticky top-0" },
@@ -5552,7 +5566,7 @@ const INITIAL_TREASURES = [
             h("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6" },
                 h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
                     h("div", { className: "font-bold text-slate-100" }, "组队区"),
-                    h("div", { className: "text-xs text-slate-400" }, "基准考试将学生划分为 T1/T2/T3"),
+                    h("div", { className: "text-xs text-slate-400" }, "基准考试将学生划分为 T1/T2/T3；考试档案导入和删除请到维护页。"),
                     h("div", { className: "space-y-2 max-h-72 overflow-y-auto" },
                         teams.map(t => h("div", { key: t.id, className: "bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 text-xs space-y-2" },
                             h("div", { className: "grid grid-cols-1 md:grid-cols-5 gap-2 items-center" },
@@ -7107,7 +7121,7 @@ const INITIAL_TREASURES = [
                             }, "重试")
                         )
                 ),
-                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
+                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, examArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
                     treasures, setTreasures, storage, setStorage, logs, setLogs,
@@ -7127,7 +7141,7 @@ const INITIAL_TREASURES = [
                     persistData,
                     tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
                     redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
-                    battle, setBattle,
+                    battle, setBattle, examArchives, setExamArchives, isDirtyRef,
                     createSnapshot,
                     testMode, enterTestMode, exitTestMode,
                     simTime, setSimTime, timeSpeed, setTimeSpeed
