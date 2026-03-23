@@ -541,6 +541,10 @@ const INITIAL_TREASURES = [
         const seed = studentName + (mood === 'sad' ? 'sad' : '');
         return `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}&backgroundColor=${mood === 'happy' ? 'b6e3f4' : 'ffd5dc'}`;
     };
+    const handleAvatarError = (event, studentName, mood = 'happy') => {
+        event.target.onerror = null;
+        event.target.src = getFallbackAvatar(studentName, mood);
+    };
         
     const getApiUrl = () => {
         if (window.location.protocol.startsWith('http')) {
@@ -1849,7 +1853,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { fill: "currentColor", d: "M21,12C21,12 19,13 16,13C13,13 11,12 11,12C11,12 9,13 6,13C3,13 1,12 1,12C1,12 3,11 6,11C9,11 11,12 11,12C11,12 13,11 16,11C19,11 21,12 21,12M16,12C16,12 15,12.5 13.5,12.5C12,12.5 11,12 11,12C11,12 12,11.5 13.5,11.5C15,11.5 16,12 16,12Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, 'happy'), className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}` })
+                                        h("img", { src: getAvatar(s, 'happy'), className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'happy') })
                                     ),
                                     h("div", { className: "flex-1" }, h("div", { className: `font-bold ${isTop3 ? 'text-gray-800' : ''}` }, s.name), h("div", { className: "text-xs text-gray-400" }, (() => {
                                         const groupsConfig = getGroupsConfig(config);
@@ -1928,7 +1932,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { d: "M12,2L14,6L18,2L16,10L22,12L16,14L18,22L14,18L12,22L10,18L6,22L8,14L2,12L8,10L6,2L10,6L12,2Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, 'sad'), className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}` })
+                                        h("img", { src: getAvatar(s, 'sad'), className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'sad') })
                                     ),
                                     h("div", { className: "flex-1" },
                                         h("div", { className: "font-medium" }, s.name),
@@ -3042,7 +3046,7 @@ const INITIAL_TREASURES = [
                                 onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'left'); },
                                 title: "设置左称号"
                             }, s.title_left || "+"),
-                            h("img", { src: getAvatar(s, s.balance >= 0 ? 'happy' : 'sad'), className: "w-12 h-12 rounded-full", onError: (e) => { e.target.onerror = null; e.target.src = getFallbackAvatar(s.name, s.balance >= 0 ? 'happy' : 'sad'); } }),
+                            h("img", { src: getAvatar(s, 'happy'), className: "w-12 h-12 rounded-full", onError: (e) => handleAvatarError(e, s.name, 'happy') }),
                             h("div", { 
                                 className: "text-[10px] bg-blue-100 text-blue-800 px-1 rounded cursor-pointer min-w-[20px] h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition",
                                 onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'right'); },
