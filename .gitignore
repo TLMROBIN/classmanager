@@ -23,6 +23,8 @@ coverage/
 backups/
 database/*.db
 database/*.db-*
+database/*.db.*-wal
+database/*.db.*-shm
 database/*.backup*
 database/*backup*.db
 database/*corrupted*.db
