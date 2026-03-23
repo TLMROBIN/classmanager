@@ -151,7 +151,23 @@ app.post('/api/data', authMiddleware, (req, res) => {
         
         const transaction = db.transaction(() => {
             for (const [key, value] of Object.entries(data)) {
-                upsert.run(userId, key, JSON.stringify(value));
+                let finalValue = value;
+                if (key === 'examArchives') {
+                    const incomingExams = Array.isArray(value?.exams) ? value.exams : [];
+                    if (incomingExams.length === 0) {
+                        const existingRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, 'examArchives');
+                        if (existingRow) {
+                            try {
+                                const existingValue = JSON.parse(existingRow.data_value);
+                                const existingExams = Array.isArray(existingValue?.exams) ? existingValue.exams : [];
+                                if (existingExams.length > 0) {
+                                    finalValue = existingValue;
+                                }
+                            } catch (_) {}
+                        }
+                    }
+                }
+                upsert.run(userId, key, JSON.stringify(finalValue));
             }
         });
         

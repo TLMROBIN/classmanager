@@ -3465,7 +3465,7 @@ const INITIAL_TREASURES = [
                             setLogs(data.class_treasure_data.logs || []);
                         }
                         if (data.quotes) setQuotes(data.quotes);
-                        if (data.battle) setBattle(data.battle);
+                        if (data.battle) setBattle(battleNormalize(data.battle));
                         if (data.examArchives) setExamArchives(normalizeExamArchives(data.examArchives, data.battle || battle));
                         alert("恢复成功！");
                     }
@@ -3505,7 +3505,7 @@ const INITIAL_TREASURES = [
             if (d.dailyRedemptionCounts) setDailyRedemptionCounts(d.dailyRedemptionCounts || {});
             if (d.dailyUsageCounts) setDailyUsageCounts(d.dailyUsageCounts || {});
             if (d.tasks) setTasks(d.tasks || []);
-            if (d.battle) setBattle(d.battle);
+            if (d.battle) setBattle(battleNormalize(d.battle));
             if (d.examArchives) setExamArchives(normalizeExamArchives(d.examArchives, d.battle || battle));
             if (typeof persistData === 'function') persistData(d);
             setSelectedSnapshotId(null);
@@ -4909,7 +4909,6 @@ const INITIAL_TREASURES = [
             settlements: Array.isArray(b.settlements) ? b.settlements : [],
             season: Number(b.season) || 1,
             rules: b.rules || {},
-            exams: Array.isArray(b.exams) ? b.exams : [],
             teamBaseExamId: b.teamBaseExamId || '',
             settleExamId: b.settleExamId || ''
         };
@@ -4967,7 +4966,7 @@ const INITIAL_TREASURES = [
         return updates;
     };
 
-    const BattleView = ({ students, setStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
+    const BattleView = ({ students, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints, isDirtyRef }) => {
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
@@ -5196,7 +5195,7 @@ const INITIAL_TREASURES = [
         const handleExport = () => {
             const payload = {
                 version: 1,
-                students: (Array.isArray(students) ? students : []).map(s => ({ id: s.id, name: s.name, lastClassRank: s.lastClassRank, lastGradeRank: s.lastGradeRank })),
+                students: (Array.isArray(students) ? students : []).map(s => ({ id: s.id, name: s.name })),
                 teams,
                 squads,
                 battles,
@@ -5764,7 +5763,7 @@ const INITIAL_TREASURES = [
         const [treasures, setTreasures] = useState([]);
         const [storage, setStorage] = useState({});
         const [logs, setLogs] = useState([]);
-        const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, exams: [], teamBaseExamId: '', settleExamId: '' });
+        const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, teamBaseExamId: '', settleExamId: '' });
         const [examArchives, setExamArchives] = useState(() => normalizeExamArchives());
         // NEW: Quotes state
         const [quotes, setQuotes] = useState([]);
@@ -6060,7 +6059,7 @@ const INITIAL_TREASURES = [
                 setDailyRedemptionCounts(snap.dailyRedemptionCounts || {});
                 setDailyUsageCounts(snap.dailyUsageCounts || {});
                 setTasks(snap.tasks || []);
-                setBattle(snap.battle || {});
+                setBattle(battleNormalize(snap.battle || {}));
                 setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
                 setSelectedIds(new Set(snap.selectedIds || []));
                 setFilterGroup(snap.filterGroup || 'all');
@@ -6080,10 +6079,18 @@ const INITIAL_TREASURES = [
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
             const normalizedInput = normalizeFullData(fullData);
+            const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
+            const currentExamArchives = normalizeExamArchives(examArchives, battle);
+            const protectedExamArchives = (
+                Array.isArray(incomingExamArchives.exams) &&
+                incomingExamArchives.exams.length === 0 &&
+                Array.isArray(currentExamArchives.exams) &&
+                currentExamArchives.exams.length > 0
+            ) ? currentExamArchives : incomingExamArchives;
             const fullDataWithMeta = {
                 ...fullData,
                 battle: normalizedInput.battle,
-                examArchives: normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle),
+                examArchives: protectedExamArchives,
                 __meta: { updatedAt: nowTs, deviceId: getDeviceId() }
             };
             const { students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, __meta } = fullDataWithMeta;
@@ -6283,7 +6290,7 @@ const INITIAL_TREASURES = [
                 if(data.dailyRedemptionCounts) setDailyRedemptionCounts(data.dailyRedemptionCounts);
                 if(data.dailyUsageCounts) setDailyUsageCounts(data.dailyUsageCounts);
                 if(data.tasks) setTasks(data.tasks);
-                if(data.battle) setBattle(data.battle);
+                if(data.battle) setBattle(battleNormalize(data.battle));
                 setExamArchives(normalizeExamArchives(data.examArchives, data.battle));
             } else {
                  // Initialize defaults
@@ -7121,7 +7128,7 @@ const INITIAL_TREASURES = [
                             }, "重试")
                         )
                 ),
-                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
+                activeTab === 'battle' && h(BattleView, { students: displayStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
                     treasures, setTreasures, storage, setStorage, logs, setLogs,
