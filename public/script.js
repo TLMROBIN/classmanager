@@ -167,6 +167,21 @@ const normalizeExamArchives = (examArchives, fallbackBattle = null) => {
         defaultBattleSettleExamId: source.defaultBattleSettleExamId || ''
     };
 };
+const getLatestExamArchiveRank = (examArchives, studentId) => {
+    const archives = normalizeExamArchives(examArchives);
+    const latestExamId = archives.latestExamId || archives.exams[0]?.id || '';
+    if (!latestExamId) return null;
+    const exam = archives.exams.find(item => item.id === latestExamId) || archives.exams[0];
+    if (!exam || !exam.ranks) return null;
+    const rank = exam.ranks[studentId];
+    if (!rank) return null;
+    const c = Number(rank.c);
+    const g = Number(rank.g);
+    return {
+        c: Number.isFinite(c) ? c : null,
+        g: Number.isFinite(g) ? g : null
+    };
+};
 
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
@@ -4996,16 +5011,21 @@ const INITIAL_TREASURES = [
 
         const getBaseRank = (student) => {
             const rank = getRankFromExam(teamBaseExamId, student.id);
+            const latestRank = getLatestExamArchiveRank(examArchives, student.id);
             if (rank && Number.isFinite(rank.c)) {
-                return { c: rank.c, g: Number.isFinite(rank.g) ? rank.g : (Number(student.lastGradeRank) || totalStudents * 10) };
+                return { c: rank.c, g: Number.isFinite(rank.g) ? rank.g : (latestRank?.g || Number(student.lastGradeRank) || totalStudents * 10) };
             }
-            return { c: Number(student.lastClassRank) || totalStudents, g: Number(student.lastGradeRank) || totalStudents * 10 };
+            return {
+                c: latestRank?.c || Number(student.lastClassRank) || totalStudents,
+                g: latestRank?.g || Number(student.lastGradeRank) || totalStudents * 10
+            };
         };
 
         const getSettleRank = (student) => {
             const rank = getRankFromExam(settleExamId, student.id);
+            const latestRank = getLatestExamArchiveRank(examArchives, student.id);
             if (rank && Number.isFinite(rank.c)) {
-                return { c: rank.c, g: Number.isFinite(rank.g) ? rank.g : (Number(student.lastGradeRank) || totalStudents * 10) };
+                return { c: rank.c, g: Number.isFinite(rank.g) ? rank.g : (latestRank?.g || Number(student.lastGradeRank) || totalStudents * 10) };
             }
             const base = getBaseRank(student);
             return { c: base.c, g: base.g };
@@ -5416,13 +5436,6 @@ const INITIAL_TREASURES = [
                 const r = results.tRes.find(x => x.id === t.id);
                 return r ? { ...t, points: r.newPts } : t;
             });
-            const newStudents = (Array.isArray(students) ? students : []).map(s => {
-                const r = getRankFromExam(settleExamId, s.id);
-                if (r && Number.isFinite(r.c)) {
-                    return { ...s, lastClassRank: r.c, lastGradeRank: Number.isFinite(r.g) ? r.g : s.lastGradeRank };
-                }
-                return s;
-            });
             const updates = battleBuildSettlementPointUpdates(teams, results);
             let applyResult = { applied: false, count: 0, skipped: true };
             if (updates.length > 0 && typeof onApplySettlementPoints === 'function') {
@@ -5467,7 +5480,6 @@ const INITIAL_TREASURES = [
                 const b = battleNormalize(prev);
                 return { ...b, teams: newTeams, battles: [], logs: [{ time: getNow().toLocaleTimeString(), msg: logTxt.join(' / ') }, ...b.logs], settlements: [settlementRecord, ...b.settlements] };
             });
-            setStudents(newStudents);
             setResults(null);
             alert(applyResult.applied ? "结算完成，并已同步入账主积分" : "结算完成，主积分未入账");
         };
