@@ -5,13 +5,16 @@
             useState,
             Modal,
             Icon,
-            requireAdminAuth,
+            requireAdminAuth
+        } = deps || {};
+        const profileUtils = window.ProfileUtils || {};
+        const {
             compressImage,
             normalizeStudentProfiles,
             getStudentProfile,
             getAvatar,
             handleAvatarError
-        } = deps || {};
+        } = profileUtils;
 
         if (!h || !useState || !Modal || !Icon || !requireAdminAuth || !compressImage || !normalizeStudentProfiles || !getStudentProfile || !getAvatar || !handleAvatarError) {
             throw new Error('ProfileView dependencies are missing');
