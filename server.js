@@ -142,6 +142,25 @@ app.post('/api/data', authMiddleware, (req, res) => {
     const data = req.body;
     
     try {
+        const incomingMeta = data?.__meta && typeof data.__meta === 'object' ? data.__meta : {};
+        const existingMetaRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, '__meta');
+        let existingMeta = {};
+        try {
+            existingMeta = existingMetaRow ? (JSON.parse(existingMetaRow.data_value) || {}) : {};
+        } catch (_) {
+            existingMeta = {};
+        }
+        const existingUpdatedAt = Number(existingMeta.updatedAt) || 0;
+        const baseUpdatedAt = Number(incomingMeta.baseUpdatedAt) || 0;
+        const allowServerOverwrite = incomingMeta.allowServerOverwrite === true;
+        if (existingUpdatedAt > 0 && !allowServerOverwrite && baseUpdatedAt !== existingUpdatedAt) {
+            return res.status(409).json({
+                error: '服务器数据已被其他会话更新，请先刷新后再保存',
+                code: 'DATA_CONFLICT',
+                serverUpdatedAt: existingUpdatedAt
+            });
+        }
+
         const upsert = db.prepare(`
             INSERT INTO class_data (user_id, data_key, data_value, updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -174,7 +193,11 @@ app.post('/api/data', authMiddleware, (req, res) => {
         transaction();
         
         console.log(`[${new Date().toLocaleTimeString()}] 用户 ${req.user.username} 数据已保存`);
-        res.json({ success: true, message: '保存成功' });
+        res.json({
+            success: true,
+            message: '保存成功',
+            updatedAt: Number(incomingMeta.updatedAt) || Date.now()
+        });
     } catch (err) {
         console.error('保存数据出错:', err);
         res.status(500).json({ error: '保存失败' });

@@ -167,6 +167,13 @@ const normalizeExamArchives = (examArchives, fallbackBattle = null) => {
         defaultBattleSettleExamId: source.defaultBattleSettleExamId || ''
     };
 };
+const normalizeBattleSnapshots = (battleSnapshots) => {
+    const transfer = window.BattleTransfer || {};
+    if (typeof transfer.normalizeBattleSnapshots === 'function') {
+        return transfer.normalizeBattleSnapshots(battleSnapshots);
+    }
+    return Array.isArray(battleSnapshots) ? battleSnapshots : [];
+};
 const getLatestExamArchiveRank = (examArchives, studentId) => {
     const archives = normalizeExamArchives(examArchives);
     const latestExamId = archives.latestExamId || archives.exams[0]?.id || '';
@@ -3030,7 +3037,7 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const SettingsView = ({ students, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
@@ -3429,7 +3436,8 @@ const INITIAL_TREASURES = [
                 class_treasure_data: { treasures, storage, logs },
                 quotes: quotes,
                 battle: battle,
-                examArchives: examArchives
+                examArchives: examArchives,
+                battleSnapshots: battleSnapshots
             };
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullData));
             const downloadAnchorNode = document.createElement('a');
@@ -3467,6 +3475,7 @@ const INITIAL_TREASURES = [
                         if (data.quotes) setQuotes(data.quotes);
                         if (data.battle) setBattle(battleNormalize(data.battle));
                         if (data.examArchives) setExamArchives(normalizeExamArchives(data.examArchives, data.battle || battle));
+                        if (data.battleSnapshots) setBattleSnapshots(normalizeBattleSnapshots(data.battleSnapshots));
                         alert("恢复成功！");
                     }
                 } catch (err) { alert("文件格式错误"); }
@@ -3507,6 +3516,7 @@ const INITIAL_TREASURES = [
             if (d.tasks) setTasks(d.tasks || []);
             if (d.battle) setBattle(battleNormalize(d.battle));
             if (d.examArchives) setExamArchives(normalizeExamArchives(d.examArchives, d.battle || battle));
+            if (d.battleSnapshots) setBattleSnapshots(normalizeBattleSnapshots(d.battleSnapshots));
             if (typeof persistData === 'function') persistData(d);
             setSelectedSnapshotId(null);
             alert("已恢复为选中快照！");
@@ -3619,7 +3629,8 @@ const INITIAL_TREASURES = [
                 dailyRedemptionCounts,
                 dailyUsageCounts,
                 tasks,
-                battle
+                battle,
+                battleSnapshots
             };
             if (typeof persistData === 'function') persistData(fullData);
 
@@ -3667,7 +3678,8 @@ const INITIAL_TREASURES = [
                 dailyRedemptionCounts,
                 dailyUsageCounts,
                 tasks,
-                battle
+                battle,
+                battleSnapshots
             };
             if (typeof persistData === 'function') persistData(fullData);
 
@@ -3878,26 +3890,12 @@ const INITIAL_TREASURES = [
 
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
             if (isDirtyRef) isDirtyRef.current = true;
-            if (typeof persistData !== 'function') {
+            if (typeof persistDataPatch !== 'function') {
                 if (isDirtyRef) isDirtyRef.current = false;
                 if (successMessage) alert(successMessage);
                 return Promise.resolve();
             }
-            return persistData({
-                students,
-                history,
-                config,
-                attendanceRecords,
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
+            return persistDataPatch({
                 battle: nextBattle,
                 examArchives: nextExamArchives
             }).then(() => {
@@ -4966,12 +4964,11 @@ const INITIAL_TREASURES = [
         return updates;
     };
 
-    const BattleView = ({ students, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints, isDirtyRef }) => {
+    const BattleView = ({ students, battle, examArchives, battleSnapshots, setBattleSnapshots, setExamArchives, setBattle, onApplySettlementPoints, onPersistBattleSnapshots, isDirtyRef }) => {
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
         const [transferPreview, setTransferPreview] = useState({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
-        const [battleSnapshotTick, setBattleSnapshotTick] = useState(0);
         const data = battleNormalize(battle);
         const archiveData = normalizeExamArchives(examArchives, battle);
         const battleTransfer = window.BattleTransfer || {};
@@ -4988,27 +4985,28 @@ const INITIAL_TREASURES = [
         const totalStudents = Math.max(Array.isArray(students) ? students.length : 0, 1);
         const [selectedSettlementId, setSelectedSettlementId] = useState('');
         const [selectedTeamId, setSelectedTeamId] = useState('');
-        const battleSnapshots = useMemo(
-            () => (typeof battleTransfer.listBattleSnapshots === 'function' ? battleTransfer.listBattleSnapshots() : []),
-            [battleSnapshotTick]
-        );
+        const snapshotList = useMemo(() => normalizeBattleSnapshots(battleSnapshots), [battleSnapshots]);
 
         const setBattlePatch = (patch) => {
             setBattle(prev => ({ ...battleNormalize(prev), ...patch }));
         };
 
-        const bumpBattleSnapshotTick = () => setBattleSnapshotTick(prev => prev + 1);
-
         const createBattleSnapshotEntry = (reason) => {
-            if (typeof battleTransfer.createBattleSnapshot !== 'function') return null;
-            const snap = battleTransfer.createBattleSnapshot({
+            if (typeof battleTransfer.buildBattleSnapshotEntry !== 'function' || typeof setBattleSnapshots !== 'function') return null;
+            const snap = battleTransfer.buildBattleSnapshotEntry({
                 reason,
                 battle: data,
                 examArchives: archiveData,
                 students,
                 now: Date.now()
             });
-            bumpBattleSnapshotTick();
+            const nextSnapshots = normalizeBattleSnapshots([snap, ...(Array.isArray(battleSnapshots) ? battleSnapshots : [])]);
+            setBattleSnapshots(nextSnapshots);
+            if (typeof onPersistBattleSnapshots === 'function') {
+                onPersistBattleSnapshots(nextSnapshots).catch(err => {
+                    console.error('双子星快照保存失败:', err);
+                });
+            }
             return snap;
         };
 
@@ -5278,8 +5276,8 @@ const INITIAL_TREASURES = [
         };
 
         const handleRestoreBattleSnapshot = (snapshotId) => {
-            if (!snapshotId || typeof battleTransfer.getBattleSnapshotById !== 'function') return;
-            const snap = battleTransfer.getBattleSnapshotById(snapshotId);
+            if (!snapshotId) return;
+            const snap = snapshotList.find(item => item.id === snapshotId);
             if (!snap?.payload) return alert("未找到该快照");
             try {
                 const parsed = battleTransfer.parseBattleBackupText({
@@ -5300,6 +5298,23 @@ const INITIAL_TREASURES = [
                 });
             } catch (err) {
                 alert("快照恢复失败：" + err.message);
+            }
+        };
+
+        const handleDeleteBattleSnapshot = (snapshotId) => {
+            if (!snapshotId) return;
+            const target = snapshotList.find(item => item.id === snapshotId);
+            if (!target) return alert("未找到该快照");
+            if (!requireAdminAuth("删除双子星快照需要管理员密码：")) return;
+            if (!confirm(`确定删除快照「${target.reason || '未命名快照'}」吗？`)) return;
+            const nextSnapshots = snapshotList.filter(item => item.id !== snapshotId);
+            setBattleSnapshots(nextSnapshots);
+            if (typeof onPersistBattleSnapshots === 'function') {
+                onPersistBattleSnapshots(nextSnapshots).catch(err => {
+                    console.error('删除双子星快照失败:', err);
+                    setBattleSnapshots(snapshotList);
+                    alert("删除失败，请刷新后重试");
+                });
             }
         };
 
@@ -5555,15 +5570,18 @@ const INITIAL_TREASURES = [
                     h("div", { className: "font-bold text-slate-100" }, "战况快照"),
                     h("div", { className: "text-xs text-slate-400" }, "自动记录导入备份、确认结算、开启新赛季前的双子星状态")
                 ),
-                battleSnapshots.length === 0
+                snapshotList.length === 0
                     ? h("div", { className: "text-xs text-slate-500" }, "暂无双子星快照")
                     : h("div", { className: "space-y-2 max-h-44 overflow-y-auto" },
-                        battleSnapshots.slice(0, 8).map(item => h("div", { key: item.id, className: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/60 bg-slate-950/40 px-3 py-2 text-xs" },
+                        snapshotList.slice(0, 8).map(item => h("div", { key: item.id, className: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/60 bg-slate-950/40 px-3 py-2 text-xs" },
                             h("div", null,
                                 h("div", { className: "text-slate-100 font-medium" }, item.reason || '未命名快照'),
                                 h("div", { className: "text-slate-400 mt-1" }, new Date(item.ts || Date.now()).toLocaleString('zh-CN', { hour12: false }))
                             ),
-                            h("button", { onClick: () => handleRestoreBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-cyan-500/20 border border-cyan-400/40 text-cyan-100" }, "预览恢复")
+                            h("div", { className: "flex items-center gap-2" },
+                                h("button", { onClick: () => handleRestoreBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-cyan-500/20 border border-cyan-400/40 text-cyan-100" }, "预览恢复"),
+                                h("button", { onClick: () => handleDeleteBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-rose-500/20 border border-rose-400/40 text-rose-100" }, "删除")
+                            )
                         ))
                     )
             ),
@@ -5837,6 +5855,7 @@ const INITIAL_TREASURES = [
         const [logs, setLogs] = useState([]);
         const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, teamBaseExamId: '', settleExamId: '' });
         const [examArchives, setExamArchives] = useState(() => normalizeExamArchives());
+        const [battleSnapshots, setBattleSnapshots] = useState(() => normalizeBattleSnapshots());
         // NEW: Quotes state
         const [quotes, setQuotes] = useState([]);
         const [messages, setMessages] = useState([]); // Add messages state
@@ -5925,6 +5944,8 @@ const INITIAL_TREASURES = [
         const isDirtyRef = useRef(false);
         const offlineHandledRef = useRef(false);
         const retryTimerRef = useRef(null);
+        const serverMetaRef = useRef({ updatedAt: 0 });
+        const initialServerSyncDoneRef = useRef(!getApiUrl());
         const OFFLINE_SNAPSHOT_KEY = 'cm_offline_snapshot';
         const RETRY_CONNECT_MS = 10 * 60 * 1000;
 
@@ -5969,6 +5990,14 @@ const INITIAL_TREASURES = [
             setStorageItem(OFFLINE_SNAPSHOT_KEY, "");
         };
 
+        const markServerMeta = (updatedAt) => {
+            const ts = Number(updatedAt) || 0;
+            if (ts > 0) {
+                serverMetaRef.current = { updatedAt: ts };
+            }
+            initialServerSyncDoneRef.current = true;
+        };
+
         const normalizeFullData = (data) => {
             const safe = data || {};
             return {
@@ -5988,6 +6017,7 @@ const INITIAL_TREASURES = [
                 tasks: safe.tasks,
                 battle: safe.battle,
                 examArchives: normalizeExamArchives(safe.examArchives, safe.battle),
+                battleSnapshots: normalizeBattleSnapshots(safe.battleSnapshots),
                 __meta: safe.__meta || {},
                 flags: {
                     students: Object.prototype.hasOwnProperty.call(safe, 'students'),
@@ -6005,7 +6035,8 @@ const INITIAL_TREASURES = [
                     dailyUsageCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyUsageCounts'),
                     tasks: Object.prototype.hasOwnProperty.call(safe, 'tasks'),
                     battle: Object.prototype.hasOwnProperty.call(safe, 'battle'),
-                    examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams))
+                    examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams)),
+                    battleSnapshots: Object.prototype.hasOwnProperty.call(safe, 'battleSnapshots')
                 }
             };
         };
@@ -6048,6 +6079,7 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.tasks)) setTasks(normalized.tasks || []);
             if (use(normalized.flags.battle)) setBattle(battleNormalize(normalized.battle || {}));
             if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
+            if (use(normalized.flags.battleSnapshots)) setBattleSnapshots(normalizeBattleSnapshots(normalized.battleSnapshots));
         };
 
         const mergeFullData = (remoteData, localData) => {
@@ -6077,6 +6109,9 @@ const INITIAL_TREASURES = [
                         : remote.examArchives,
                     local.battle?.exams?.length ? local.battle : remote.battle
                 ),
+                battleSnapshots: mergeArrayByKey(remote.battleSnapshots, local.battleSnapshots)
+                    .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0))
+                    .slice(0, 20),
                 __meta: { updatedAt: Math.max(remoteTs, localTs), deviceId: local.__meta.deviceId || remote.__meta.deviceId }
             };
         };
@@ -6100,6 +6135,7 @@ const INITIAL_TREASURES = [
                 tasks: deepClone(tasks),
                 battle: deepClone(battle),
                 examArchives: deepClone(examArchives),
+                battleSnapshots: deepClone(battleSnapshots),
                 selectedIds: Array.from(selectedIds),
                 filterGroup,
                 filterDorm,
@@ -6111,7 +6147,7 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
+        }, [testMode, students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
@@ -6133,6 +6169,7 @@ const INITIAL_TREASURES = [
                 setTasks(snap.tasks || []);
                 setBattle(battleNormalize(snap.battle || {}));
                 setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
+                setBattleSnapshots(normalizeBattleSnapshots(snap.battleSnapshots));
                 setSelectedIds(new Set(snap.selectedIds || []));
                 setFilterGroup(snap.filterGroup || 'all');
                 setFilterDorm(snap.filterDorm || 'all');
@@ -6145,6 +6182,156 @@ const INITIAL_TREASURES = [
             setTimeSpeed(1);
             setSyncStatus('saved');
         }, [testMode]);
+
+        const buildCurrentFullData = useCallback((overrides = {}) => {
+            let att = attendanceRecords || {};
+            try {
+                const raw = getStorageItem('attendance_records');
+                if (raw) att = JSON.parse(raw);
+            } catch (_) {}
+            return {
+                students,
+                history,
+                config,
+                attendanceRecords: att,
+                treasures,
+                storage,
+                logs,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks,
+                battle,
+                examArchives,
+                battleSnapshots,
+                ...overrides
+            };
+        }, [attendanceRecords, students, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
+
+        const writeLocalCaches = useCallback((fullDataWithMeta) => {
+            const {
+                students,
+                history,
+                config,
+                attendanceRecords,
+                treasures,
+                storage,
+                logs,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks,
+                battle,
+                examArchives,
+                battleSnapshots,
+                __meta
+            } = fullDataWithMeta;
+            setStorageItem('class_manager_data', JSON.stringify({
+                students,
+                history,
+                config,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks,
+                battle,
+                examArchives,
+                battleSnapshots,
+                __meta
+            }));
+            setStorageItem('attendance_records', JSON.stringify(attendanceRecords || {}));
+            setStorageItem('class_treasure_data', JSON.stringify({ treasures, storage, logs }));
+        }, []);
+
+        const savePayloadToServer = useCallback((payload, fullDataWithMeta, nowTs) => {
+            if (window.__CM_TEST_MODE__) {
+                setSyncStatus('saved');
+                isSavingRef.current = false;
+                return Promise.resolve({ success: true, updatedAt: nowTs });
+            }
+            const apiUrl = getApiUrl();
+            if (!apiUrl) {
+                setSyncStatus('unsaved');
+                writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
+                isSavingRef.current = false;
+                return Promise.resolve({ success: true, offline: true, updatedAt: nowTs });
+            }
+            return fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...window.__getAuthHeaders__()
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(async (res) => {
+                    if (window.__handleAuthError__(res)) return null;
+                    const data = await res.json().catch(() => ({}));
+                    if (res.status === 409) {
+                        const serverUpdatedAt = Number(data?.serverUpdatedAt) || 0;
+                        if (serverUpdatedAt > 0) serverMetaRef.current = { updatedAt: serverUpdatedAt };
+                        setSyncStatus('error');
+                        isSavingRef.current = false;
+                        alert('检测到其他浏览器或标签页已更新服务器数据，请先刷新后再保存。');
+                        throw new Error('DATA_CONFLICT');
+                    }
+                    if (!res.ok) {
+                        throw new Error(data?.error || '保存失败');
+                    }
+                    const savedUpdatedAt = Number(data?.updatedAt) || nowTs;
+                    markServerMeta(savedUpdatedAt);
+                    setSyncStatus('saved');
+                    clearOfflineSnapshot();
+                    isSavingRef.current = false;
+                    return { success: true, updatedAt: savedUpdatedAt };
+                })
+                .catch((err) => {
+                    if (err?.message === 'DATA_CONFLICT') throw err;
+                    setSyncStatus('unsaved');
+                    writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
+                    isSavingRef.current = false;
+                    throw err;
+                });
+        }, [writeLocalCaches]);
+
+        const persistDataPatch = useCallback((partialData) => {
+            isSavingRef.current = true;
+            const nowTs = getNow().getTime();
+            const fullData = buildCurrentFullData(partialData || {});
+            const normalizedInput = normalizeFullData(fullData);
+            const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
+            const currentExamArchives = normalizeExamArchives(examArchives, battle);
+            const protectedExamArchives = (
+                Array.isArray(incomingExamArchives.exams) &&
+                incomingExamArchives.exams.length === 0 &&
+                Array.isArray(currentExamArchives.exams) &&
+                currentExamArchives.exams.length > 0
+            ) ? currentExamArchives : incomingExamArchives;
+            const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
+            const fullDataWithMeta = {
+                ...fullData,
+                battle: normalizedInput.battle,
+                examArchives: protectedExamArchives,
+                battleSnapshots: nextBattleSnapshots,
+                __meta: {
+                    updatedAt: nowTs,
+                    baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
+                    deviceId: getDeviceId()
+                }
+            };
+            writeLocalCaches(fullDataWithMeta);
+            const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
+            return savePayloadToServer(payload, fullDataWithMeta, nowTs);
+        }, [buildCurrentFullData, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
 
         /** 统一持久化：写 localStorage 并可选 POST。所有需立即落盘的操作均经此函数，避免分散写入导致覆盖。 */
         const persistData = useCallback((fullData) => {
@@ -6159,48 +6346,21 @@ const INITIAL_TREASURES = [
                 Array.isArray(currentExamArchives.exams) &&
                 currentExamArchives.exams.length > 0
             ) ? currentExamArchives : incomingExamArchives;
+            const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
-                __meta: { updatedAt: nowTs, deviceId: getDeviceId() }
+                battleSnapshots: nextBattleSnapshots,
+                __meta: {
+                    updatedAt: nowTs,
+                    baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
+                    deviceId: getDeviceId()
+                }
             };
-            const { students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, __meta } = fullDataWithMeta;
-            setStorageItem('class_manager_data', JSON.stringify({ students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, __meta }));
-            setStorageItem('attendance_records', JSON.stringify(attendanceRecords));
-            setStorageItem('class_treasure_data', JSON.stringify({ treasures, storage, logs }));
-            if (window.__CM_TEST_MODE__) {
-                setSyncStatus('saved');
-                isSavingRef.current = false;
-                return Promise.resolve();
-            }
-            const apiUrl = getApiUrl();
-            if (apiUrl) {
-                return fetch(apiUrl, { 
-                    method: 'POST', 
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        ...window.__getAuthHeaders__()
-                    }, 
-                    body: JSON.stringify(fullDataWithMeta) 
-                })
-                .then(res => {
-                    if (window.__handleAuthError__(res)) return;
-                    return res.json();
-                })
-                .then(data => {
-                    if (!data) return;
-                    setSyncStatus('saved'); 
-                    clearOfflineSnapshot(); 
-                    isSavingRef.current = false;
-                })
-                .catch(() => { setSyncStatus('unsaved'); writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta }); isSavingRef.current = false; });
-            }
-            setSyncStatus('unsaved');
-            writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
-            isSavingRef.current = false;
-            return Promise.resolve();
-        }, [battle, examArchives]);
+            writeLocalCaches(fullDataWithMeta);
+            return savePayloadToServer(fullDataWithMeta, fullDataWithMeta, nowTs);
+        }, [battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -6240,6 +6400,7 @@ const INITIAL_TREASURES = [
                         const offlineSnap = await readOfflineSnapshot();
                         const normalized = normalizeFullData(data);
                         const remoteTs = Number(normalized.__meta.updatedAt) || 0;
+                        markServerMeta(remoteTs);
                         const offlineTs = Number(offlineSnap?.ts) || 0;
                         
                         if (offlineSnap && !offlineHandledRef.current && offlineTs > remoteTs) {
@@ -6293,6 +6454,7 @@ const INITIAL_TREASURES = [
                             retryTimerRef.current = null;
                         }
                     } else {
+                        initialServerSyncDoneRef.current = true;
                         const offlineSnap = await readOfflineSnapshot();
                         if (offlineSnap && !offlineHandledRef.current) {
                             offlineHandledRef.current = true;
@@ -6364,11 +6526,13 @@ const INITIAL_TREASURES = [
                 if(data.tasks) setTasks(data.tasks);
                 if(data.battle) setBattle(battleNormalize(data.battle));
                 setExamArchives(normalizeExamArchives(data.examArchives, data.battle));
+                setBattleSnapshots(normalizeBattleSnapshots(data.battleSnapshots));
             } else {
                  // Initialize defaults
                 setStudents([]);
                 setQuotes(window.DEFAULT_QUOTES);
                 setExamArchives(normalizeExamArchives());
+                setBattleSnapshots(normalizeBattleSnapshots());
             }
                 
             const savedAtt = getStorageItem('attendance_records');
@@ -6412,6 +6576,15 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onFocus);
             };
         }, [fetchFromServer]);
+
+        useEffect(() => {
+            if (battleSnapshots.length > 0) return;
+            const transfer = window.BattleTransfer || {};
+            if (typeof transfer.readLegacySnapshots !== 'function') return;
+            const legacy = normalizeBattleSnapshots(transfer.readLegacySnapshots());
+            if (legacy.length === 0) return;
+            setBattleSnapshots(legacy);
+        }, [battleSnapshots.length]);
 
         // 4. 每日自动快照（22:30后触发，或错过22:30时补生成）
         useEffect(() => {
@@ -6459,7 +6632,8 @@ const INITIAL_TREASURES = [
                     storage: storage || {},
                     logs: logs || [],
                     battle: battle || {},
-                    examArchives: examArchives || normalizeExamArchives(undefined, battle)
+                    examArchives: examArchives || normalizeExamArchives(undefined, battle),
+                    battleSnapshots: battleSnapshots || []
                 };
 
                 const snapKey = 'class_manager_snapshots';
@@ -6493,7 +6667,7 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onVisible);
                 window.removeEventListener('focus', onVisible);
             };
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, treasures, storage, logs]); 
+        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs]);
 
         // Update handleRefreshData to use new function
         const handleRefreshData = () => fetchFromServer(false);
@@ -6584,7 +6758,8 @@ const INITIAL_TREASURES = [
                     storage: storage || {},
                     logs: logs || [],
                     battle: battle || {},
-                    examArchives: examArchives || normalizeExamArchives(undefined, battle)
+                    examArchives: examArchives || normalizeExamArchives(undefined, battle),
+                    battleSnapshots: battleSnapshots || []
                 };
 
                 const snapKey = 'class_manager_snapshots';
@@ -6604,29 +6779,29 @@ const INITIAL_TREASURES = [
                 console.error('生成快照失败:', e);
                 return false;
             }
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives]);
+        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots]);
 
 
         // --- 自动保存逻辑 (Debounced) ---
         useEffect(() => {
             isDirtyRef.current = true;
 
+            if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
+                const previewData = buildCurrentFullData();
+                const nowTs = getNow().getTime();
+                writeLocalCaches({
+                    ...previewData,
+                    __meta: {
+                        updatedAt: nowTs,
+                        baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
+                        deviceId: getDeviceId()
+                    }
+                });
+                return undefined;
+            }
+
             const saveData = () => {
-                let att = {};
-                try {
-                    const raw = getStorageItem('attendance_records');
-                    if (raw) att = JSON.parse(raw);
-                } catch (_) {}
-                const fullData = {
-                    students, history, config,
-                    attendanceRecords: att,
-                    treasures, storage, logs,
-                    quotes, messages, teacherMessages,
-                    redemptionHistory, dailyRedemptionCounts, dailyUsageCounts,
-                    tasks,
-                    battle,
-                    examArchives
-                };
+                const fullData = buildCurrentFullData();
                 persistData(fullData).then(() => { 
                     isDirtyRef.current = false; 
                 }).catch(() => { 
@@ -6636,7 +6811,40 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, persistData]);
+        }, [students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
+
+        useEffect(() => {
+            isDirtyRef.current = true;
+
+            if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
+                const previewData = buildCurrentFullData();
+                const nowTs = getNow().getTime();
+                writeLocalCaches({
+                    ...previewData,
+                    __meta: {
+                        updatedAt: nowTs,
+                        baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
+                        deviceId: getDeviceId()
+                    }
+                });
+                return undefined;
+            }
+
+            const saveBattleDomain = () => {
+                persistDataPatch({
+                    battle,
+                    examArchives,
+                    battleSnapshots
+                }).then(() => {
+                    isDirtyRef.current = false;
+                }).catch(() => {
+                    isDirtyRef.current = false;
+                });
+            };
+
+            const timer = setTimeout(saveBattleDomain, 1200);
+            return () => clearTimeout(timer);
+        }, [battle, examArchives, battleSnapshots, persistDataPatch, buildCurrentFullData, writeLocalCaches]);
 
 
         // NEW Batch Update Function
@@ -7200,7 +7408,7 @@ const INITIAL_TREASURES = [
                             }, "重试")
                         )
                 ),
-                activeTab === 'battle' && h(BattleView, { students: displayStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef }),
+                activeTab === 'battle' && h(BattleView, { students: displayStudents, battle, examArchives, battleSnapshots, setBattleSnapshots, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, onPersistBattleSnapshots: (nextSnapshots) => persistDataPatch({ battleSnapshots: nextSnapshots }), isDirtyRef }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
                     treasures, setTreasures, storage, setStorage, logs, setLogs,
@@ -7218,9 +7426,10 @@ const INITIAL_TREASURES = [
                     setAttendanceRecords, setTreasures, setStorage, setLogs,
                     quotes, setQuotes,
                     persistData,
+                    persistDataPatch,
                     tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
                     redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
-                    battle, setBattle, examArchives, setExamArchives, isDirtyRef,
+                    battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef,
                     createSnapshot,
                     testMode, enterTestMode, exitTestMode,
                     simTime, setSimTime, timeSpeed, setTimeSpeed

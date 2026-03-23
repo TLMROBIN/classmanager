@@ -142,6 +142,20 @@
         missingStudents: Array.isArray(missingStudents) ? missingStudents : []
     });
 
+    const normalizeBattleSnapshots = (list) => {
+        if (!Array.isArray(list)) return [];
+        return list
+            .filter(item => item && typeof item === 'object' && item.payload)
+            .map((item, idx) => ({
+                id: item.id || `battle_snap_${item.ts || Date.now()}_${idx}`,
+                reason: item.reason || '手动快照',
+                ts: Number(item.ts) || Date.now(),
+                payload: item.payload
+            }))
+            .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0))
+            .slice(0, MAX_SNAPSHOTS);
+    };
+
     const parseBattleBackupText = ({ text, students }) => {
         const raw = safeJsonParse(text);
         const payload = raw.battle ? { ...raw.battle, students: raw.students || raw.battle.students, exams: raw.exams || raw.battle.exams } : raw;
@@ -156,23 +170,21 @@
         };
     };
 
-    const readSnapshots = () => {
+    const readLegacySnapshots = () => {
         try {
             const raw = localStorage.getItem(SNAPSHOT_KEY);
             const list = raw ? JSON.parse(raw) : [];
-            return Array.isArray(list) ? list : [];
+            return normalizeBattleSnapshots(list);
         } catch (_) {
             return [];
         }
     };
 
-    const writeSnapshots = (list) => {
+    const writeLegacySnapshots = (list) => {
         localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(list));
     };
 
-    const createBattleSnapshot = ({ reason, battle, examArchives, students, now }) => {
-        const list = readSnapshots();
-        const entry = {
+    const buildBattleSnapshotEntry = ({ reason, battle, examArchives, students, now }) => ({
             id: `battle_snap_${now}`,
             reason: reason || '手动快照',
             ts: now,
@@ -183,23 +195,37 @@
                 now,
                 getTodayStr: () => new Date(now).toISOString().slice(0, 10)
             }).payload
-        };
+        });
+
+    const createBattleSnapshot = ({ reason, battle, examArchives, students, now }) => {
+        const list = readLegacySnapshots();
+        const entry = buildBattleSnapshotEntry({ reason, battle, examArchives, students, now });
         list.unshift(entry);
-        writeSnapshots(list.slice(0, MAX_SNAPSHOTS));
+        writeLegacySnapshots(normalizeBattleSnapshots(list));
         return entry;
     };
 
-    const listBattleSnapshots = () => readSnapshots();
+    const listBattleSnapshots = () => readLegacySnapshots();
 
-    const getBattleSnapshotById = (id) => readSnapshots().find(item => item.id === id) || null;
+    const getBattleSnapshotById = (id) => readLegacySnapshots().find(item => item.id === id) || null;
+
+    const clearLegacyBattleSnapshots = () => {
+        try {
+            localStorage.removeItem(SNAPSHOT_KEY);
+        } catch (_) {}
+    };
 
     window.BattleTransfer = {
         buildBattleBackup,
+        buildBattleSnapshotEntry,
         parseBattleBackupText,
         validateBattleBackupPayload,
+        normalizeBattleSnapshots,
         createBattleSnapshot,
         listBattleSnapshots,
         getBattleSnapshotById,
+        readLegacySnapshots,
+        clearLegacyBattleSnapshots,
         summarizeBattlePayload
     };
 })();
