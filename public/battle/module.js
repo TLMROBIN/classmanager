@@ -23,6 +23,7 @@
         return function BattleView({ students, battle, examArchives, battleSnapshots, setBattleSnapshots, setExamArchives, setBattle, onApplySettlementPoints, onPersistBattleSnapshots, isDirtyRef }) {
             const [results, setResults] = useState(null);
             const [examUnlocked, setExamUnlocked] = useState(false);
+            const [moreMenuOpen, setMoreMenuOpen] = useState(false);
             const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
             const [transferPreview, setTransferPreview] = useState({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
             const data = battleNormalize(battle);
@@ -237,11 +238,13 @@
                 document.body.appendChild(downloadAnchorNode);
                 downloadAnchorNode.click();
                 downloadAnchorNode.remove();
+                setMoreMenuOpen(false);
             };
 
             const handleImport = (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
+                setMoreMenuOpen(false);
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     try {
@@ -268,6 +271,12 @@
                 };
                 reader.readAsText(file);
                 e.target.value = '';
+            };
+
+            const handleCreateManualSnapshot = () => {
+                createBattleSnapshotEntry('手动快照');
+                setMoreMenuOpen(false);
+                alert('已生成双子星快照');
             };
 
             const handleRestoreBattleSnapshot = (snapshotId) => {
@@ -458,9 +467,25 @@
                     h("div", { className: "flex flex-wrap gap-2" },
                         h("button", { onClick: handleInit, className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "按当前学生初始化"),
                         h("button", { onClick: handleResetPoints, className: "px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs" }, "重置战队积分"),
-                        h("button", { onClick: handleExport, className: "px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs flex items-center gap-1" }, h(Icon, { name: "download", size: 14 }), "导出对战备份"),
-                        h("label", { className: "px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-xs cursor-pointer flex items-center gap-1" }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
-                        h("button", { onClick: () => { createBattleSnapshotEntry('手动快照'); alert('已生成双子星快照'); }, className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "保存战况快照"),
+                        h("div", { className: "relative" },
+                            h("button", {
+                                onClick: () => setMoreMenuOpen(prev => !prev),
+                                className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs flex items-center gap-1"
+                            }, h(Icon, { name: "ellipsis", size: 14 }), "更多"),
+                            moreMenuOpen && h("div", { className: "absolute right-0 top-full mt-2 z-10 min-w-44 rounded-2xl border border-slate-700/60 bg-slate-950/95 p-2 shadow-2xl backdrop-blur space-y-1" },
+                                h("button", {
+                                    onClick: handleExport,
+                                    className: "w-full px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/30 text-cyan-200 text-xs flex items-center gap-2 text-left"
+                                }, h(Icon, { name: "download", size: 14 }), "导出对战备份"),
+                                h("label", {
+                                    className: "w-full px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs cursor-pointer flex items-center gap-2"
+                                }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
+                                h("button", {
+                                    onClick: handleCreateManualSnapshot,
+                                    className: "w-full px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs text-left"
+                                }, "保存战况快照")
+                            )
+                        ),
                         !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
                         examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "锁定排名")
                     )
