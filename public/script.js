@@ -153,6 +153,20 @@ const normalizeCustomRoles = (roles, fallbackDailyWage = 0) => (
     studentId: role?.studentId != null && role.studentId !== "" ? Number(role.studentId) : null,
     dailyWage: Number.isFinite(Number(role?.dailyWage)) ? Number(role.dailyWage) : fallbackDailyWage
 }));
+const normalizeExamArchives = (examArchives, fallbackBattle = null) => {
+    const source = examArchives || {};
+    const fallbackExams = Array.isArray(fallbackBattle?.exams) ? fallbackBattle.exams : [];
+    const exams = Array.isArray(source.exams) && source.exams.length > 0
+        ? source.exams
+        : fallbackExams;
+    return {
+        version: Number(source.version) || 1,
+        exams,
+        latestExamId: source.latestExamId || exams[0]?.id || '',
+        defaultBattleBaseExamId: source.defaultBattleBaseExamId || '',
+        defaultBattleSettleExamId: source.defaultBattleSettleExamId || ''
+    };
+};
 
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
@@ -5183,7 +5197,8 @@ const INITIAL_TREASURES = [
                                 dailyRedemptionCounts: existingData.dailyRedemptionCounts || {},
                                 dailyUsageCounts: existingData.dailyUsageCounts || {},
                                 tasks: existingData.tasks || [],
-                                battle: newBattle
+                                battle: newBattle,
+                                examArchives: normalizeExamArchives(existingData.examArchives, newBattle)
                             };
                             persistData(fullData).then(() => {
                                 if (isDirtyRef) isDirtyRef.current = false;
@@ -5720,6 +5735,7 @@ const INITIAL_TREASURES = [
         const [storage, setStorage] = useState({});
         const [logs, setLogs] = useState([]);
         const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, exams: [], teamBaseExamId: '', settleExamId: '' });
+        const [examArchives, setExamArchives] = useState(() => normalizeExamArchives());
         // NEW: Quotes state
         const [quotes, setQuotes] = useState([]);
         const [messages, setMessages] = useState([]); // Add messages state
@@ -5799,6 +5815,22 @@ const INITIAL_TREASURES = [
             }, 1000);
             return () => clearInterval(timer);
         }, [testMode, timeSpeed]);
+
+        // Phase 1 compatibility: before the dedicated exam archive module takes over writes,
+        // keep the new top-level archive mirrored from the legacy battle exam source.
+        useEffect(() => {
+            const battleExams = Array.isArray(battle?.exams) ? battle.exams : [];
+            setExamArchives(prev => {
+                const prevExams = Array.isArray(prev?.exams) ? prev.exams : [];
+                const same = JSON.stringify(prevExams) === JSON.stringify(battleExams);
+                if (same && prev.latestExamId) return prev;
+                return normalizeExamArchives({
+                    ...prev,
+                    exams: battleExams,
+                    latestExamId: battleExams[0]?.id || ''
+                }, battle);
+            });
+        }, [battle]);
             
         // --- 局域网同步逻辑（防覆盖升级）---
         // isSavingRef：正在执行 persist 时置位，避免自动刷新覆盖。
@@ -5870,6 +5902,7 @@ const INITIAL_TREASURES = [
                 dailyUsageCounts: safe.dailyUsageCounts,
                 tasks: safe.tasks,
                 battle: safe.battle,
+                examArchives: normalizeExamArchives(safe.examArchives, safe.battle),
                 __meta: safe.__meta || {},
                 flags: {
                     students: Object.prototype.hasOwnProperty.call(safe, 'students'),
@@ -5886,7 +5919,8 @@ const INITIAL_TREASURES = [
                     dailyRedemptionCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyRedemptionCounts'),
                     dailyUsageCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyUsageCounts'),
                     tasks: Object.prototype.hasOwnProperty.call(safe, 'tasks'),
-                    battle: Object.prototype.hasOwnProperty.call(safe, 'battle')
+                    battle: Object.prototype.hasOwnProperty.call(safe, 'battle'),
+                    examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams))
                 }
             };
         };
@@ -5928,6 +5962,7 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.dailyUsageCounts)) setDailyUsageCounts(normalized.dailyUsageCounts || {});
             if (use(normalized.flags.tasks)) setTasks(normalized.tasks || []);
             if (use(normalized.flags.battle)) setBattle(battleNormalize(normalized.battle || {}));
+            if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
         };
 
         const mergeFullData = (remoteData, localData) => {
@@ -5951,6 +5986,12 @@ const INITIAL_TREASURES = [
                 dailyUsageCounts: { ...(remote.dailyUsageCounts || {}), ...(local.dailyUsageCounts || {}) },
                 tasks: mergeArrayByKey(remote.tasks, local.tasks),
                 battle: local.battle || remote.battle,
+                examArchives: normalizeExamArchives(
+                    (local.examArchives && Array.isArray(local.examArchives.exams) && local.examArchives.exams.length > 0)
+                        ? local.examArchives
+                        : remote.examArchives,
+                    local.battle?.exams?.length ? local.battle : remote.battle
+                ),
                 __meta: { updatedAt: Math.max(remoteTs, localTs), deviceId: local.__meta.deviceId || remote.__meta.deviceId }
             };
         };
@@ -5973,6 +6014,7 @@ const INITIAL_TREASURES = [
                 dailyUsageCounts: deepClone(dailyUsageCounts),
                 tasks: deepClone(tasks),
                 battle: deepClone(battle),
+                examArchives: deepClone(examArchives),
                 selectedIds: Array.from(selectedIds),
                 filterGroup,
                 filterDorm,
@@ -5984,7 +6026,7 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
+        }, [testMode, students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
@@ -6005,6 +6047,7 @@ const INITIAL_TREASURES = [
                 setDailyUsageCounts(snap.dailyUsageCounts || {});
                 setTasks(snap.tasks || []);
                 setBattle(snap.battle || {});
+                setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
                 setSelectedIds(new Set(snap.selectedIds || []));
                 setFilterGroup(snap.filterGroup || 'all');
                 setFilterDorm(snap.filterDorm || 'all');
@@ -6022,9 +6065,15 @@ const INITIAL_TREASURES = [
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
-            const fullDataWithMeta = { ...fullData, __meta: { updatedAt: nowTs, deviceId: getDeviceId() } };
-            const { students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, __meta } = fullDataWithMeta;
-            setStorageItem('class_manager_data', JSON.stringify({ students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, __meta }));
+            const normalizedInput = normalizeFullData(fullData);
+            const fullDataWithMeta = {
+                ...fullData,
+                battle: normalizedInput.battle,
+                examArchives: normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle),
+                __meta: { updatedAt: nowTs, deviceId: getDeviceId() }
+            };
+            const { students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, __meta } = fullDataWithMeta;
+            setStorageItem('class_manager_data', JSON.stringify({ students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, __meta }));
             setStorageItem('attendance_records', JSON.stringify(attendanceRecords));
             setStorageItem('class_treasure_data', JSON.stringify({ treasures, storage, logs }));
             if (window.__CM_TEST_MODE__) {
@@ -6058,7 +6107,7 @@ const INITIAL_TREASURES = [
             writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
             isSavingRef.current = false;
             return Promise.resolve();
-        }, []);
+        }, [battle, examArchives]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -6221,10 +6270,12 @@ const INITIAL_TREASURES = [
                 if(data.dailyUsageCounts) setDailyUsageCounts(data.dailyUsageCounts);
                 if(data.tasks) setTasks(data.tasks);
                 if(data.battle) setBattle(data.battle);
+                setExamArchives(normalizeExamArchives(data.examArchives, data.battle));
             } else {
                  // Initialize defaults
                 setStudents([]);
                 setQuotes(window.DEFAULT_QUOTES);
+                setExamArchives(normalizeExamArchives());
             }
                 
             const savedAtt = getStorageItem('attendance_records');
@@ -6314,7 +6365,8 @@ const INITIAL_TREASURES = [
                     treasures: treasures || [],
                     storage: storage || {},
                     logs: logs || [],
-                    battle: battle || {}
+                    battle: battle || {},
+                    examArchives: examArchives || normalizeExamArchives(undefined, battle)
                 };
 
                 const snapKey = 'class_manager_snapshots';
@@ -6348,7 +6400,7 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onVisible);
                 window.removeEventListener('focus', onVisible);
             };
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, treasures, storage, logs]); 
+        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, treasures, storage, logs]); 
 
         // Update handleRefreshData to use new function
         const handleRefreshData = () => fetchFromServer(false);
@@ -6438,7 +6490,8 @@ const INITIAL_TREASURES = [
                     treasures: treasures || [],
                     storage: storage || {},
                     logs: logs || [],
-                    battle: battle || {}
+                    battle: battle || {},
+                    examArchives: examArchives || normalizeExamArchives(undefined, battle)
                 };
 
                 const snapKey = 'class_manager_snapshots';
@@ -6458,7 +6511,7 @@ const INITIAL_TREASURES = [
                 console.error('生成快照失败:', e);
                 return false;
             }
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle]);
+        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives]);
 
 
         // --- 自动保存逻辑 (Debounced) ---
@@ -6478,7 +6531,8 @@ const INITIAL_TREASURES = [
                     quotes, messages, teacherMessages,
                     redemptionHistory, dailyRedemptionCounts, dailyUsageCounts,
                     tasks,
-                    battle
+                    battle,
+                    examArchives
                 };
                 persistData(fullData).then(() => { 
                     isDirtyRef.current = false; 
@@ -6489,7 +6543,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, persistData]);
+        }, [students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, persistData]);
 
 
         // NEW Batch Update Function
