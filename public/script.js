@@ -176,16 +176,24 @@ const normalizeBattleSnapshots = (battleSnapshots) => {
 };
 const profileUtils = window.ProfileUtils || {};
 const {
-    hasLegacyStudentProfileFields,
     normalizeStudentProfiles,
     getStudentProfile,
     remapStudentProfilesToStudentsByName,
-    resolveStudentProfilesForData,
     getAvatar,
     handleAvatarError
 } = profileUtils;
-if (!hasLegacyStudentProfileFields || !normalizeStudentProfiles || !getStudentProfile || !remapStudentProfilesToStudentsByName || !resolveStudentProfilesForData || !getAvatar || !handleAvatarError) {
+if (!normalizeStudentProfiles || !getStudentProfile || !remapStudentProfilesToStudentsByName || !getAvatar || !handleAvatarError) {
     throw new Error('Profile utils failed to load');
+}
+const profilePersistence = window.ProfilePersistence || {};
+const {
+    hasStudentProfilesInData,
+    buildNormalizedStudentProfiles,
+    restoreStudentProfilesFromData,
+    mergeStudentProfilesForData
+} = profilePersistence;
+if (!hasStudentProfilesInData || !buildNormalizedStudentProfiles || !restoreStudentProfilesFromData || !mergeStudentProfilesForData) {
+    throw new Error('Profile persistence failed to load');
 }
 const getLatestExamArchiveRank = (examArchives, studentId) => {
     const archives = normalizeExamArchives(examArchives);
@@ -3146,7 +3154,7 @@ const INITIAL_TREASURES = [
 
         const saveOfflineSnapshot = async () => {
             const nowTs = getNow().getTime();
-            const normalizedStudentProfiles = normalizeStudentProfiles(studentProfiles, students);
+            const normalizedStudentProfiles = buildNormalizedStudentProfiles(studentProfiles, students);
             let att = {};
             try {
                 const raw = getStorageItem('attendance_records');
@@ -3302,7 +3310,7 @@ const INITIAL_TREASURES = [
         const removeStudent = (id) => {
             setStudents(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== id));
             setStudentProfiles(prev => {
-                const normalized = normalizeStudentProfiles(prev, students);
+                const normalized = buildNormalizedStudentProfiles(prev, students);
                 const nextEntries = { ...(normalized.entries || {}) };
                 delete nextEntries[String(id)];
                 return { ...normalized, entries: nextEntries };
@@ -3365,7 +3373,7 @@ const INITIAL_TREASURES = [
 
         // 验证通过后的功能逻辑
         const downloadBackup = () => {
-            const normalizedStudentProfiles = normalizeStudentProfiles(studentProfiles, students);
+            const normalizedStudentProfiles = buildNormalizedStudentProfiles(studentProfiles, students);
             let latestAttendance = attendanceRecords;
             try {
                 const saved = getStorageItem('attendance_records');
@@ -3399,7 +3407,7 @@ const INITIAL_TREASURES = [
                     const data = JSON.parse(event.target.result);
                     if (confirm("确定要恢复全量备份吗？当前数据将被覆盖！")) {
                         if (data.students) setStudents(data.students);
-                        if (data.studentProfiles || data.students) setStudentProfiles(normalizeStudentProfiles(data.studentProfiles, data.students || students));
+                        if (hasStudentProfilesInData(data)) setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
                         if (data.history) setHistory(data.history);
                         if (data.config) {
                             const merged = getSystemConfig({ systemConfig: data.config.systemConfig || {} });
@@ -3443,9 +3451,9 @@ const INITIAL_TREASURES = [
             }
             if (!confirm(`确定将系统数据恢复为快照「${snap.label}」吗？当前数据将被覆盖！`)) return;
             const d = snap.data;
-            const nextStudentProfiles = normalizeStudentProfiles(d.studentProfiles, d.students || students);
+            const nextStudentProfiles = restoreStudentProfilesFromData(d, studentProfiles, students);
             if (d.students) setStudents(d.students);
-            if (d.studentProfiles || d.students) setStudentProfiles(nextStudentProfiles);
+            if (hasStudentProfilesInData(d)) setStudentProfiles(nextStudentProfiles);
             if (d.history) setHistory(d.history);
             if (d.config) setConfig(d.config);
             if (d.attendanceRecords) setAttendanceRecords(d.attendanceRecords);
@@ -4973,7 +4981,7 @@ const INITIAL_TREASURES = [
         // ... (Existing state from previous version)
         const [activeTab, setActiveTab] = useState('dashboard');
         const [students, setStudents] = useState([]);
-        const [studentProfiles, setStudentProfiles] = useState(() => normalizeStudentProfiles());
+        const [studentProfiles, setStudentProfiles] = useState(() => buildNormalizedStudentProfiles());
         const [history, setHistory] = useState([]);
         const [attendanceRecords, setAttendanceRecords] = useState({});
         const [treasures, setTreasures] = useState([]);
@@ -5171,7 +5179,7 @@ const INITIAL_TREASURES = [
             const safe = data || {};
             return {
                 students: safe.students,
-                studentProfiles: normalizeStudentProfiles(safe.studentProfiles, safe.students),
+                studentProfiles: buildNormalizedStudentProfiles(safe.studentProfiles, safe.students),
                 history: safe.history,
                 config: safe.config,
                 attendanceRecords: safe.attendanceRecords || safe.attendance_records,
@@ -5191,7 +5199,7 @@ const INITIAL_TREASURES = [
                 __meta: safe.__meta || {},
                 flags: {
                     students: Object.prototype.hasOwnProperty.call(safe, 'students'),
-                    studentProfiles: Object.prototype.hasOwnProperty.call(safe, 'studentProfiles') || (Array.isArray(safe.students) && safe.students.some(hasLegacyStudentProfileFields)),
+                    studentProfiles: hasStudentProfilesInData(safe),
                     history: Object.prototype.hasOwnProperty.call(safe, 'history'),
                     config: Object.prototype.hasOwnProperty.call(safe, 'config'),
                     attendanceRecords: Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords') || Object.prototype.hasOwnProperty.call(safe, 'attendance_records'),
@@ -5217,7 +5225,7 @@ const INITIAL_TREASURES = [
             const use = (flag) => options.force || flag;
 
             if (use(normalized.flags.students)) setStudents(normalized.students || []);
-            if (use(normalized.flags.studentProfiles)) setStudentProfiles(normalizeStudentProfiles(normalized.studentProfiles, normalized.students || students));
+            if (use(normalized.flags.studentProfiles)) setStudentProfiles(restoreStudentProfilesFromData(normalized, studentProfiles, students));
             if (use(normalized.flags.history)) {
                 const incomingHistory = normalized.history || [];
                 const hasLocalHistory = Array.isArray(history) && history.length > 0;
@@ -5260,13 +5268,7 @@ const INITIAL_TREASURES = [
             const remoteTs = Number(remote.__meta.updatedAt) || 0;
             const localTs = Number(local.__meta.updatedAt) || 0;
             const mergedStudents = mergeArrayByKey(remote.students, local.students);
-            const mergedStudentProfiles = normalizeStudentProfiles({
-                version: Math.max(Number(remote.studentProfiles?.version) || 1, Number(local.studentProfiles?.version) || 1),
-                entries: {
-                    ...((remote.studentProfiles || {}).entries || {}),
-                    ...((local.studentProfiles || {}).entries || {})
-                }
-            }, mergedStudents);
+            const mergedStudentProfiles = mergeStudentProfilesForData(remote, local, mergedStudents);
             return {
                 students: mergedStudents,
                 studentProfiles: mergedStudentProfiles,
@@ -5301,7 +5303,7 @@ const INITIAL_TREASURES = [
             if (testMode) return;
             testSnapshotRef.current = {
                 students: deepClone(students),
-                studentProfiles: deepClone(normalizeStudentProfiles(studentProfiles, students)),
+                studentProfiles: deepClone(buildNormalizedStudentProfiles(studentProfiles, students)),
                 history: deepClone(history),
                 config: deepClone(config),
                 attendanceRecords: deepClone(attendanceRecords),
@@ -5336,7 +5338,7 @@ const INITIAL_TREASURES = [
             const snap = testSnapshotRef.current;
             if (snap) {
                 setStudents(snap.students || []);
-                setStudentProfiles(normalizeStudentProfiles(snap.studentProfiles, snap.students || []));
+                setStudentProfiles(restoreStudentProfilesFromData(snap, studentProfiles, students));
                 setHistory(snap.history || []);
                 setConfig(snap.config || {});
                 setAttendanceRecords(snap.attendanceRecords || {});
@@ -5373,7 +5375,7 @@ const INITIAL_TREASURES = [
                 if (raw) att = JSON.parse(raw);
             } catch (_) {}
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
-            const nextStudentProfiles = resolveStudentProfilesForData(overrides, studentProfiles, nextStudents);
+            const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
             return {
                 history,
                 config,
@@ -5496,7 +5498,7 @@ const INITIAL_TREASURES = [
             const nowTs = getNow().getTime();
             const fullData = buildCurrentFullData(partialData || {});
             const normalizedInput = normalizeFullData(fullData);
-            const nextStudentProfiles = resolveStudentProfilesForData(fullData, studentProfiles, fullData?.students || students);
+            const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
             const protectedExamArchives = (
@@ -5528,7 +5530,7 @@ const INITIAL_TREASURES = [
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
             const normalizedInput = normalizeFullData(fullData);
-            const nextStudentProfiles = resolveStudentProfilesForData(fullData, studentProfiles, fullData?.students || students);
+            const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
             const protectedExamArchives = (
@@ -5699,7 +5701,7 @@ const INITIAL_TREASURES = [
             if (savedData) {
                 const data = JSON.parse(savedData);
                 setStudents(data.students || []);
-                setStudentProfiles(normalizeStudentProfiles(data.studentProfiles, data.students || []));
+                setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
                 setHistory(data.history || []);
                 const savedConfig = data.config || {};
                 setConfig({
@@ -5723,7 +5725,7 @@ const INITIAL_TREASURES = [
             } else {
                  // Initialize defaults
                 setStudents([]);
-                setStudentProfiles(normalizeStudentProfiles());
+                setStudentProfiles(buildNormalizedStudentProfiles());
                 setQuotes(window.DEFAULT_QUOTES);
                 setExamArchives(normalizeExamArchives());
                 setBattleSnapshots(normalizeBattleSnapshots());
@@ -5812,7 +5814,7 @@ const INITIAL_TREASURES = [
 
                 const fullData = {
                     students: students || [],
-                    studentProfiles: normalizeStudentProfiles(studentProfiles, students),
+                    studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
                     history: history || [],
                     config: config || {},
                     quotes: quotes || [],
@@ -5939,7 +5941,7 @@ const INITIAL_TREASURES = [
 
                 const fullData = {
                     students: students || [],
-                    studentProfiles: normalizeStudentProfiles(studentProfiles, students),
+                    studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
                     history: history || [],
                     config: config || {},
                     quotes: quotes || [],
