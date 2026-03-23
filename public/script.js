@@ -178,11 +178,9 @@ const profileUtils = window.ProfileUtils || {};
 const {
     normalizeStudentProfiles,
     getStudentProfile,
-    remapStudentProfilesToStudentsByName,
-    getAvatar,
-    handleAvatarError
+    remapStudentProfilesToStudentsByName
 } = profileUtils;
-if (!normalizeStudentProfiles || !getStudentProfile || !remapStudentProfilesToStudentsByName || !getAvatar || !handleAvatarError) {
+if (!normalizeStudentProfiles || !getStudentProfile || !remapStudentProfilesToStudentsByName) {
     throw new Error('Profile utils failed to load');
 }
 const profilePersistence = window.ProfilePersistence || {};
@@ -813,6 +811,13 @@ const INITIAL_TREASURES = [
             requireAdminAuth
         });
         return window.__ProfileViewComponent__;
+    };
+
+    const getProfileAvatarUI = () => {
+        if (window.__ProfileAvatarUI__) return window.__ProfileAvatarUI__;
+        if (typeof window.createProfileAvatarUI !== 'function') return null;
+        window.__ProfileAvatarUI__ = window.createProfileAvatarUI({ h });
+        return window.__ProfileAvatarUI__;
     };
 
     const getExamArchivesView = () => {
@@ -1576,6 +1581,7 @@ const INITIAL_TREASURES = [
     };
 
     const DashboardView = ({ students, studentProfiles, history, config, setConfig, updatePoints, handleUndo }) => {
+        const profileAvatarUI = getProfileAvatarUI();
         // 确保所有学生都有 zizai 和 penalty 字段，缺失时默认为 0
         const studentsWithDefaults = students.map(s => ({
             ...s,
@@ -1853,7 +1859,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { fill: "currentColor", d: "M21,12C21,12 19,13 16,13C13,13 11,12 11,12C11,12 9,13 6,13C3,13 1,12 1,12C1,12 3,11 6,11C9,11 11,12 11,12C11,12 13,11 16,11C19,11 21,12 21,12M16,12C16,12 15,12.5 13.5,12.5C12,12.5 11,12 11,12C11,12 12,11.5 13.5,11.5C15,11.5 16,12 16,12Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, studentProfiles, 'happy'), className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'happy') })
+                                        profileAvatarUI.renderAvatarImage({ student: s, studentProfiles, mood: 'happy', className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}` })
                                     ),
                                     h("div", { className: "flex-1" }, h("div", { className: `font-bold ${isTop3 ? 'text-gray-800' : ''}` }, s.name), h("div", { className: "text-xs text-gray-400" }, (() => {
                                         const groupsConfig = getGroupsConfig(config);
@@ -1932,7 +1938,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { d: "M12,2L14,6L18,2L16,10L22,12L16,14L18,22L14,18L12,22L10,18L6,22L8,14L2,12L8,10L6,2L10,6L12,2Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, studentProfiles, 'sad'), className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'sad') })
+                                        profileAvatarUI.renderAvatarImage({ student: s, studentProfiles, mood: 'sad', className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}` })
                                     ),
                                     h("div", { className: "flex-1" },
                                         h("div", { className: "font-medium" }, s.name),
