@@ -512,6 +512,30 @@ const INITIAL_TREASURES = [
         }
         return null; 
     };
+    const loadScriptOnce = (src) => {
+        if (!window.__cmScriptPromises) window.__cmScriptPromises = {};
+        if (window.__cmScriptPromises[src]) return window.__cmScriptPromises[src];
+        window.__cmScriptPromises[src] = new Promise((resolve, reject) => {
+            const handleError = () => {
+                delete window.__cmScriptPromises[src];
+                reject(new Error(`Failed to load ${src}`));
+            };
+            const existing = document.querySelector(`script[data-src="${src}"]`);
+            if (existing) {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', handleError, { once: true });
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.dataset.src = src;
+            script.onload = resolve;
+            script.onerror = handleError;
+            document.body.appendChild(script);
+        });
+        return window.__cmScriptPromises[src];
+    };
 
     const deepClone = (data) => JSON.parse(JSON.stringify(data));
     const getStorageItem = (key) => {
@@ -738,181 +762,17 @@ const INITIAL_TREASURES = [
         );
     };
 
-    // --- Tasks View ---
-    const TasksView = ({ students, tasks, setTasks, onClaimTask, adminPassword }) => {
-        const [currentUser, setCurrentUser] = useState("");
-        const [isAdminMode, setIsAdminMode] = useState(false);
-        const [showAddModal, setShowAddModal] = useState(false);
-        const [newTask, setNewTask] = useState({ title: '', desc: '', points: 5, startTime: '', endTime: '' });
-
-        const toggleAdminMode = () => {
-            if (isAdminMode) {
-                setIsAdminMode(false);
-            } else {
-                if (requireAdminAuth("请输入管理员密码：", adminPassword)) setIsAdminMode(true);
-            }
-        };
-
-        const handleAddTask = () => {
-            if (!newTask.title || !newTask.points || !newTask.startTime || !newTask.endTime) return alert("请填写完整信息");
-            const task = {
-                id: Date.now(),
-                ...newTask,
-                points: parseFloat(newTask.points),
-                claimedBy: []
-            };
-            setTasks(prev => [...(Array.isArray(prev) ? prev : []), task]);
-            setShowAddModal(false);
-            setNewTask({ title: '', desc: '', points: 5, startTime: '', endTime: '' });
-        };
-
-        const handleDeleteTask = (id) => {
-            if (confirm("确定删除此任务吗？")) {
-                setTasks(prev => (Array.isArray(prev) ? prev : []).filter(t => t.id !== id));
-            }
-        };
-
-        const handleResetAllTasks = () => {
-            if (!confirm("确定将所有任务重置为未领取状态吗？")) return;
-            setTasks(prev => (Array.isArray(prev) ? prev : []).map(t => ({ ...t, claimedBy: [] })));
-            alert("已重置所有任务");
-        };
-
-        const taskList = Array.isArray(tasks) ? tasks : [];
-
-        const handleClaimTask = (taskId) => {
-            if (!currentUser) return alert("请先选择当前学生身份");
-
-            const taskIndex = taskList.findIndex(t => t.id === taskId);
-            if (taskIndex === -1) return;
-            const task = taskList[taskIndex];
-
-            const now = new Date();
-            const start = new Date(task.startTime || 0);
-            const end = new Date(task.endTime || 0);
-            if (isNaN(start.getTime()) || isNaN(end.getTime())) return alert("任务时间无效");
-            if (now < start) return alert("任务尚未开始");
-            if (now > end) return alert("任务已结束");
-
-            const claimed = task.claimedBy || [];
-            if (claimed.length > 0) return alert("该任务已被领取");
-
-            const ok = onClaimTask(taskId, currentUser);
-            if (ok) alert(`领取成功！获得 ${task.points} 积分`);
-            else alert("领取失败，请重试");
-        };
-
-        const now = new Date();
-        const displayedTasks = isAdminMode 
-            ? [...taskList].sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0))
-            : taskList
-                .filter(t => new Date(t.endTime || 0) > now && new Date(t.startTime || 0) <= now)
-                .sort((a, b) => new Date(a.endTime || 0) - new Date(b.endTime || 0));
-
-        return h("div", { className: "space-y-6 animate-fade-in" },
-            // Identity & Admin Toggle
-            h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex justify-between items-center" },
-                h("div", { className: "flex items-center gap-2" },
-                    h("span", { className: "font-bold text-gray-700" }, "我是:"),
-                    h("select", { className: "border rounded p-2 text-sm w-40", value: currentUser, onChange: e => setCurrentUser(e.target.value) },
-                        h("option", { value: "" }, "请选择..."),
-                        (Array.isArray(students) ? students : []).map(s => h("option", { key: s.id, value: s.id }, s.name))
-                    )
-                ),
-                h("button", { 
-                    onClick: toggleAdminMode,
-                    className: `px-3 py-1 rounded text-xs font-bold border ${isAdminMode ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`
-                }, isAdminMode ? "退出管理" : "管理模式")
-            ),
-
-            // Admin Controls
-            isAdminMode && h("div", { className: "bg-blue-50 border border-blue-200 p-4 rounded-xl flex flex-wrap gap-3 justify-between items-center" },
-                h("h3", { className: "font-bold text-blue-800" }, "任务发布中心"),
-                h("div", { className: "flex flex-wrap gap-2" },
-                    h("button", { onClick: () => setShowAddModal(true), className: "bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 flex items-center gap-2" }, h(Icon, { name: "plus", size: 16 }), "发布新任务"),
-                    h("button", { onClick: handleResetAllTasks, className: "bg-amber-600 text-white px-4 py-2 rounded shadow hover:bg-amber-700 flex items-center gap-2" }, h(Icon, { name: "refresh", size: 16 }), "重置所有任务")
-                )
-            ),
-            // Task List
-            h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" },
-                displayedTasks.length === 0 
-                    ? h("div", { className: "col-span-full text-center text-gray-400 py-10" }, "暂无可用任务")
-                    : displayedTasks.map(task => {
-                        const start = new Date(task.startTime || 0);
-                        const end = new Date(task.endTime || 0);
-                        const isActive = !isNaN(start) && !isNaN(end) && now >= start && now <= end;
-                        const isExpired = now > end;
-                        const isUpcoming = now < start;
-                        const claimedIds = task.claimedBy || [];
-                        const isClaimed = claimedIds.length > 0;
-                        const claimerId = claimedIds[0];
-                        const claimer = claimerId != null ? (Array.isArray(students) ? students : []).find(s => String(s.id) === String(claimerId)) : null;
-                        const claimerLabel = claimer ? claimer.name : (claimerId != null ? "未知" : "");
-
-                        return h("div", { key: task.id, className: `bg-white rounded-xl shadow-sm border-2 p-4 flex flex-col relative ${isExpired ? 'border-gray-200 opacity-60' : isActive ? 'border-blue-500' : 'border-yellow-400'}` },
-                            isClaimed && h("div", { className: "absolute top-2 right-2 bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold" }, claimerLabel ? `已领取 · ${claimerLabel}` : "已领取"),
-                            h("div", { className: "font-bold text-lg text-gray-800 mb-1" }, task.title),
-                            h("div", { className: "text-sm text-gray-500 mb-3 flex-1" }, task.desc),
-                                
-                            h("div", { className: "text-xs text-gray-400 mb-4 space-y-1" },
-                                h("div", null, `开始: ${start.toLocaleString()}`),
-                                h("div", null, `结束: ${end.toLocaleString()}`)
-                            ),
-
-                            h("div", { className: "flex justify-between items-center mt-auto" },
-                                h("span", { className: "text-orange-500 font-bold text-lg" }, `+${task.points} 分`),
-                                isAdminMode ? (
-                                    h("button", { onClick: () => handleDeleteTask(task.id), className: "text-red-500 hover:bg-red-50 p-2 rounded" }, h(Icon, { name: "trash", size: 16 }))
-                                ) : (
-                                    h("button", { 
-                                        onClick: () => handleClaimTask(task.id), 
-                                        disabled: !isActive || isClaimed || !currentUser,
-                                        className: `px-4 py-2 rounded text-sm font-bold text-white transition ${
-                                            isClaimed ? 'bg-green-500' : 
-                                            !isActive ? 'bg-gray-400 cursor-not-allowed' : 
-                                            !currentUser ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-lg transform active:scale-95'
-                                        }`
-                                    }, isClaimed ? "已领取" : isUpcoming ? "未开始" : isExpired ? "已结束" : "立即领取")
-                                )
-                            )
-                        );
-                    })
-            ),
-
-            // Add Task Modal
-            h(Modal, {
-                isOpen: showAddModal,
-                title: "发布限时任务",
-                onClose: () => setShowAddModal(false),
-                onConfirm: handleAddTask,
-                confirmText: "发布"
-            }, 
-                h("div", { className: "space-y-4" },
-                    h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "任务标题"),
-                        h("input", { className: "w-full border rounded p-2", value: newTask.title, onChange: e => setNewTask({...newTask, title: e.target.value}) })
-                    ),
-                    h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "任务描述"),
-                        h("textarea", { className: "w-full border rounded p-2", rows: 3, value: newTask.desc, onChange: e => setNewTask({...newTask, desc: e.target.value}) })
-                    ),
-                    h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "奖励分值"),
-                        h("input", { type: "number", className: "w-full border rounded p-2", value: newTask.points, onChange: e => setNewTask({...newTask, points: e.target.value}) })
-                    ),
-                    h("div", { className: "grid grid-cols-2 gap-4" },
-                        h("div", null,
-                            h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "开始时间"),
-                            h("input", { type: "datetime-local", className: "w-full border rounded p-2", value: newTask.startTime, onChange: e => setNewTask({...newTask, startTime: e.target.value}) })
-                        ),
-                        h("div", null,
-                            h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "结束时间"),
-                            h("input", { type: "datetime-local", className: "w-full border rounded p-2", value: newTask.endTime, onChange: e => setNewTask({...newTask, endTime: e.target.value}) })
-                        )
-                    )
-                )
-            )
-        );
+    const getTasksView = () => {
+        if (window.__TasksViewComponent__) return window.__TasksViewComponent__;
+        if (typeof window.createTasksView !== 'function') return null;
+        window.__TasksViewComponent__ = window.createTasksView({
+            h,
+            useState,
+            Modal,
+            Icon,
+            requireAdminAuth
+        });
+        return window.__TasksViewComponent__;
     };
 
     // --- Attendance Module ---
@@ -5851,6 +5711,7 @@ const updates = [];
         const [dailyUsageCounts, setDailyUsageCounts] = useState({});
         // NEW: Tasks state
         const [tasks, setTasks] = useState([]);
+        const [tasksModuleStatus, setTasksModuleStatus] = useState(typeof window.createTasksView === 'function' ? 'ready' : 'idle');
 
         const displayStudents = (Array.isArray(students) && students.length > 0) ? students : GUEST_ROSTER;
 
@@ -5882,6 +5743,25 @@ const updates = [];
         const [adjustModal, setAdjustModal] = useState({ open: false, reason: null, val: 0, count: 1, isMulti: false, isCustom: false, customName: "" });
             
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
+        const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
+
+        useEffect(() => {
+            if (activeTab !== 'tasks' || tasksModuleStatus === 'ready' || tasksModuleStatus === 'loading') return;
+            setTasksModuleStatus('loading');
+            loadScriptOnce('tasks-module.js')
+                .then(() => {
+                    if (typeof window.createTasksView === 'function') {
+                        getTasksView();
+                        setTasksModuleStatus('ready');
+                    } else {
+                        setTasksModuleStatus('error');
+                    }
+                })
+                .catch(err => {
+                    console.error('加载任务模块失败:', err);
+                    setTasksModuleStatus('error');
+                });
+        }, [activeTab, tasksModuleStatus]);
 
         useEffect(() => {
             if (testMode) {
@@ -7126,7 +7006,22 @@ const updates = [];
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, history, config, setConfig, updatePoints, handleUndo }),
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, updatePoints, handleWage, adjustModal, setAdjustModal, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && h(AttendanceModule, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); } }),
-                activeTab === 'tasks' && h(TasksView, { students: displayStudents, tasks, setTasks, onClaimTask: handleClaimTask, adminPassword: window.DEFAULT_ADMIN_PASSWORD }),
+                activeTab === 'tasks' && (
+                    tasksModuleStatus === 'ready' && TasksView
+                        ? h(TasksView, { students: displayStudents, tasks, setTasks, onClaimTask: handleClaimTask, adminPassword: window.DEFAULT_ADMIN_PASSWORD })
+                        : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
+                            h("div", { className: "text-lg font-bold text-gray-800" },
+                                tasksModuleStatus === 'error' ? "任务模块加载失败" : "任务模块加载中"
+                            ),
+                            h("div", { className: "text-sm text-gray-500" },
+                                tasksModuleStatus === 'error' ? "请重试加载任务模块。" : "首次打开任务页时会按需加载模块。"
+                            ),
+                            tasksModuleStatus === 'error' && h("button", {
+                                onClick: () => setTasksModuleStatus('idle'),
+                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            }, "重试")
+                        )
+                ),
                 activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, setBattle, batchUpdatePoints, isDirtyRef, isSavingRef, persistData }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
