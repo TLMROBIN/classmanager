@@ -1705,6 +1705,40 @@ const INITIAL_TREASURES = [
                 })
                 .filter(role => role.name || role.studentName || role.dailyWage);
         }, [config, students]);
+        const commissionerAnnouncements = useMemo(() => {
+            return getCommissionerRoles(config)
+                .map((role, idx) => {
+                    const student = students.find(s => s.id === config.commissioners?.[role.id]);
+                    return {
+                        id: role.id || `commissioner_${idx + 1}`,
+                        name: role.name || `纪律专员${idx + 1}`,
+                        studentName: student ? student.name : ""
+                    };
+                })
+                .filter(item => item.name || item.studentName);
+        }, [config, students]);
+        const psychologyAnnouncements = useMemo(() => {
+            return [0, 1, 2, 3]
+                .map(idx => {
+                    const student = students.find(s => s.id === (config.psychologyCommittee || [])[idx]);
+                    return {
+                        id: `psychology_${idx + 1}`,
+                        name: `心理委员${idx + 1}`,
+                        studentName: student ? student.name : ""
+                    };
+                })
+                .filter(item => item.studentName);
+        }, [config, students]);
+        const hygieneDutyAnnouncements = useMemo(() => {
+            const dayNameMap = { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" };
+            return Object.entries(config.duty || {})
+                .map(([day, dutyList]) => ({
+                    id: day,
+                    name: dayNameMap[day] || day,
+                    members: (Array.isArray(dutyList) ? dutyList : []).filter(Boolean)
+                }))
+                .filter(item => item.members.length > 0);
+        }, [config]);
 
         const penaltyLastMap = useMemo(() => {
             const map = new Map();
@@ -1757,44 +1791,40 @@ const INITIAL_TREASURES = [
                         )
                     ),
                     h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "值日表 (卫生组)"),
-                        h("div", { className: "space-y-2 text-sm" },
-                            Object.keys(config.duty).map(day => h("div", { key: day, className: "flex items-center" },
-                                h("span", { className: "w-12 text-gray-500" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day]),
-                                config.duty[day].map((val, idx) => h("select", { key: idx, value: val, onChange: e => handleDutyChange(day, idx, e.target.value), className: "ml-2 border rounded p-1 flex-1 bg-gray-50" }, h("option", { value: "" }, "-"), students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))))
-                            ))
-                        )
-                    ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员"),
-                        h("div", { className: "grid grid-cols-2 gap-3" },
-                            (() => {
-                                const commissionerRoles = getCommissionerRoles(config);
-                                return commissionerRoles;
-                            })().map(role => h("div", { key: role.id },
-                                h("div", { className: "text-xs text-gray-500 mb-1" }, role.name),
-                                h("select", { value: config.commissioners[role.id] || "", onChange: e => handleCommissionerChange(role.id, e.target.value), className: "w-full border rounded p-1 text-sm" }, h("option", { value: "" }, "未设置"), students.filter(s => s.group === 'discipline').map(s => h("option", { key: s.id, value: s.id }, s.name)))
-                            ))
-                        )
-                    ),
-                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "smile" }), "心理委员"),
-                        h("div", { className: "space-y-2" },
-                            [0, 1, 2, 3].map(idx => 
-                                h("div", { key: idx, className: "flex items-center gap-2" },
-                                    h("span", { className: "text-xs text-gray-500 w-16" }, `心理委员${idx + 1}`),
-                                    h("select", { 
-                                        value: (config.psychologyCommittee && config.psychologyCommittee[idx]) || "", 
-                                        onChange: e => handlePsychologyCommitteeChange(idx, e.target.value), 
-                                        className: "flex-1 border rounded p-1 text-sm" 
-                                    }, 
-                                        h("option", { value: "" }, "未设置"),
-                                        students.map(s => h("option", { key: s.id, value: s.id }, s.name))
-                                    )
-                                )
+                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日公示"),
+                        hygieneDutyAnnouncements.length === 0
+                            ? h("div", { className: "text-sm text-gray-400" }, "暂无卫生值日安排")
+                            : h("div", { className: "space-y-2" },
+                                hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                    h("div", { className: "text-xs text-gray-500 text-right" }, item.members.join("、"))
+                                ))
                             ),
-                            h("div", { className: "text-xs text-gray-400 mt-2" }, "心理委员每次发工资时额外获得 +1 分")
-                        )
+                        h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
+                    ),
+                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员公示"),
+                        commissionerAnnouncements.length === 0
+                            ? h("div", { className: "text-sm text-gray-400" }, "暂无纪律专员设置")
+                            : h("div", { className: "space-y-2" },
+                                commissionerAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                    h("div", { className: "text-xs text-gray-500" }, item.studentName || "未设置")
+                                ))
+                            ),
+                        h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
+                    ),
+                    h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                        h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "smile" }), "心理委员公示"),
+                        psychologyAnnouncements.length === 0
+                            ? h("div", { className: "text-sm text-gray-400" }, "暂无心理委员设置")
+                            : h("div", { className: "space-y-2" },
+                                psychologyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
+                                    h("div", { className: "text-xs text-gray-500" }, item.studentName || "未设置")
+                                ))
+                            ),
+                        h("div", { className: "text-xs text-gray-400 mt-3" }, "心理委员每次发工资时额外获得 +1 分；编辑请到维护区")
                     ),
                 ),
                 h("div", { className: "space-y-6" },
@@ -3927,6 +3957,21 @@ const INITIAL_TREASURES = [
             setShowExamArchivesManager(prev => !prev);
             ensureExamArchivesModule();
         };
+        const handleDutyChange = (day, idx, name) => {
+            const newDuty = { ...(config.duty || {}) };
+            const row = Array.isArray(newDuty[day]) ? [...newDuty[day]] : [];
+            row[idx] = name;
+            newDuty[day] = row;
+            setConfig({ ...config, duty: newDuty });
+        };
+        const handleCommissionerChange = (roleId, studentId) => {
+            setConfig({ ...config, commissioners: { ...(config.commissioners || {}), [roleId]: studentId ? parseInt(studentId) : null } });
+        };
+        const handlePsychologyCommitteeChange = (index, studentId) => {
+            const newPsychology = [...(config.psychologyCommittee || [null, null, null, null])];
+            newPsychology[index] = studentId ? parseInt(studentId) : null;
+            setConfig({ ...config, psychologyCommittee: newPsychology });
+        };
 
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
             if (isDirtyRef) isDirtyRef.current = true;
@@ -4000,6 +4045,48 @@ const INITIAL_TREASURES = [
                                 className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
                             }, "重试")
                         )
+                )
+            ),
+            h("div", { className: "border-t pt-6" },
+                h("h3", { className: "font-bold text-gray-700 mb-3" }, "岗位与值日维护"),
+                h("div", { className: "bg-gray-50 border rounded-lg p-6 space-y-6" },
+                    h("div", null,
+                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日设置"),
+                        h("div", { className: "space-y-2 text-sm" },
+                            Object.keys(config.duty || {}).map(day => h("div", { key: day, className: "flex items-center" },
+                                h("span", { className: "w-12 text-gray-500" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day]),
+                                (config.duty?.[day] || []).map((val, idx) => h("select", { key: idx, value: val, onChange: e => handleDutyChange(day, idx, e.target.value), className: "ml-2 border rounded p-1 flex-1 bg-white" }, h("option", { value: "" }, "-"), students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))))
+                            ))
+                        )
+                    ),
+                    h("div", null,
+                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员设置"),
+                        h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                            getCommissionerRoles(config).map(role => h("div", { key: role.id },
+                                h("div", { className: "text-xs text-gray-500 mb-1" }, role.name),
+                                h("select", { value: config.commissioners?.[role.id] || "", onChange: e => handleCommissionerChange(role.id, e.target.value), className: "w-full border rounded p-2 text-sm bg-white" }, h("option", { value: "" }, "未设置"), students.filter(s => s.group === 'discipline').map(s => h("option", { key: s.id, value: s.id }, s.name)))
+                            ))
+                        )
+                    ),
+                    h("div", null,
+                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "smile" }), "心理委员设置"),
+                        h("div", { className: "space-y-2" },
+                            [0, 1, 2, 3].map(idx =>
+                                h("div", { key: idx, className: "flex items-center gap-2" },
+                                    h("span", { className: "text-xs text-gray-500 w-16" }, `心理委员${idx + 1}`),
+                                    h("select", {
+                                        value: (config.psychologyCommittee && config.psychologyCommittee[idx]) || "",
+                                        onChange: e => handlePsychologyCommitteeChange(idx, e.target.value),
+                                        className: "flex-1 border rounded p-2 text-sm bg-white"
+                                    },
+                                        h("option", { value: "" }, "未设置"),
+                                        students.map(s => h("option", { key: s.id, value: s.id }, s.name))
+                                    )
+                                )
+                            ),
+                            h("div", { className: "text-xs text-gray-400 mt-2" }, "心理委员每次发工资时额外获得 +1 分")
+                        )
+                    )
                 )
             ),
             h("div", { className: "border-t pt-6" },
