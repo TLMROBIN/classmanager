@@ -4797,7 +4797,30 @@ const INITIAL_TREASURES = [
         });
     };
 
-    const BattleView = ({ students, setStudents, battle, setBattle, batchUpdatePoints, isDirtyRef, isSavingRef, persistData }) => {
+    const battleBuildSettlementPointUpdates = (teams, results) => {
+        if (!Array.isArray(teams) || !results || !Array.isArray(results.tRes)) return [];
+        const updates = [];
+        results.tRes.forEach(r => {
+            const t = teams.find(tm => tm.id === r.id);
+            if (!t) return;
+            const members = (t.memberIds || []).filter(Boolean);
+            if (members.length === 0) return;
+            const delta = Number(r.newPts) - Number(r.currentPts);
+            if (Math.abs(delta) < 0.01) return;
+            const per = delta / members.length;
+            members.forEach(id => updates.push({
+                id,
+                val: per,
+                reason: `双子星结算-${t.name}`,
+                type: per >= 0 ? 'bonus' : 'penalty',
+                scene: "班级",
+                category: "学业"
+            }));
+        });
+        return updates;
+    };
+
+    const BattleView = ({ students, setStudents, battle, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
@@ -5353,6 +5376,7 @@ const INITIAL_TREASURES = [
         const confirmSettlement = () => {
             if (!results) return alert("请先进行结算模拟");
             if (!confirm("确定生效？")) return;
+            const settlementTs = Date.now();
             const newTeams = teams.map(t => {
                 const r = results.tRes.find(x => x.id === t.id);
                 return r ? { ...t, points: r.newPts } : t;
@@ -5364,25 +5388,17 @@ const INITIAL_TREASURES = [
                 }
                 return s;
             });
-const updates = [];
-            results.tRes.forEach(r => {
-                const t = teams.find(tm => tm.id === r.id);
-                if (!t) return;
-                const members = (t.memberIds || []).filter(Boolean);
-                if (members.length === 0) return;
-                const delta = r.newPts - r.currentPts;
-                if (Math.abs(delta) < 0.01) return;
-                const per = delta / members.length;
-                members.forEach(id => updates.push({ 
-                    id, 
-                    val: per, 
-                    reason: `双子星结算-${t.name}`, 
-                    type: per >= 0 ? 'bonus' : 'penalty', 
-                    scene: "班级", 
-                    category: "学业" 
-                }));
-            });
-            if (updates.length > 0) batchUpdatePoints(updates);
+            const updates = battleBuildSettlementPointUpdates(teams, results);
+            let applyResult = { applied: false, count: 0, skipped: true };
+            if (updates.length > 0 && typeof onApplySettlementPoints === 'function') {
+                applyResult = onApplySettlementPoints({
+                    updates,
+                    source: 'battle',
+                    settlementExamId: settleExamId,
+                    teamBaseExamId,
+                    summaryText: `本次双子星结算将向主积分系统写入 ${updates.length} 条记录，是否现在同步入账？`
+                });
+            }
             const logTxt = results.pBattles.map(b => {
                 const A = teams.find(t => t.id === b.teamAId);
                 const B = teams.find(t => t.id === b.teamBId);
@@ -5391,12 +5407,15 @@ const updates = [];
                 return `${win} ${b.outcomeTag || ''}`;
             });
             const settlementRecord = {
-                id: `st${Date.now()}`,
-                ts: Date.now(),
+                id: `st${settlementTs}`,
+                ts: settlementTs,
                 teamBaseExamId,
                 settleExamId,
                 teamBaseExamName: getExam(teamBaseExamId)?.name || '',
                 settleExamName: getExam(settleExamId)?.name || '',
+                mainPointUpdates: updates.map(item => ({ ...item })),
+                mainPointsApplied: !!applyResult.applied,
+                mainPointsAppliedCount: Number(applyResult.count) || 0,
                 battles: results.pBattles.map(b => ({
                     id: b.id,
                     teamAId: b.teamAId,
@@ -5415,7 +5434,7 @@ const updates = [];
             });
             setStudents(newStudents);
             setResults(null);
-            alert("结算完成并已同步积分");
+            alert(applyResult.applied ? "结算完成，并已同步入账主积分" : "结算完成，主积分未入账");
         };
 
         const startNewSeason = () => {
@@ -5639,7 +5658,7 @@ const updates = [];
                         ),
                         h("div", { className: "flex gap-2" },
                             h("button", { onClick: () => setResults(null), className: "px-3 py-2 rounded-xl bg-slate-500/30 border border-slate-400/40 text-slate-100 text-xs" }, "重新模拟"),
-                            h("button", { onClick: confirmSettlement, className: "flex-1 px-3 py-2 rounded-xl bg-emerald-500/30 border border-emerald-400/40 text-emerald-100 text-xs" }, "确认并更新积分"),
+                            h("button", { onClick: confirmSettlement, className: "flex-1 px-3 py-2 rounded-xl bg-emerald-500/30 border border-emerald-400/40 text-emerald-100 text-xs" }, "确认结算"),
                             h("button", { onClick: startNewSeason, className: "flex-1 px-3 py-2 rounded-xl bg-indigo-500/30 border border-indigo-400/40 text-indigo-100 text-xs" }, "归档并开启新赛季")
                         )
                     )
@@ -6545,6 +6564,18 @@ const updates = [];
             return batchUpdatePoints(updates);
         };
 
+        const applyBattleSettlementToMainRecords = ({ updates, summaryText }) => {
+            if (!Array.isArray(updates) || updates.length === 0) {
+                return { applied: false, count: 0, skipped: true };
+            }
+            const shouldApply = confirm(summaryText || `本次双子星结算将生成 ${updates.length} 条主积分记录，是否同步入账？`);
+            if (!shouldApply) {
+                return { applied: false, count: updates.length, skipped: true };
+            }
+            const count = batchUpdatePoints(updates);
+            return { applied: true, count };
+        };
+
         const handleUndo = (recordId) => {
             const record = history.find(h => h.id === recordId);
             if (!record || record.isUndoLog) return;
@@ -7022,7 +7053,7 @@ const updates = [];
                             }, "重试")
                         )
                 ),
-                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, setBattle, batchUpdatePoints, isDirtyRef, isSavingRef, persistData }),
+                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
                     treasures, setTreasures, storage, setStorage, logs, setLogs,
