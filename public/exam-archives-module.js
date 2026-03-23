@@ -59,7 +59,6 @@
             const buildNextExamState = (nextExams, preferredExamId) => {
                 const nextBattle = {
                     ...battleData,
-                    exams: nextExams,
                     teamBaseExamId: battleData.teamBaseExamId || preferredExamId || nextExams[0]?.id || '',
                     settleExamId: battleData.settleExamId || preferredExamId || nextExams[0]?.id || ''
                 };

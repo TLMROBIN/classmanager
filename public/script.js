@@ -4952,7 +4952,7 @@ const INITIAL_TREASURES = [
         return updates;
     };
 
-    const BattleView = ({ students, setStudents, battle, examArchives, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
+    const BattleView = ({ students, setStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints, isDirtyRef, isSavingRef, persistData }) => {
         const [results, setResults] = useState(null);
         const [examUnlocked, setExamUnlocked] = useState(false);
         const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
@@ -5237,11 +5237,15 @@ const INITIAL_TREASURES = [
                         history: Array.isArray(payload.history) ? payload.history : [],
                         settlements: Array.isArray(payload.settlements) ? payload.settlements : [],
                         season: Number(payload.season) || 1,
-                        exams: mappedExams,
                         teamBaseExamId: payload.teamBaseExamId || '',
                         settleExamId: payload.settleExamId || ''
                     };
                     setBattle(prev => ({ ...battleNormalize(prev), ...next }));
+                    setExamArchives(prev => normalizeExamArchives({
+                        ...prev,
+                        exams: mappedExams,
+                        latestExamId: mappedExams[0]?.id || ''
+                    }, next));
                     alert("对战数据已导入");
                 } catch (err) {
                     alert("导入失败：" + err.message);
@@ -5830,22 +5834,6 @@ const INITIAL_TREASURES = [
             return () => clearInterval(timer);
         }, [testMode, timeSpeed]);
 
-        // Phase 1 compatibility: before the dedicated exam archive module takes over writes,
-        // keep the new top-level archive mirrored from the legacy battle exam source.
-        useEffect(() => {
-            const battleExams = Array.isArray(battle?.exams) ? battle.exams : [];
-            setExamArchives(prev => {
-                const prevExams = Array.isArray(prev?.exams) ? prev.exams : [];
-                const same = JSON.stringify(prevExams) === JSON.stringify(battleExams);
-                if (same && prev.latestExamId) return prev;
-                return normalizeExamArchives({
-                    ...prev,
-                    exams: battleExams,
-                    latestExamId: battleExams[0]?.id || ''
-                }, battle);
-            });
-        }, [battle]);
-            
         // --- 局域网同步逻辑（防覆盖升级）---
         // isSavingRef：正在执行 persist 时置位，避免自动刷新覆盖。
         // isDirtyRef：自「安排防抖保存」到「保存完成」期间置位，同样阻止自动刷新。
@@ -7121,7 +7109,7 @@ const INITIAL_TREASURES = [
                             }, "重试")
                         )
                 ),
-                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, examArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
+                activeTab === 'battle' && h(BattleView, { students: displayStudents, setStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, isDirtyRef, isSavingRef, persistData }),
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, updatePoints, adminPassword: window.DEFAULT_ADMIN_PASSWORD, 
                     treasures, setTreasures, storage, setStorage, logs, setLogs,
