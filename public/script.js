@@ -926,6 +926,24 @@ const INITIAL_TREASURES = [
         return window.__TasksViewComponent__;
     };
 
+    const getProfileView = () => {
+        if (window.__ProfileViewComponent__) return window.__ProfileViewComponent__;
+        if (typeof window.createProfileView !== 'function') return null;
+        window.__ProfileViewComponent__ = window.createProfileView({
+            h,
+            useState,
+            Modal,
+            Icon,
+            requireAdminAuth,
+            compressImage,
+            normalizeStudentProfiles,
+            getStudentProfile,
+            getAvatar,
+            handleAvatarError
+        });
+        return window.__ProfileViewComponent__;
+    };
+
     const getExamArchivesView = () => {
         if (window.__ExamArchivesViewComponent__) return window.__ExamArchivesViewComponent__;
         if (typeof window.createExamArchivesView !== 'function') return null;
@@ -3085,154 +3103,6 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const ProfileView = ({ students, studentProfiles, setStudentProfiles, history, adminPassword }) => {
-        const [viewHistoryStudent, setViewHistoryStudent] = useState(null);
-        const [filterType, setFilterType] = useState('all');
-        const updateStudentProfile = (studentId, patch) => {
-            setStudentProfiles(prev => {
-                const normalized = normalizeStudentProfiles(prev, students);
-                const student = (students || []).find(item => String(item.id) === String(studentId)) || null;
-                const current = getStudentProfile(normalized, studentId, student);
-                const nextEntry = {
-                    avatarHappy: patch.avatarHappy !== undefined ? patch.avatarHappy : current.avatarHappy,
-                    avatarSad: patch.avatarSad !== undefined ? patch.avatarSad : current.avatarSad,
-                    titleLeft: patch.titleLeft !== undefined ? patch.titleLeft : current.titleLeft,
-                    titleRight: patch.titleRight !== undefined ? patch.titleRight : current.titleRight
-                };
-                const nextEntries = { ...(normalized.entries || {}) };
-                if (nextEntry.avatarHappy || nextEntry.avatarSad || nextEntry.titleLeft || nextEntry.titleRight) {
-                    nextEntries[String(studentId)] = nextEntry;
-                } else {
-                    delete nextEntries[String(studentId)];
-                }
-                return {
-                    version: Number(normalized.version) || 1,
-                    entries: nextEntries
-                };
-            });
-        };
-
-        const handleAvatarUpload = (studentId, mood, file) => {
-            if (!file) return;
-            if (!requireAdminAuth("修改头像需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
-            compressImage(file, (base64) => {
-                updateStudentProfile(studentId, mood === 'happy' ? { avatarHappy: base64 } : { avatarSad: base64 });
-            });
-        };
-
-        const handleSetTitle = (studentId, side) => {
-            const s = students.find(x => x.id === studentId);
-            if (!s) return;
-            if (!requireAdminAuth("设置称号需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
-            
-            const currentProfile = getStudentProfile(studentProfiles, s.id, s);
-            const currentValue = side === 'left' ? (currentProfile.titleLeft || "") : (currentProfile.titleRight || "");
-            const newTitle = prompt(`请输入${side === 'left' ? '左侧' : '右侧'}称号（最多4个字）：`, currentValue);
-            
-            if (newTitle === null) return;
-            const trimmed = newTitle.trim();
-            if (trimmed.length > 4) return alert("称号长度不能超过4个字");
-            
-            updateStudentProfile(studentId, side === 'left' ? { titleLeft: trimmed } : { titleRight: trimmed });
-        };
-
-        const getFilteredRecords = () => {
-            if (!viewHistoryStudent) return [];
-            const records = history.filter(h => h.studentId === viewHistoryStudent.id);
-            if (filterType === 'all') return records;
-            if (filterType === 'bonus') return records.filter(r => r.val > 0);
-            if (filterType === 'penalty') return records.filter(r => r.val < 0 && !r.reason.includes('兑换') && !r.reason.includes('祈愿'));
-            if (filterType === 'spending') return records.filter(r => r.reason.includes('兑换') || r.reason.includes('祈愿'));
-            return records;
-        };
-
-        const records = getFilteredRecords();
-
-        return h("div", { className: "bg-white p-6 rounded-xl shadow-sm animate-fade-in" },
-            h("h3", { className: "font-bold text-lg mb-6 flex items-center gap-2" }, h(Icon, { name: "money" }), "全班余额监控 (点击卡片查看详情)"),
-            h("div", { className: "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4" },
-                students.map(s => {
-                    const profile = getStudentProfile(studentProfiles, s.id, s);
-                    return h("div", {
-                        key: s.id, 
-                        onClick: (e) => {
-                            // Prevent modal opening when clicking upload buttons
-                            if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
-                                setViewHistoryStudent(s);
-                            }
-                        },
-                        className: "border rounded-lg p-3 flex flex-col items-center gap-2 relative group cursor-pointer hover:shadow-md transition" 
-                    },
-                    h("label", { className: "absolute top-1 left-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传开心" }, h(Icon, { name: "smile", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(s.id, 'happy', e.target.files[0]) })),
-                    h("label", { className: "absolute top-1 right-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传难过" }, h(Icon, { name: "frown", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(s.id, 'sad', e.target.files[0]) })),
-                        h("div", { className: "flex items-center gap-2 w-full justify-center" },
-                            (profile.titleLeft || profile.titleRight) && h("div", { className: "absolute -top-2 left-0 right-0 flex justify-center gap-1 pointer-events-none" },
-                                profile.titleLeft && h("span", { className: "bg-amber-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, profile.titleLeft),
-                                profile.titleRight && h("span", { className: "bg-blue-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, profile.titleRight)
-                            ),
-                            h("div", { 
-                                className: "text-[10px] bg-amber-100 text-amber-800 px-1 rounded cursor-pointer min-w-[20px] h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition",
-                                onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'left'); },
-                                title: "设置左称号"
-                            }, profile.titleLeft || "+"),
-                            h("img", { src: getAvatar(s, studentProfiles, 'happy'), className: "w-12 h-12 rounded-full", onError: (e) => handleAvatarError(e, s.name, 'happy') }),
-                            h("div", { 
-                                className: "text-[10px] bg-blue-100 text-blue-800 px-1 rounded cursor-pointer min-w-[20px] h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition",
-                                onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'right'); },
-                                title: "设置右称号"
-                            }, profile.titleRight || "+")
-                        ),
-                    h("div", { className: "font-bold text-gray-800" }, s.name),
-                    h("div", { className: `text-lg font-mono font-bold ${s.balance < 0 ? 'text-red-500' : 'text-green-600'}` }, s.balance)
-                );
-                })
-            ),
-                
-            // History Modal
-            viewHistoryStudent && h(Modal, {
-                isOpen: !!viewHistoryStudent,
-                title: `${viewHistoryStudent.name} 的积分记录`,
-                onClose: () => setViewHistoryStudent(null),
-                // No confirm button needed
-            }, 
-                h("div", { className: "space-y-4" },
-                    h("div", { className: "flex gap-2 overflow-x-auto pb-2" },
-                        ['all', 'bonus', 'penalty', 'spending'].map(t => 
-                            h("button", { 
-                                key: t, 
-                                onClick: () => setFilterType(t),
-                                className: `px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${filterType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
-                            }, { all: '全部', bonus: '奖励', penalty: '扣分', spending: '消费' }[t])
-                        )
-                    ),
-                    h("div", { className: "max-h-80 overflow-y-auto border rounded-lg" },
-                        h("table", { className: "w-full text-sm text-left" },
-                            h("thead", { className: "bg-gray-50 sticky top-0" },
-                                h("tr", null,
-                                    h("th", { className: "p-2 font-medium text-gray-500" }, "时间"),
-                                    h("th", { className: "p-2 font-medium text-gray-500" }, "事项"),
-                                    h("th", { className: "p-2 font-medium text-gray-500 text-right" }, "变动"),
-                                    h("th", { className: "p-2 font-medium text-gray-500 text-right" }, "余额")
-                                )
-                            ),
-                            h("tbody", { className: "divide-y" },
-                                records.length === 0 ? h("tr", null, h("td", { colSpan: 4, className: "p-4 text-center text-gray-400" }, "暂无相关记录")) :
-                                records.map(r => 
-                                    h("tr", { key: r.id, className: "hover:bg-gray-50" },
-                                        h("td", { className: "p-2 text-xs text-gray-400" }, new Date(r.ts).toLocaleString()),
-                                        h("td", { className: "p-2" }, r.reason),
-                                        h("td", { className: `p-2 font-bold text-right ${r.val > 0 ? 'text-green-600' : 'text-red-500'}` }, r.val > 0 ? `+${r.val}` : r.val),
-                                        h("td", { className: "p-2 text-right font-mono text-gray-600" }, r.snapshot ? r.snapshot.balance : '-')
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        );
-    };
-
     const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
@@ -5259,6 +5129,7 @@ const INITIAL_TREASURES = [
         const [dailyUsageCounts, setDailyUsageCounts] = useState({});
         // NEW: Tasks state
         const [tasks, setTasks] = useState([]);
+        const [profileModuleStatus, setProfileModuleStatus] = useState(typeof window.createProfileView === 'function' ? 'ready' : 'idle');
         const [tasksModuleStatus, setTasksModuleStatus] = useState(typeof window.createTasksView === 'function' ? 'ready' : 'idle');
         const [battleModuleStatus, setBattleModuleStatus] = useState(typeof window.createBattleView === 'function' ? 'ready' : 'idle');
 
@@ -5292,8 +5163,27 @@ const INITIAL_TREASURES = [
         const [adjustModal, setAdjustModal] = useState({ open: false, reason: null, val: 0, count: 1, isMulti: false, isCustom: false, customName: "" });
             
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
+        const ProfileView = profileModuleStatus === 'ready' ? getProfileView() : null;
         const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
         const BattleView = battleModuleStatus === 'ready' ? getBattleView() : null;
+
+        useEffect(() => {
+            if (activeTab !== 'profile' || profileModuleStatus === 'ready' || profileModuleStatus === 'loading') return;
+            setProfileModuleStatus('loading');
+            loadScriptOnce('profile/module.js')
+                .then(() => {
+                    if (typeof window.createProfileView === 'function') {
+                        getProfileView();
+                        setProfileModuleStatus('ready');
+                    } else {
+                        setProfileModuleStatus('error');
+                    }
+                })
+                .catch(err => {
+                    console.error('加载头像模块失败:', err);
+                    setProfileModuleStatus('error');
+                });
+        }, [activeTab, profileModuleStatus]);
 
         useEffect(() => {
             if (activeTab !== 'tasks' || tasksModuleStatus === 'ready' || tasksModuleStatus === 'loading') return;
@@ -6876,7 +6766,22 @@ const INITIAL_TREASURES = [
                     onRedeemTreasure: handleRedeemTreasure,
                     onUseItem: handleUseItem
                 }),
-                activeTab === 'profile' && h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history, adminPassword: window.DEFAULT_ADMIN_PASSWORD }),
+                activeTab === 'profile' && (
+                    profileModuleStatus === 'ready' && ProfileView
+                        ? h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history, adminPassword: window.DEFAULT_ADMIN_PASSWORD })
+                        : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
+                            h("div", { className: "text-lg font-bold text-gray-800" },
+                                profileModuleStatus === 'error' ? "头像模块加载失败" : "头像模块加载中"
+                            ),
+                            h("div", { className: "text-sm text-gray-500" },
+                                profileModuleStatus === 'error' ? "请重试加载头像模块。" : "首次打开头像页时会按需加载模块。"
+                            ),
+                            profileModuleStatus === 'error' && h("button", {
+                                onClick: () => setProfileModuleStatus('idle'),
+                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            }, "重试")
+                        )
+                ),
                 activeTab === 'settings' && h(SettingsView, { 
                     students: displayStudents, studentProfiles, history, config,
                     attendanceRecords, treasures, storage, logs,
