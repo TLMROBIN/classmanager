@@ -174,6 +174,110 @@ const normalizeBattleSnapshots = (battleSnapshots) => {
     }
     return Array.isArray(battleSnapshots) ? battleSnapshots : [];
 };
+const hasLegacyStudentProfileFields = (student) => !!(
+    student && (
+        student.avatar_happy ||
+        student.avatar_sad ||
+        student.title_left ||
+        student.title_right
+    )
+);
+const buildLegacyStudentProfileEntries = (students) => {
+    const entries = {};
+    (Array.isArray(students) ? students : []).forEach(student => {
+        if (!student || student.id == null) return;
+        const entry = {
+            avatarHappy: typeof student.avatar_happy === 'string' ? student.avatar_happy : "",
+            avatarSad: typeof student.avatar_sad === 'string' ? student.avatar_sad : "",
+            titleLeft: typeof student.title_left === 'string' ? student.title_left : "",
+            titleRight: typeof student.title_right === 'string' ? student.title_right : ""
+        };
+        if (entry.avatarHappy || entry.avatarSad || entry.titleLeft || entry.titleRight) {
+            entries[String(student.id)] = entry;
+        }
+    });
+    return entries;
+};
+const normalizeStudentProfiles = (studentProfiles, fallbackStudents = []) => {
+    const sourceEntries = studentProfiles && typeof studentProfiles.entries === 'object' && studentProfiles.entries
+        ? studentProfiles.entries
+        : {};
+    const normalizedEntries = {};
+    Object.entries(sourceEntries).forEach(([studentId, entry]) => {
+        const normalizedEntry = {
+            avatarHappy: typeof entry?.avatarHappy === 'string' ? entry.avatarHappy : (typeof entry?.avatar_happy === 'string' ? entry.avatar_happy : ""),
+            avatarSad: typeof entry?.avatarSad === 'string' ? entry.avatarSad : (typeof entry?.avatar_sad === 'string' ? entry.avatar_sad : ""),
+            titleLeft: typeof entry?.titleLeft === 'string' ? entry.titleLeft : (typeof entry?.title_left === 'string' ? entry.title_left : ""),
+            titleRight: typeof entry?.titleRight === 'string' ? entry.titleRight : (typeof entry?.title_right === 'string' ? entry.title_right : "")
+        };
+        if (normalizedEntry.avatarHappy || normalizedEntry.avatarSad || normalizedEntry.titleLeft || normalizedEntry.titleRight) {
+            normalizedEntries[String(studentId)] = normalizedEntry;
+        }
+    });
+    return {
+        version: Number(studentProfiles?.version) || 1,
+        entries: {
+            ...buildLegacyStudentProfileEntries(fallbackStudents),
+            ...normalizedEntries
+        }
+    };
+};
+const getStudentProfile = (studentProfiles, studentOrId, fallbackStudent = null) => {
+    const student = fallbackStudent || (studentOrId && typeof studentOrId === 'object' ? studentOrId : null);
+    const studentId = student ? student.id : studentOrId;
+    const entries = studentProfiles && typeof studentProfiles.entries === 'object' ? studentProfiles.entries : {};
+    const hasManagedProfiles = Object.keys(entries).length > 0;
+    const raw = entries[String(studentId)] || entries[studentId] || {};
+    return {
+        avatarHappy: typeof raw.avatarHappy === 'string' ? raw.avatarHappy : (typeof raw.avatar_happy === 'string' ? raw.avatar_happy : (hasManagedProfiles ? "" : (student?.avatar_happy || ""))),
+        avatarSad: typeof raw.avatarSad === 'string' ? raw.avatarSad : (typeof raw.avatar_sad === 'string' ? raw.avatar_sad : (hasManagedProfiles ? "" : (student?.avatar_sad || ""))),
+        titleLeft: typeof raw.titleLeft === 'string' ? raw.titleLeft : (typeof raw.title_left === 'string' ? raw.title_left : (hasManagedProfiles ? "" : (student?.title_left || ""))),
+        titleRight: typeof raw.titleRight === 'string' ? raw.titleRight : (typeof raw.title_right === 'string' ? raw.title_right : (hasManagedProfiles ? "" : (student?.title_right || "")))
+    };
+};
+const remapStudentProfilesToStudentsByName = (currentStudents, nextStudents, studentProfiles) => {
+    const normalizedProfiles = normalizeStudentProfiles(studentProfiles, currentStudents);
+    const profileByName = new Map();
+    (Array.isArray(currentStudents) ? currentStudents : []).forEach(student => {
+        const key = String(student?.name || "").trim();
+        if (!key) return;
+        const profile = getStudentProfile(normalizedProfiles, student.id, student);
+        if (profile.avatarHappy || profile.avatarSad || profile.titleLeft || profile.titleRight) {
+            profileByName.set(key, profile);
+        }
+    });
+    const nextEntries = {};
+    (Array.isArray(nextStudents) ? nextStudents : []).forEach(student => {
+        const key = String(student?.name || "").trim();
+        if (!key) return;
+        const profile = profileByName.get(key);
+        if (!profile) return;
+        nextEntries[String(student.id)] = {
+            avatarHappy: profile.avatarHappy || "",
+            avatarSad: profile.avatarSad || "",
+            titleLeft: profile.titleLeft || "",
+            titleRight: profile.titleRight || ""
+        };
+    });
+    return normalizeStudentProfiles({ version: Number(normalizedProfiles.version) || 1, entries: nextEntries });
+};
+const resolveStudentProfilesForData = (data, currentStudentProfiles, currentStudents) => {
+    const safe = data && typeof data === 'object' ? data : {};
+    const hasProfiles = Object.prototype.hasOwnProperty.call(safe, 'studentProfiles');
+    const hasStudents = Object.prototype.hasOwnProperty.call(safe, 'students');
+    const nextStudents = hasStudents ? safe.students : currentStudents;
+    if (hasProfiles) {
+        return normalizeStudentProfiles(safe.studentProfiles, nextStudents);
+    }
+    if (hasStudents) {
+        const incomingStudents = Array.isArray(safe.students) ? safe.students : [];
+        if (incomingStudents.some(hasLegacyStudentProfileFields)) {
+            return normalizeStudentProfiles(undefined, incomingStudents);
+        }
+        return normalizeStudentProfiles(currentStudentProfiles, incomingStudents);
+    }
+    return normalizeStudentProfiles(currentStudentProfiles, currentStudents);
+};
 const getLatestExamArchiveRank = (examArchives, studentId) => {
     const archives = normalizeExamArchives(examArchives);
     const latestExamId = archives.latestExamId || archives.exams[0]?.id || '';
@@ -531,8 +635,15 @@ const INITIAL_TREASURES = [
         };
     };
         
-    const getAvatar = (student, mood = 'happy') => {
-        const custom = mood === 'happy' ? student.avatar_happy : student.avatar_sad;
+    const getAvatar = (student, studentProfilesOrMood = 'happy', maybeMood = 'happy') => {
+        const studentProfiles = typeof studentProfilesOrMood === 'string' || studentProfilesOrMood == null
+            ? null
+            : studentProfilesOrMood;
+        const mood = typeof studentProfilesOrMood === 'string' || studentProfilesOrMood == null
+            ? (studentProfilesOrMood || 'happy')
+            : (maybeMood || 'happy');
+        const profile = getStudentProfile(studentProfiles, student, student);
+        const custom = mood === 'happy' ? profile.avatarHappy : profile.avatarSad;
         if (custom) return custom;
         return `头像/${student.name}${mood === 'happy' ? '笑脸' : '鬼脸'}.jpg`;
     };
@@ -1575,7 +1686,7 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const DashboardView = ({ students, history, config, setConfig, updatePoints, handleUndo }) => {
+    const DashboardView = ({ students, studentProfiles, history, config, setConfig, updatePoints, handleUndo }) => {
         // 确保所有学生都有 zizai 和 penalty 字段，缺失时默认为 0
         const studentsWithDefaults = students.map(s => ({
             ...s,
@@ -1853,7 +1964,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { fill: "currentColor", d: "M21,12C21,12 19,13 16,13C13,13 11,12 11,12C11,12 9,13 6,13C3,13 1,12 1,12C1,12 3,11 6,11C9,11 11,12 11,12C11,12 13,11 16,11C19,11 21,12 21,12M16,12C16,12 15,12.5 13.5,12.5C12,12.5 11,12 11,12C11,12 12,11.5 13.5,11.5C15,11.5 16,12 16,12Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, 'happy'), className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'happy') })
+                                        h("img", { src: getAvatar(s, studentProfiles, 'happy'), className: `w-10 h-10 rounded-full bg-gray-100 relative z-10 ${isTop3 ? frames[idx] : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'happy') })
                                     ),
                                     h("div", { className: "flex-1" }, h("div", { className: `font-bold ${isTop3 ? 'text-gray-800' : ''}` }, s.name), h("div", { className: "text-xs text-gray-400" }, (() => {
                                         const groupsConfig = getGroupsConfig(config);
@@ -1932,7 +2043,7 @@ const INITIAL_TREASURES = [
                                                 h("path", { d: "M12,2L14,6L18,2L16,10L22,12L16,14L18,22L14,18L12,22L10,18L6,22L8,14L2,12L8,10L6,2L10,6L12,2Z" })
                                             )
                                         ),
-                                        h("img", { src: getAvatar(s, 'sad'), className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'sad') })
+                                        h("img", { src: getAvatar(s, studentProfiles, 'sad'), className: `w-8 h-8 rounded-full relative z-10 border ${isTop3 ? 'border-red-400' : 'border-transparent'}`, onError: (e) => handleAvatarError(e, s.name, 'sad') })
                                     ),
                                     h("div", { className: "flex-1" },
                                         h("div", { className: "font-medium" }, s.name),
@@ -2974,19 +3085,38 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const ProfileView = ({ students, setStudents, history, adminPassword }) => {
+    const ProfileView = ({ students, studentProfiles, setStudentProfiles, history, adminPassword }) => {
         const [viewHistoryStudent, setViewHistoryStudent] = useState(null);
         const [filterType, setFilterType] = useState('all');
+        const updateStudentProfile = (studentId, patch) => {
+            setStudentProfiles(prev => {
+                const normalized = normalizeStudentProfiles(prev, students);
+                const student = (students || []).find(item => String(item.id) === String(studentId)) || null;
+                const current = getStudentProfile(normalized, studentId, student);
+                const nextEntry = {
+                    avatarHappy: patch.avatarHappy !== undefined ? patch.avatarHappy : current.avatarHappy,
+                    avatarSad: patch.avatarSad !== undefined ? patch.avatarSad : current.avatarSad,
+                    titleLeft: patch.titleLeft !== undefined ? patch.titleLeft : current.titleLeft,
+                    titleRight: patch.titleRight !== undefined ? patch.titleRight : current.titleRight
+                };
+                const nextEntries = { ...(normalized.entries || {}) };
+                if (nextEntry.avatarHappy || nextEntry.avatarSad || nextEntry.titleLeft || nextEntry.titleRight) {
+                    nextEntries[String(studentId)] = nextEntry;
+                } else {
+                    delete nextEntries[String(studentId)];
+                }
+                return {
+                    version: Number(normalized.version) || 1,
+                    entries: nextEntries
+                };
+            });
+        };
 
         const handleAvatarUpload = (studentId, mood, file) => {
+            if (!file) return;
             if (!requireAdminAuth("修改头像需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
             compressImage(file, (base64) => {
-                const newStudents = [...students];
-                const s = newStudents.find(s => s.id === studentId);
-                if (s) {
-                    if (mood === 'happy') s.avatar_happy = base64; else s.avatar_sad = base64;
-                    setStudents(newStudents);
-                }
+                updateStudentProfile(studentId, mood === 'happy' ? { avatarHappy: base64 } : { avatarSad: base64 });
             });
         };
 
@@ -2995,18 +3125,15 @@ const INITIAL_TREASURES = [
             if (!s) return;
             if (!requireAdminAuth("设置称号需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
             
-            const currentTitle = side === 'left' ? (s.title_left || "") : (s.title_right || "");
-            const newTitle = prompt(`请输入${side === 'left' ? '左侧' : '右侧'}称号（最多4个字）：`, currentTitle);
+            const currentProfile = getStudentProfile(studentProfiles, s.id, s);
+            const currentValue = side === 'left' ? (currentProfile.titleLeft || "") : (currentProfile.titleRight || "");
+            const newTitle = prompt(`请输入${side === 'left' ? '左侧' : '右侧'}称号（最多4个字）：`, currentValue);
             
             if (newTitle === null) return;
             const trimmed = newTitle.trim();
             if (trimmed.length > 4) return alert("称号长度不能超过4个字");
             
-            const newStudents = students.map(x => {
-                if (x.id !== studentId) return x;
-                return { ...x, [side === 'left' ? 'title_left' : 'title_right']: trimmed };
-            });
-            setStudents(newStudents);
+            updateStudentProfile(studentId, side === 'left' ? { titleLeft: trimmed } : { titleRight: trimmed });
         };
 
         const getFilteredRecords = () => {
@@ -3024,7 +3151,9 @@ const INITIAL_TREASURES = [
         return h("div", { className: "bg-white p-6 rounded-xl shadow-sm animate-fade-in" },
             h("h3", { className: "font-bold text-lg mb-6 flex items-center gap-2" }, h(Icon, { name: "money" }), "全班余额监控 (点击卡片查看详情)"),
             h("div", { className: "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4" },
-                students.map(s => h("div", { 
+                students.map(s => {
+                    const profile = getStudentProfile(studentProfiles, s.id, s);
+                    return h("div", {
                         key: s.id, 
                         onClick: (e) => {
                             // Prevent modal opening when clicking upload buttons
@@ -3037,25 +3166,26 @@ const INITIAL_TREASURES = [
                     h("label", { className: "absolute top-1 left-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传开心" }, h(Icon, { name: "smile", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(s.id, 'happy', e.target.files[0]) })),
                     h("label", { className: "absolute top-1 right-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传难过" }, h(Icon, { name: "frown", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(s.id, 'sad', e.target.files[0]) })),
                         h("div", { className: "flex items-center gap-2 w-full justify-center" },
-                            (s.title_left || s.title_right) && h("div", { className: "absolute -top-2 left-0 right-0 flex justify-center gap-1 pointer-events-none" },
-                                s.title_left && h("span", { className: "bg-amber-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, s.title_left),
-                                s.title_right && h("span", { className: "bg-blue-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, s.title_right)
+                            (profile.titleLeft || profile.titleRight) && h("div", { className: "absolute -top-2 left-0 right-0 flex justify-center gap-1 pointer-events-none" },
+                                profile.titleLeft && h("span", { className: "bg-amber-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, profile.titleLeft),
+                                profile.titleRight && h("span", { className: "bg-blue-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, profile.titleRight)
                             ),
                             h("div", { 
                                 className: "text-[10px] bg-amber-100 text-amber-800 px-1 rounded cursor-pointer min-w-[20px] h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition",
                                 onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'left'); },
                                 title: "设置左称号"
-                            }, s.title_left || "+"),
-                            h("img", { src: getAvatar(s, 'happy'), className: "w-12 h-12 rounded-full", onError: (e) => handleAvatarError(e, s.name, 'happy') }),
+                            }, profile.titleLeft || "+"),
+                            h("img", { src: getAvatar(s, studentProfiles, 'happy'), className: "w-12 h-12 rounded-full", onError: (e) => handleAvatarError(e, s.name, 'happy') }),
                             h("div", { 
                                 className: "text-[10px] bg-blue-100 text-blue-800 px-1 rounded cursor-pointer min-w-[20px] h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition",
                                 onClick: (e) => { e.stopPropagation(); handleSetTitle(s.id, 'right'); },
                                 title: "设置右称号"
-                            }, s.title_right || "+")
+                            }, profile.titleRight || "+")
                         ),
                     h("div", { className: "font-bold text-gray-800" }, s.name),
                     h("div", { className: `text-lg font-mono font-bold ${s.balance < 0 ? 'text-red-500' : 'text-green-600'}` }, s.balance)
-                ))
+                );
+                })
             ),
                 
             // History Modal
@@ -3103,7 +3233,7 @@ const INITIAL_TREASURES = [
         );
     };
 
-    const SettingsView = ({ students, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
@@ -3283,6 +3413,7 @@ const INITIAL_TREASURES = [
 
         const saveOfflineSnapshot = async () => {
             const nowTs = getNow().getTime();
+            const normalizedStudentProfiles = normalizeStudentProfiles(studentProfiles, students);
             let att = {};
             try {
                 const raw = getStorageItem('attendance_records');
@@ -3303,7 +3434,10 @@ const INITIAL_TREASURES = [
                 dailyRedemptionCounts,
                 dailyUsageCounts,
                 tasks,
-                battle
+                battle,
+                examArchives,
+                battleSnapshots,
+                studentProfiles: normalizedStudentProfiles
             };
             const payload = { ts: nowTs, data: fullData };
             if (window.desktopApi && typeof window.desktopApi.setOfflineSnapshot === 'function') {
@@ -3422,6 +3556,7 @@ const INITIAL_TREASURES = [
                         };
                     }).filter(s => s.name);
                     setStudents(newStudents);
+                    setStudentProfiles(remapStudentProfilesToStudentsByName(students, newStudents, studentProfiles));
                     alert("学生名单已更新");
                 }
             };
@@ -3433,6 +3568,12 @@ const INITIAL_TREASURES = [
         };
         const removeStudent = (id) => {
             setStudents(prev => (Array.isArray(prev) ? prev : []).filter(s => s.id !== id));
+            setStudentProfiles(prev => {
+                const normalized = normalizeStudentProfiles(prev, students);
+                const nextEntries = { ...(normalized.entries || {}) };
+                delete nextEntries[String(id)];
+                return { ...normalized, entries: nextEntries };
+            });
         };
         const addStudent = () => {
             const now = Date.now();
@@ -3491,6 +3632,7 @@ const INITIAL_TREASURES = [
 
         // 验证通过后的功能逻辑
         const downloadBackup = () => {
+            const normalizedStudentProfiles = normalizeStudentProfiles(studentProfiles, students);
             let latestAttendance = attendanceRecords;
             try {
                 const saved = getStorageItem('attendance_records');
@@ -3503,7 +3645,8 @@ const INITIAL_TREASURES = [
                 quotes: quotes,
                 battle: battle,
                 examArchives: examArchives,
-                battleSnapshots: battleSnapshots
+                battleSnapshots: battleSnapshots,
+                studentProfiles: normalizedStudentProfiles
             };
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullData));
             const downloadAnchorNode = document.createElement('a');
@@ -3523,6 +3666,7 @@ const INITIAL_TREASURES = [
                     const data = JSON.parse(event.target.result);
                     if (confirm("确定要恢复全量备份吗？当前数据将被覆盖！")) {
                         if (data.students) setStudents(data.students);
+                        if (data.studentProfiles || data.students) setStudentProfiles(normalizeStudentProfiles(data.studentProfiles, data.students || students));
                         if (data.history) setHistory(data.history);
                         if (data.config) {
                             const merged = getSystemConfig({ systemConfig: data.config.systemConfig || {} });
@@ -3566,7 +3710,9 @@ const INITIAL_TREASURES = [
             }
             if (!confirm(`确定将系统数据恢复为快照「${snap.label}」吗？当前数据将被覆盖！`)) return;
             const d = snap.data;
+            const nextStudentProfiles = normalizeStudentProfiles(d.studentProfiles, d.students || students);
             if (d.students) setStudents(d.students);
+            if (d.studentProfiles || d.students) setStudentProfiles(nextStudentProfiles);
             if (d.history) setHistory(d.history);
             if (d.config) setConfig(d.config);
             if (d.attendanceRecords) setAttendanceRecords(d.attendanceRecords);
@@ -3583,7 +3729,7 @@ const INITIAL_TREASURES = [
             if (d.battle) setBattle(battleNormalize(d.battle));
             if (d.examArchives) setExamArchives(normalizeExamArchives(d.examArchives, d.battle || battle));
             if (d.battleSnapshots) setBattleSnapshots(normalizeBattleSnapshots(d.battleSnapshots));
-            if (typeof persistData === 'function') persistData(d);
+            if (typeof persistData === 'function') persistData({ ...d, studentProfiles: nextStudentProfiles });
             setSelectedSnapshotId(null);
             alert("已恢复为选中快照！");
         };
@@ -3682,6 +3828,7 @@ const INITIAL_TREASURES = [
             try { const r = getStorageItem('attendance_records'); if (r) att = JSON.parse(r); } catch (_) {}
             const fullData = {
                 students: newStudents,
+                studentProfiles,
                 history,
                 config,
                 attendanceRecords: att,
@@ -3731,6 +3878,7 @@ const INITIAL_TREASURES = [
             try { const r = getStorageItem('attendance_records'); if (r) att = JSON.parse(r); } catch (_) {}
             const fullData = {
                 students: newStudents,
+                studentProfiles,
                 history,
                 config,
                 attendanceRecords: att,
@@ -5092,6 +5240,7 @@ const INITIAL_TREASURES = [
         // ... (Existing state from previous version)
         const [activeTab, setActiveTab] = useState('dashboard');
         const [students, setStudents] = useState([]);
+        const [studentProfiles, setStudentProfiles] = useState(() => normalizeStudentProfiles());
         const [history, setHistory] = useState([]);
         const [attendanceRecords, setAttendanceRecords] = useState({});
         const [treasures, setTreasures] = useState([]);
@@ -5269,6 +5418,7 @@ const INITIAL_TREASURES = [
             const safe = data || {};
             return {
                 students: safe.students,
+                studentProfiles: normalizeStudentProfiles(safe.studentProfiles, safe.students),
                 history: safe.history,
                 config: safe.config,
                 attendanceRecords: safe.attendanceRecords || safe.attendance_records,
@@ -5288,6 +5438,7 @@ const INITIAL_TREASURES = [
                 __meta: safe.__meta || {},
                 flags: {
                     students: Object.prototype.hasOwnProperty.call(safe, 'students'),
+                    studentProfiles: Object.prototype.hasOwnProperty.call(safe, 'studentProfiles') || (Array.isArray(safe.students) && safe.students.some(hasLegacyStudentProfileFields)),
                     history: Object.prototype.hasOwnProperty.call(safe, 'history'),
                     config: Object.prototype.hasOwnProperty.call(safe, 'config'),
                     attendanceRecords: Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords') || Object.prototype.hasOwnProperty.call(safe, 'attendance_records'),
@@ -5313,6 +5464,7 @@ const INITIAL_TREASURES = [
             const use = (flag) => options.force || flag;
 
             if (use(normalized.flags.students)) setStudents(normalized.students || []);
+            if (use(normalized.flags.studentProfiles)) setStudentProfiles(normalizeStudentProfiles(normalized.studentProfiles, normalized.students || students));
             if (use(normalized.flags.history)) {
                 const incomingHistory = normalized.history || [];
                 const hasLocalHistory = Array.isArray(history) && history.length > 0;
@@ -5354,8 +5506,17 @@ const INITIAL_TREASURES = [
             const local = normalizeFullData(localData);
             const remoteTs = Number(remote.__meta.updatedAt) || 0;
             const localTs = Number(local.__meta.updatedAt) || 0;
+            const mergedStudents = mergeArrayByKey(remote.students, local.students);
+            const mergedStudentProfiles = normalizeStudentProfiles({
+                version: Math.max(Number(remote.studentProfiles?.version) || 1, Number(local.studentProfiles?.version) || 1),
+                entries: {
+                    ...((remote.studentProfiles || {}).entries || {}),
+                    ...((local.studentProfiles || {}).entries || {})
+                }
+            }, mergedStudents);
             return {
-                students: mergeArrayByKey(remote.students, local.students),
+                students: mergedStudents,
+                studentProfiles: mergedStudentProfiles,
                 history: mergeArrayByKey(remote.history, local.history),
                 config: { ...(remote.config || {}), ...(local.config || {}) },
                 attendanceRecords: mergeAttendanceRecords(remote.attendanceRecords || {}, local.attendanceRecords || {}),
@@ -5387,6 +5548,7 @@ const INITIAL_TREASURES = [
             if (testMode) return;
             testSnapshotRef.current = {
                 students: deepClone(students),
+                studentProfiles: deepClone(normalizeStudentProfiles(studentProfiles, students)),
                 history: deepClone(history),
                 config: deepClone(config),
                 attendanceRecords: deepClone(attendanceRecords),
@@ -5414,13 +5576,14 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
+        }, [testMode, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
             const snap = testSnapshotRef.current;
             if (snap) {
                 setStudents(snap.students || []);
+                setStudentProfiles(normalizeStudentProfiles(snap.studentProfiles, snap.students || []));
                 setHistory(snap.history || []);
                 setConfig(snap.config || {});
                 setAttendanceRecords(snap.attendanceRecords || {});
@@ -5456,8 +5619,9 @@ const INITIAL_TREASURES = [
                 const raw = getStorageItem('attendance_records');
                 if (raw) att = JSON.parse(raw);
             } catch (_) {}
+            const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
+            const nextStudentProfiles = resolveStudentProfilesForData(overrides, studentProfiles, nextStudents);
             return {
-                students,
                 history,
                 config,
                 attendanceRecords: att,
@@ -5474,13 +5638,16 @@ const INITIAL_TREASURES = [
                 battle,
                 examArchives,
                 battleSnapshots,
-                ...overrides
+                ...overrides,
+                students: nextStudents,
+                studentProfiles: nextStudentProfiles
             };
-        }, [attendanceRecords, students, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
+        }, [attendanceRecords, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
 
         const writeLocalCaches = useCallback((fullDataWithMeta) => {
             const {
                 students,
+                studentProfiles,
                 history,
                 config,
                 attendanceRecords,
@@ -5501,6 +5668,7 @@ const INITIAL_TREASURES = [
             } = fullDataWithMeta;
             setStorageItem('class_manager_data', JSON.stringify({
                 students,
+                studentProfiles,
                 history,
                 config,
                 quotes,
@@ -5575,6 +5743,7 @@ const INITIAL_TREASURES = [
             const nowTs = getNow().getTime();
             const fullData = buildCurrentFullData(partialData || {});
             const normalizedInput = normalizeFullData(fullData);
+            const nextStudentProfiles = resolveStudentProfilesForData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
             const protectedExamArchives = (
@@ -5586,6 +5755,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
                 battleSnapshots: nextBattleSnapshots,
@@ -5598,13 +5768,14 @@ const INITIAL_TREASURES = [
             writeLocalCaches(fullDataWithMeta);
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
             return savePayloadToServer(payload, fullDataWithMeta, nowTs);
-        }, [buildCurrentFullData, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
+        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
 
         /** 统一持久化：写 localStorage 并可选 POST。所有需立即落盘的操作均经此函数，避免分散写入导致覆盖。 */
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
             const normalizedInput = normalizeFullData(fullData);
+            const nextStudentProfiles = resolveStudentProfilesForData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
             const protectedExamArchives = (
@@ -5616,6 +5787,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
                 battleSnapshots: nextBattleSnapshots,
@@ -5627,7 +5799,7 @@ const INITIAL_TREASURES = [
             };
             writeLocalCaches(fullDataWithMeta);
             return savePayloadToServer(fullDataWithMeta, fullDataWithMeta, nowTs);
-        }, [battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
+        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -5774,6 +5946,7 @@ const INITIAL_TREASURES = [
             if (savedData) {
                 const data = JSON.parse(savedData);
                 setStudents(data.students || []);
+                setStudentProfiles(normalizeStudentProfiles(data.studentProfiles, data.students || []));
                 setHistory(data.history || []);
                 const savedConfig = data.config || {};
                 setConfig({
@@ -5797,6 +5970,7 @@ const INITIAL_TREASURES = [
             } else {
                  // Initialize defaults
                 setStudents([]);
+                setStudentProfiles(normalizeStudentProfiles());
                 setQuotes(window.DEFAULT_QUOTES);
                 setExamArchives(normalizeExamArchives());
                 setBattleSnapshots(normalizeBattleSnapshots());
@@ -5885,6 +6059,7 @@ const INITIAL_TREASURES = [
 
                 const fullData = {
                     students: students || [],
+                    studentProfiles: normalizeStudentProfiles(studentProfiles, students),
                     history: history || [],
                     config: config || {},
                     quotes: quotes || [],
@@ -5934,7 +6109,7 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onVisible);
                 window.removeEventListener('focus', onVisible);
             };
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs]);
+        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs]);
 
         // Update handleRefreshData to use new function
         const handleRefreshData = () => fetchFromServer(false);
@@ -6011,6 +6186,7 @@ const INITIAL_TREASURES = [
 
                 const fullData = {
                     students: students || [],
+                    studentProfiles: normalizeStudentProfiles(studentProfiles, students),
                     history: history || [],
                     config: config || {},
                     quotes: quotes || [],
@@ -6046,7 +6222,7 @@ const INITIAL_TREASURES = [
                 console.error('生成快照失败:', e);
                 return false;
             }
-        }, [students, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots]);
+        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots]);
 
 
         // --- 自动保存逻辑 (Debounced) ---
@@ -6078,7 +6254,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [students, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
+        }, [students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
 
         useEffect(() => {
             isDirtyRef.current = true;
@@ -6656,7 +6832,7 @@ const INITIAL_TREASURES = [
         return h("div", { className: "min-h-screen pb-20" },
             h(Nav, { activeTab, setActiveTab, syncStatus, onRefresh: handleRefreshData, autoRefresh, setAutoRefresh, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
-                activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, history, config, setConfig, updatePoints, handleUndo }),
+                activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, updatePoints, handleWage, adjustModal, setAdjustModal, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && h(AttendanceModule, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); } }),
                 activeTab === 'tasks' && (
@@ -6700,11 +6876,11 @@ const INITIAL_TREASURES = [
                     onRedeemTreasure: handleRedeemTreasure,
                     onUseItem: handleUseItem
                 }),
-                activeTab === 'profile' && h(ProfileView, { students: displayStudents, setStudents, history, adminPassword: window.DEFAULT_ADMIN_PASSWORD }),
+                activeTab === 'profile' && h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history, adminPassword: window.DEFAULT_ADMIN_PASSWORD }),
                 activeTab === 'settings' && h(SettingsView, { 
-                    students: displayStudents, history, config, 
+                    students: displayStudents, studentProfiles, history, config,
                     attendanceRecords, treasures, storage, logs,
-                    setStudents, setHistory, setConfig, 
+                    setStudents, setStudentProfiles, setHistory, setConfig,
                     setAttendanceRecords, setTreasures, setStorage, setLogs,
                     quotes, setQuotes,
                     persistData,
