@@ -57,7 +57,7 @@
                             h("span", { className: syncStatus === 'error' || syncStatus === 'unsaved' ? 'text-red-500' : 'text-gray-500' },
                                 syncStatus === 'success' ? '已同步' :
                                 syncStatus === 'saved' ? '已保存' :
-                                syncStatus === 'unsaved' ? '未同步' : '离线'
+                                syncStatus === 'unsaved' ? '未同步' : '连接异常'
                             )
                         ),
                         currentUser && h("div", { className: "flex items-center gap-2 border-l pl-3 ml-1" },

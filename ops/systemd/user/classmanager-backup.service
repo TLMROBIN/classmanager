@@ -6,5 +6,5 @@ OnFailure=classmanager-backup-alert.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/path/to/classmanager-multi
+WorkingDirectory=__PROJECT_DIR__
 ExecStart=/usr/bin/npm run backup:daily

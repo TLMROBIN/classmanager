@@ -3,5 +3,5 @@ Description=Alert when classmanager backup fails
 
 [Service]
 Type=oneshot
-WorkingDirectory=/path/to/classmanager-multi
+WorkingDirectory=__PROJECT_DIR__
 ExecStart=/usr/bin/node scripts/backup-failure-notify.js --unit classmanager-backup.service --reason backup-failed

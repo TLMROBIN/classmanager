@@ -17,7 +17,6 @@
 
 - `database/dump.sql`
 - 浏览器 `localStorage` 快照
-- 前端 JSON 手工导出文件
 
 ## 脚本入口
 

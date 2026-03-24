@@ -63,6 +63,20 @@ systemctl --user status classmanager-app.service
 sudo loginctl enable-linger $USER
 ```
 
+### 6. 配置 SQLite 定时备份
+
+项目已提供用户级备份定时器安装脚本：
+
+```bash
+./ops/systemd/user/install-classmanager-backup-timers.sh
+```
+
+安装完成后可用下面命令查看：
+
+```bash
+systemctl --user list-timers | rg classmanager-backup
+```
+
 ## 内置脚本和工具
 
 项目中包含了一套完整的数据库备份和恢复工具体系：

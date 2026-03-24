@@ -140,12 +140,10 @@
                 const data = await res.json();
 
                 if (res.ok && data.success) {
-                    // 清除旧用户的缓存数据
-                    localStorage.removeItem('class_manager_data');
-                    localStorage.removeItem('attendance_records');
-                    localStorage.removeItem('class_treasure_data');
+                    // 清除浏览器端的用户私有状态
                     localStorage.removeItem('class_manager_snapshots');
-                    localStorage.removeItem('cm_offline_snapshot');
+                    localStorage.removeItem('class_manager_snapshot_last_date');
+                    localStorage.removeItem('admin_auth_until');
                     // 保存新的登录信息
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));
@@ -198,12 +196,10 @@
                 const data = await res.json();
 
                 if (res.ok && data.success) {
-                    // 清除旧用户的缓存数据
-                    localStorage.removeItem('class_manager_data');
-                    localStorage.removeItem('attendance_records');
-                    localStorage.removeItem('class_treasure_data');
+                    // 清除浏览器端的用户私有状态
                     localStorage.removeItem('class_manager_snapshots');
-                    localStorage.removeItem('cm_offline_snapshot');
+                    localStorage.removeItem('class_manager_snapshot_last_date');
+                    localStorage.removeItem('admin_auth_until');
                     // 保存新的登录信息
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));

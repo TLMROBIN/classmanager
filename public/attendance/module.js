@@ -10,8 +10,6 @@
             getNow,
             getDateString,
             getTodayStr,
-            getStorageItem,
-            setStorageItem,
             timeToMinutes,
             getSystemConfig,
             getScheduleConfig,
@@ -38,8 +36,6 @@
             !getNow ||
             !getDateString ||
             !getTodayStr ||
-            !getStorageItem ||
-            !setStorageItem ||
             !timeToMinutes ||
             !getSystemConfig ||
             !getScheduleConfig ||
@@ -66,7 +62,7 @@
             logs,
             attendanceRecords,
             handleUndoByReasons,
-            onCheckInSuccess,
+            onAttendanceRecordsChange,
             onUpdateAttendanceConfig
         }) {
             const isFrozen = !!(config && config.frozen);
@@ -96,15 +92,14 @@
             const [newStudentMsg, setNewStudentMsg] = useState("");
             const [queryStudentName, setQueryStudentName] = useState("");
 
-            useEffect(() => {
-                const saved = getStorageItem('attendance_records');
-                if (saved) setRecords(JSON.parse(saved));
-            }, []);
+            const syncAttendanceRecords = (nextRecords, options = {}) => {
+                if (typeof onAttendanceRecordsChange === 'function') {
+                    onAttendanceRecordsChange(nextRecords || {}, options);
+                }
+            };
 
             useEffect(() => {
-                if (attendanceRecords && Object.keys(attendanceRecords).length > 0) {
-                    setRecords(attendanceRecords);
-                }
+                setRecords(attendanceRecords || {});
             }, [attendanceRecords]);
 
             useEffect(() => {
@@ -119,24 +114,14 @@
                 const now = getNow();
 
                 setRecords(currentRecords => {
-                    let latestRecords = currentRecords;
-                    try {
-                        const saved = getStorageItem('attendance_records');
-                        if (saved) {
-                            latestRecords = JSON.parse(saved);
-                        }
-                    } catch (e) {
-                        console.error('读取 localStorage 失败:', e);
-                    }
-
-                    const { newRecords, added } = settleAbsences(latestRecords, now);
+                    const { newRecords, added } = settleAbsences(currentRecords, now);
                     if (added) {
-                        setStorageItem('attendance_records', JSON.stringify(newRecords));
+                        syncAttendanceRecords(newRecords);
                         return newRecords;
                     }
-                    return latestRecords;
+                    return currentRecords;
                 });
-            }, [currentTime.getHours(), currentTime.getMinutes(), students, isFrozen]);
+            }, [currentTime.getHours(), currentTime.getMinutes(), students, isFrozen, onAttendanceRecordsChange]);
 
             const getRulesForDate = (dateObj) => {
                 const scheduleConfig = getScheduleConfig(config);
@@ -240,19 +225,9 @@
                 let result = null;
 
                 setRecords(currentRecords => {
-                    let latestRecords = currentRecords;
-                    try {
-                        const saved = getStorageItem('attendance_records');
-                        if (saved) {
-                            latestRecords = JSON.parse(saved);
-                        }
-                    } catch (e) {
-                        console.error('读取 localStorage 失败:', e);
-                    }
-
-                    if (latestRecords[dateKey]?.[studentName]?.[currentSession.id]) {
+                    if (currentRecords[dateKey]?.[studentName]?.[currentSession.id]) {
                         result = { status: 'exists' };
-                        return latestRecords;
+                        return currentRecords;
                     }
 
                     const isLate = currentSession.isLateNow;
@@ -265,23 +240,23 @@
                     };
 
                     const newRecords = {
-                        ...latestRecords,
+                        ...currentRecords,
                         [dateKey]: {
-                            ...(latestRecords[dateKey] || {}),
+                            ...(currentRecords[dateKey] || {}),
                             [studentName]: {
-                                ...(latestRecords[dateKey]?.[studentName] || {}),
+                                ...(currentRecords[dateKey]?.[studentName] || {}),
                                 [currentSession.id]: newRecord
                             }
                         }
                     };
 
-                    setStorageItem('attendance_records', JSON.stringify(newRecords));
                     result = { status: isLate ? 'late' : 'ok', newRecord, newRecords, usedLateCardYesterday };
                     return newRecords;
                 });
 
                 if (!result) return;
                 if (result.status === 'exists') return alert("已打卡！");
+                syncAttendanceRecords(result.newRecords);
 
                 const student = students.find(stu => stu.name === studentName);
                 if (result.status === 'late' && student && !result.usedLateCardYesterday) {
@@ -299,7 +274,6 @@
                 const streak = calculateStreak(studentName, result.newRecords, currentTime);
                 setCheckInEffect({ show: true, student: studentName, streak, usedMorningLateCard: result.status === 'late' && result.usedLateCardYesterday });
                 setTimeout(() => setCheckInEffect(null), 3000);
-                if (onCheckInSuccess) onCheckInSuccess(result.newRecords);
             };
 
             const handlePostTeacherMsg = () => {
@@ -462,7 +436,7 @@
                     handleUndoByReasons
                 });
                 setRecords(newRec);
-                setStorageItem('attendance_records', JSON.stringify(newRec));
+                syncAttendanceRecords(newRec);
                 setSelectedIssues([]);
                 alert("修正成功");
             };
@@ -483,7 +457,7 @@
                     updatePoints
                 });
                 setRecords(newRec);
-                setStorageItem('attendance_records', JSON.stringify(newRec));
+                syncAttendanceRecords(newRec);
                 setSelectedIssues([]);
                 alert("结算成功");
             };
@@ -504,7 +478,7 @@
                     updatePoints
                 });
                 setRecords(newRec);
-                setStorageItem('attendance_records', JSON.stringify(newRec));
+                syncAttendanceRecords(newRec);
                 const settledIds = new Set(allAbsentItems.map(item => item.id));
                 setSelectedIssues(selectedIssues.filter(id => !settledIds.has(id)));
                 alert("批量结算成功");

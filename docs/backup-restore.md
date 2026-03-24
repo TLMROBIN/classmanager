@@ -5,7 +5,8 @@
 这套方案只做低风险的一期改造：
 
 - 不修改 `server.js` 的请求处理链路
-- 不改前端同步、快照、本地缓存逻辑
+- 不改前端与服务器的同步链路
+- 前端仍保留浏览器内快照功能，但不再依赖本地缓存做离线恢复
 - 不直接复制运行中的 `database/classmanager.db`
 - 只通过独立脚本生成旁路备份
 
@@ -149,6 +150,24 @@ crontab ops/cron/classmanager-backup.cron
 ```
 
 ### 使用 `systemd --user` 模板
+
+推荐直接执行仓库自带安装脚本：
+
+```bash
+./ops/systemd/user/install-classmanager-backup-timers.sh
+```
+
+脚本会自动：
+
+- 把 `ops/systemd/user/` 下的备份相关 unit 渲染到 `~/.config/systemd/user/`
+- 自动替换 `WorkingDirectory`
+- 执行 `systemctl --user daemon-reload`
+- 启用并启动以下 timer：
+  - `classmanager-backup.timer`
+  - `classmanager-backup-verify.timer`
+  - `classmanager-backup-freshness.timer`
+
+如需手工安装，也可以按下面步骤执行：
 
 1. 打开以下文件并修改 `WorkingDirectory`：
    - `ops/systemd/user/classmanager-backup.service`

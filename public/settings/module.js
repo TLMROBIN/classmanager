@@ -14,7 +14,6 @@
             getGroupsConfig,
             getDormsConfig,
             getScheduleConfig,
-            clearStorage,
             isAdminAuthed,
             clearAdminAuth,
             setAdminAuthUntil,
@@ -53,7 +52,6 @@
             !getGroupsConfig ||
             !getDormsConfig ||
             !getScheduleConfig ||
-            !clearStorage ||
             !isAdminAuthed ||
             !clearAdminAuth ||
             !setAdminAuthUntil ||
@@ -84,10 +82,6 @@
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
-        const [desktopConfig, setDesktopConfig] = useState(null);
-        const [desktopStatus, setDesktopStatus] = useState(null);
-        const [desktopPing, setDesktopPing] = useState(null);
-        const [desktopBusy, setDesktopBusy] = useState(false);
         const getReportRange = (days) => {
             const end = getTodayStr();
             const start = new Date(getNow());
@@ -185,96 +179,6 @@
         };
 
         const historySource = Array.isArray(history) ? history : [];
-
-        useEffect(() => {
-            if (!window.desktopApi) return;
-            window.desktopApi.getConfig().then(cfg => setDesktopConfig(cfg || { serverUrl: "", preferredMode: "auto" }));
-            window.desktopApi.getStatus().then(setDesktopStatus);
-        }, []);
-
-        const modeLabel = (mode) => ({ online: '在线', offline: '离线', auto: '自动' }[mode] || '未知');
-
-        const handleDesktopSave = async () => {
-            if (!window.desktopApi || !desktopConfig) return;
-            setDesktopBusy(true);
-            const next = { ...desktopConfig, serverUrl: (desktopConfig.serverUrl || "").trim() };
-            try {
-                const saved = await window.desktopApi.setConfig(next);
-                setDesktopConfig(saved);
-                const status = await window.desktopApi.getStatus();
-                setDesktopStatus(status);
-            } finally {
-                setDesktopBusy(false);
-            }
-        };
-
-        const handleDesktopPing = async () => {
-            if (!window.desktopApi || !desktopConfig) return;
-            const url = (desktopConfig.serverUrl || "").trim();
-            if (!url) {
-                setDesktopPing({ ok: false, text: "请先填写服务器地址" });
-                return;
-            }
-            setDesktopBusy(true);
-            setDesktopPing(null);
-            const ok = await window.desktopApi.pingServer(url);
-            setDesktopPing({ ok, text: ok ? "连接正常" : "连接失败" });
-            setDesktopBusy(false);
-        };
-
-        const saveOfflineSnapshot = async () => {
-            const nowTs = getNow().getTime();
-            const normalizedStudentProfiles = buildNormalizedStudentProfiles(studentProfiles, students);
-            let att = {};
-            try {
-                const raw = getStorageItem('attendance_records');
-                if (raw) att = JSON.parse(raw);
-            } catch (_) {}
-            const fullData = {
-                students,
-                history,
-                config,
-                attendanceRecords: att,
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle,
-                examArchives,
-                battleSnapshots,
-                studentProfiles: normalizedStudentProfiles
-            };
-            const payload = { ts: nowTs, data: fullData };
-            if (window.desktopApi && typeof window.desktopApi.setOfflineSnapshot === 'function') {
-                await window.desktopApi.setOfflineSnapshot(payload);
-            } else {
-                setStorageItem('cm_offline_snapshot', JSON.stringify(payload));
-            }
-        };
-
-        const handleDesktopMode = async (mode) => {
-            if (!window.desktopApi) return;
-            if (mode === 'online') {
-                const url = (desktopConfig?.serverUrl || "").trim();
-                if (!url) {
-                    alert("请先填写服务器地址");
-                    return;
-                }
-            }
-            if (mode === 'offline') {
-                await saveOfflineSnapshot();
-            }
-            setDesktopBusy(true);
-            const status = await window.desktopApi.setMode(mode);
-            setDesktopStatus(status);
-            setDesktopBusy(false);
-        };
 
         const STUDENT_IMPORT_HEADERS = ["姓名", "性别", "小组", "职位", "宿舍"];
         const getStudentImportArchitecture = () => {
@@ -568,74 +472,6 @@
         }
 
         // 验证通过后的功能逻辑
-        const downloadBackup = () => {
-            const normalizedStudentProfiles = buildNormalizedStudentProfiles(studentProfiles, students);
-            let latestAttendance = attendanceRecords;
-            try {
-                const saved = getStorageItem('attendance_records');
-                if (saved) latestAttendance = JSON.parse(saved);
-            } catch (_) {}
-            const fullData = {
-                students, history, config: sanitizeStoredConfig(config),
-                attendance_records: latestAttendance || {},
-                class_treasure_data: { treasures, storage, logs },
-                quotes: quotes,
-                battle: battle,
-                examArchives: examArchives,
-                battleSnapshots: battleSnapshots,
-                studentProfiles: normalizedStudentProfiles
-            };
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullData));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "class_full_backup_" + getTodayStr() + ".json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-        };
-
-        const handleImportJSON = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const data = JSON.parse(event.target.result);
-                    if (confirm("确定要恢复全量备份吗？当前数据将被覆盖！")) {
-                        const importedTreasureList = Array.isArray(data?.class_treasure_data?.treasures)
-                            ? data.class_treasure_data.treasures
-                            : getLegacyTreasureList(data.config);
-                        if (data.students) setStudents(data.students);
-                        if (hasStudentProfilesInData(data)) setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
-                        if (data.history) setHistory(data.history);
-                        if (data.config) {
-                            const merged = getSystemConfig({ systemConfig: data.config.systemConfig || {} });
-                            setConfigSafe({ ...data.config, systemConfig: merged });
-                            if (Array.isArray(merged.quotes)) setQuotes(merged.quotes);
-                        }
-                        if (data.attendance_records) {
-                            setAttendanceRecords(data.attendance_records);
-                            setStorageItem('attendance_records', JSON.stringify(data.attendance_records));
-                        }
-                        if (data.class_treasure_data) {
-                            if (Array.isArray(importedTreasureList)) setTreasures(importedTreasureList);
-                            setStorage(data.class_treasure_data.storage || {});
-                            setLogs(data.class_treasure_data.logs || []);
-                        } else if (Array.isArray(importedTreasureList)) {
-                            setTreasures(importedTreasureList);
-                        }
-                        if (data.quotes) setQuotes(data.quotes);
-                        if (data.battle) setBattle(battleNormalize(data.battle));
-                        if (data.examArchives) setExamArchives(normalizeExamArchives(data.examArchives, data.battle || battle));
-                        if (data.battleSnapshots) setBattleSnapshots(normalizeBattleSnapshots(data.battleSnapshots));
-                        alert("恢复成功！");
-                    }
-                } catch (err) { alert("文件格式错误"); }
-            };
-            reader.readAsText(file);
-            e.target.value = '';
-        };
-
         const getSnapshots = () => {
             try {
                 const s = getStorageItem('class_manager_snapshots');
@@ -766,14 +602,12 @@
             });
             setStudents(newStudents);
 
-            let att = {};
-            try { const r = getStorageItem('attendance_records'); if (r) att = JSON.parse(r); } catch (_) {}
             const fullData = {
                 students: newStudents,
                 studentProfiles,
                 history,
                 config,
-                attendanceRecords: att,
+                attendanceRecords: attendanceRecords || {},
                 treasures,
                 storage,
                 logs,
@@ -816,14 +650,12 @@
             });
             setStudents(newStudents);
 
-            let att = {};
-            try { const r = getStorageItem('attendance_records'); if (r) att = JSON.parse(r); } catch (_) {}
             const fullData = {
                 students: newStudents,
                 studentProfiles,
                 history,
                 config,
-                attendanceRecords: att,
+                attendanceRecords: attendanceRecords || {},
                 treasures,
                 storage,
                 logs,
@@ -988,13 +820,6 @@
             applySystemConfig(JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG)));
             setTreasures(DEFAULT_SYSTEM_CONFIG.treasures || []);
             alert("系统配置已重置");
-        };
-
-        const handleReset = () => {
-            if (confirm("危险操作：确定要清空所有数据吗？此操作不可逆！")) { 
-                clearStorage(); 
-                location.reload(); 
-            }
         };
 
         const ensureExamArchivesModule = () => {
@@ -1169,48 +994,6 @@
                         )
                 )
             ),
-            window.desktopApi && h("div", { className: "border-t pt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-2" }, "🖥️ 桌面端连接"),
-                !desktopConfig ? h("div", { className: "text-gray-400 text-sm" }, "正在加载桌面端配置...") : h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
-                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
-                        h("div", null,
-                            h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "服务器地址"),
-                            h("input", {
-                                type: "text",
-                                className: "w-full border rounded-lg p-2 text-sm",
-                                value: desktopConfig.serverUrl || "",
-                                onChange: e => setDesktopConfig({ ...desktopConfig, serverUrl: e.target.value }),
-                                placeholder: "http://127.0.0.1:3000"
-                            })
-                        ),
-                        h("div", null,
-                            h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "连接偏好"),
-                            h("select", {
-                                className: "w-full border rounded-lg p-2 text-sm",
-                                value: desktopConfig.preferredMode || "auto",
-                                onChange: e => setDesktopConfig({ ...desktopConfig, preferredMode: e.target.value })
-                            }, [
-                                h("option", { value: "auto" }, "自动"),
-                                h("option", { value: "online" }, "强制在线"),
-                                h("option", { value: "offline" }, "强制离线")
-                            ])
-                        )
-                    ),
-                    h("div", { className: "flex flex-wrap gap-2" },
-                        h("button", { onClick: handleDesktopPing, disabled: desktopBusy, className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100 disabled:opacity-50" }, "测试连接"),
-                        h("button", { onClick: handleDesktopSave, disabled: desktopBusy, className: "px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50" }, "保存并应用"),
-                        h("button", { onClick: () => handleDesktopMode('online'), disabled: desktopBusy, className: "px-3 py-2 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50" }, "切换在线"),
-                        h("button", { onClick: () => handleDesktopMode('offline'), disabled: desktopBusy, className: "px-3 py-2 bg-gray-700 text-white rounded text-xs hover:bg-gray-800 disabled:opacity-50" }, "切换离线")
-                    ),
-                    h("div", { className: "text-xs text-gray-500 flex flex-wrap gap-4" },
-                        h("span", null, `当前模式：${modeLabel(desktopStatus?.mode)}`),
-                        h("span", null, `连接偏好：${modeLabel(desktopConfig.preferredMode)}`),
-                        h("span", null, `服务器：${desktopConfig.serverUrl || "未设置"}`)
-                    ),
-                    desktopPing && h("div", { className: `text-xs font-medium ${desktopPing.ok ? "text-green-600" : "text-red-600"}` }, desktopPing.text)
-                )
-            ),
-            h("div", { className: "border-t pt-6" }, h("h3", { className: "font-bold text-gray-700 mb-4" }, "📦 系统全量备份 (JSON)"), h("div", { className: "flex gap-4" }, h("button", { onClick: downloadBackup, className: "flex-1 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 font-bold flex items-center justify-center gap-2" }, h(Icon, { name: "download" }), "下载全量备份"), h("div", { className: "flex-1 relative py-3 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 font-bold flex items-center justify-center gap-2 cursor-pointer" }, h(Icon, { name: "upload" }), "恢复全量备份", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".json", onChange: handleImportJSON })))),
             h("div", { className: "border-t pt-6" },
                 h("h3", { className: "font-bold text-gray-700 mb-2" }, "🕐 数据快照 (自动 + 手动，最多 10 个)"),
                 h("p", { className: "text-gray-500 text-sm mb-3" }, "系统每天 22:30 后自动保存快照；若错过会在下次打开时补生成。也可手动生成。"),
@@ -1688,8 +1471,7 @@
                         )
                     )
                 )
-            ),
-            h("div", { className: "border-t pt-6 text-center" }, h("button", { onClick: handleReset, className: "text-red-500 text-sm hover:underline hover:bg-red-50 px-4 py-2 rounded" }, "危险区域：清空重置所有数据"))
+            )
         );
     };
 

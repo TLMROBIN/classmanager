@@ -670,15 +670,6 @@ const INITIAL_TREASURES = [
             localStorage.setItem(key, value);
         } catch (_) {}
     };
-    const clearStorage = () => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                window.__CM_TEST_STORAGE__ = {};
-                return;
-            }
-            localStorage.clear();
-        } catch (_) {}
-    };
     const snapshotStorage = () => {
         const store = {};
         try {
@@ -965,8 +956,6 @@ const INITIAL_TREASURES = [
             getNow,
             getDateString,
             getTodayStr,
-            getStorageItem,
-            setStorageItem,
             timeToMinutes,
             getSystemConfig,
             getScheduleConfig,
@@ -1022,7 +1011,6 @@ const INITIAL_TREASURES = [
             getGroupsConfig,
             getDormsConfig,
             getScheduleConfig,
-            clearStorage,
             isAdminAuthed,
             clearAdminAuth,
             setAdminAuthUntil,
@@ -1169,14 +1157,14 @@ const INITIAL_TREASURES = [
         const [studentProfiles, setStudentProfiles] = useState(() => buildNormalizedStudentProfiles());
         const [history, setHistory] = useState([]);
         const [attendanceRecords, setAttendanceRecords] = useState({});
-        const [treasures, setTreasures] = useState([]);
+        const [treasures, setTreasures] = useState(() => resolveTreasuresData(undefined, {}));
         const [storage, setStorage] = useState({});
         const [logs, setLogs] = useState([]);
         const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, teamBaseExamId: '', settleExamId: '' });
         const [examArchives, setExamArchives] = useState(() => normalizeExamArchives());
         const [battleSnapshots, setBattleSnapshots] = useState(() => normalizeBattleSnapshots());
         // NEW: Quotes state
-        const [quotes, setQuotes] = useState([]);
+        const [quotes, setQuotes] = useState(() => window.DEFAULT_QUOTES);
         const [messages, setMessages] = useState([]); // Add messages state
         const [teacherMessages, setTeacherMessages] = useState([]); // Add teacher messages state
         // NEW: Treasure advanced states
@@ -1303,11 +1291,9 @@ const INITIAL_TREASURES = [
         // 自动刷新（定时/切屏）仅当 !isSaving && !isDirty 时才拉取并覆盖；手动刷新不受限。
         const isSavingRef = useRef(false);
         const isDirtyRef = useRef(false);
-        const offlineHandledRef = useRef(false);
         const retryTimerRef = useRef(null);
         const serverMetaRef = useRef({ updatedAt: 0 });
         const initialServerSyncDoneRef = useRef(!getApiUrl());
-        const OFFLINE_SNAPSHOT_KEY = 'cm_offline_snapshot';
         const RETRY_CONNECT_MS = 10 * 60 * 1000;
 
         const getDeviceId = () => {
@@ -1320,49 +1306,9 @@ const INITIAL_TREASURES = [
             return id;
         };
 
-        const readOfflineSnapshot = async () => {
-            if (window.desktopApi && typeof window.desktopApi.getOfflineSnapshot === 'function') {
-                const snap = await window.desktopApi.getOfflineSnapshot();
-                return snap && Object.keys(snap).length ? snap : null;
-            }
-            const raw = getStorageItem(OFFLINE_SNAPSHOT_KEY);
-            if (!raw) return null;
-            try {
-                const parsed = JSON.parse(raw);
-                return parsed && Object.keys(parsed).length ? parsed : null;
-            } catch (_) {
-                return null;
-            }
-        };
-
-        const writeOfflineSnapshot = (payload) => {
-            if (window.desktopApi && typeof window.desktopApi.setOfflineSnapshot === 'function') {
-                window.desktopApi.setOfflineSnapshot(payload);
-                return;
-            }
-            setStorageItem(OFFLINE_SNAPSHOT_KEY, JSON.stringify(payload || {}));
-        };
-
-        const clearOfflineSnapshot = () => {
-            if (window.desktopApi && typeof window.desktopApi.clearOfflineSnapshot === 'function') {
-                window.desktopApi.clearOfflineSnapshot();
-                return;
-            }
-            setStorageItem(OFFLINE_SNAPSHOT_KEY, "");
-        };
-
-        const readLocalTreasureDomain = useCallback(() => {
-            try {
-                const raw = getStorageItem('class_treasure_data');
-                return raw ? JSON.parse(raw) : null;
-            } catch (_) {
-                return null;
-            }
-        }, []);
-
         const protectTreasureDomainForPersistence = useCallback((nextDomain, options = {}) => {
-            return protectTreasureDomain(nextDomain, readLocalTreasureDomain, options);
-        }, [readLocalTreasureDomain]);
+            return protectTreasureDomain(nextDomain, () => ({ treasures, storage, logs }), options);
+        }, [treasures, storage, logs]);
 
         const markServerMeta = (updatedAt) => {
             const ts = Number(updatedAt) || 0;
@@ -1435,15 +1381,10 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.config)) setConfig(sanitizeStoredConfig(normalized.config || {}));
 
             if (use(normalized.flags.attendanceRecords)) {
-                let att = normalized.attendanceRecords || {};
-                if (options.mergeAttendance) {
-                    try {
-                        const saved = getStorageItem('attendance_records');
-                        if (saved) att = mergeAttendanceRecords(JSON.parse(saved), att);
-                    } catch (_) {}
-                }
+                const att = options.mergeAttendance
+                    ? mergeAttendanceRecords(attendanceRecords || {}, normalized.attendanceRecords || {})
+                    : (normalized.attendanceRecords || {});
                 setAttendanceRecords(att);
-                setStorageItem('attendance_records', JSON.stringify(att));
             }
 
             if (use(normalized.flags.treasures) || hasIncomingLegacyTreasureConfig) {
@@ -1461,43 +1402,6 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.battle)) setBattle(battleNormalize(normalized.battle || {}));
             if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
             if (use(normalized.flags.battleSnapshots)) setBattleSnapshots(normalizeBattleSnapshots(normalized.battleSnapshots));
-        };
-
-        const mergeFullData = (remoteData, localData) => {
-            const remote = normalizeFullData(remoteData);
-            const local = normalizeFullData(localData);
-            const remoteTs = Number(remote.__meta.updatedAt) || 0;
-            const localTs = Number(local.__meta.updatedAt) || 0;
-            const mergedStudents = mergeArrayByKey(remote.students, local.students);
-            const mergedStudentProfiles = mergeStudentProfilesForData(remote, local, mergedStudents);
-            return {
-                students: mergedStudents,
-                studentProfiles: mergedStudentProfiles,
-                history: mergeArrayByKey(remote.history, local.history),
-                config: sanitizeStoredConfig({ ...(remote.config || {}), ...(local.config || {}) }),
-                attendanceRecords: mergeAttendanceRecords(remote.attendanceRecords || {}, local.attendanceRecords || {}),
-                treasures: mergeArrayByKey(remote.treasures, local.treasures),
-                storage: { ...(remote.storage || {}), ...(local.storage || {}) },
-                logs: mergeArrayByKey(remote.logs, local.logs),
-                quotes: (local.quotes && local.quotes.length > 0) ? local.quotes : remote.quotes,
-                messages: mergeArrayByKey(remote.messages, local.messages),
-                teacherMessages: mergeArrayByKey(remote.teacherMessages, local.teacherMessages),
-                redemptionHistory: { ...(remote.redemptionHistory || {}), ...(local.redemptionHistory || {}) },
-                dailyRedemptionCounts: { ...(remote.dailyRedemptionCounts || {}), ...(local.dailyRedemptionCounts || {}) },
-                dailyUsageCounts: { ...(remote.dailyUsageCounts || {}), ...(local.dailyUsageCounts || {}) },
-                tasks: mergeArrayByKey(remote.tasks, local.tasks),
-                battle: local.battle || remote.battle,
-                examArchives: normalizeExamArchives(
-                    (local.examArchives && Array.isArray(local.examArchives.exams) && local.examArchives.exams.length > 0)
-                        ? local.examArchives
-                        : remote.examArchives,
-                    local.battle?.exams?.length ? local.battle : remote.battle
-                ),
-                battleSnapshots: mergeArrayByKey(remote.battleSnapshots, local.battleSnapshots)
-                    .sort((a, b) => Number(b?.ts || 0) - Number(a?.ts || 0))
-                    .slice(0, 20),
-                __meta: { updatedAt: Math.max(remoteTs, localTs), deviceId: local.__meta.deviceId || remote.__meta.deviceId }
-            };
         };
 
         const enterTestMode = useCallback(() => {
@@ -1562,11 +1466,9 @@ const INITIAL_TREASURES = [
         }, [testMode]);
 
         const buildCurrentFullData = useCallback((overrides = {}) => {
-            let att = attendanceRecords || {};
-            try {
-                const raw = getStorageItem('attendance_records');
-                if (raw) att = JSON.parse(raw);
-            } catch (_) {}
+            const att = Object.prototype.hasOwnProperty.call(overrides, 'attendanceRecords')
+                ? overrides.attendanceRecords
+                : (attendanceRecords || {});
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
             const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
             const rawNextConfig = Object.prototype.hasOwnProperty.call(overrides, 'config') ? overrides.config : config;
@@ -1598,52 +1500,7 @@ const INITIAL_TREASURES = [
             };
         }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
 
-        const writeLocalCaches = useCallback((fullDataWithMeta) => {
-            const {
-                students,
-                studentProfiles,
-                history,
-                config,
-                attendanceRecords,
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle,
-                examArchives,
-                battleSnapshots,
-                __meta
-            } = fullDataWithMeta;
-            const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
-            const safeConfig = sanitizeStoredConfig(config);
-            setStorageItem('class_manager_data', JSON.stringify({
-                students,
-                studentProfiles,
-                history,
-                config: safeConfig,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle,
-                examArchives,
-                battleSnapshots,
-                __meta
-            }));
-            setStorageItem('attendance_records', JSON.stringify(attendanceRecords || {}));
-            setStorageItem('class_treasure_data', JSON.stringify(safeTreasureDomain));
-        }, [protectTreasureDomainForPersistence]);
-
-        const savePayloadToServer = useCallback((payload, fullDataWithMeta, nowTs) => {
+        const savePayloadToServer = useCallback((payload, nowTs) => {
             if (window.__CM_TEST_MODE__) {
                 setSyncStatus('saved');
                 isSavingRef.current = false;
@@ -1651,10 +1508,9 @@ const INITIAL_TREASURES = [
             }
             const apiUrl = getApiUrl();
             if (!apiUrl) {
-                setSyncStatus('unsaved');
-                writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
+                setSyncStatus('error');
                 isSavingRef.current = false;
-                return Promise.resolve({ success: true, offline: true, updatedAt: nowTs });
+                return Promise.reject(new Error('SERVER_UNAVAILABLE'));
             }
             return fetch(apiUrl, {
                 method: 'POST',
@@ -1681,18 +1537,16 @@ const INITIAL_TREASURES = [
                     const savedUpdatedAt = Number(data?.updatedAt) || nowTs;
                     markServerMeta(savedUpdatedAt);
                     setSyncStatus('saved');
-                    clearOfflineSnapshot();
                     isSavingRef.current = false;
                     return { success: true, updatedAt: savedUpdatedAt };
                 })
                 .catch((err) => {
                     if (err?.message === 'DATA_CONFLICT') throw err;
                     setSyncStatus('unsaved');
-                    writeOfflineSnapshot({ ts: nowTs, data: fullDataWithMeta });
                     isSavingRef.current = false;
                     throw err;
                 });
-        }, [writeLocalCaches]);
+        }, []);
 
         const persistDataPatch = useCallback((partialData) => {
             isSavingRef.current = true;
@@ -1730,7 +1584,6 @@ const INITIAL_TREASURES = [
                     deviceId: getDeviceId()
                 }
             };
-            writeLocalCaches(fullDataWithMeta);
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'config')) {
                 payload.config = sanitizeStoredConfig(partialData.config);
@@ -1744,10 +1597,10 @@ const INITIAL_TREASURES = [
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'logs')) {
                 payload.logs = safeTreasureDomain.logs;
             }
-            return savePayloadToServer(payload, fullDataWithMeta, nowTs);
-        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches, protectTreasureDomainForPersistence]);
+            return savePayloadToServer(payload, nowTs);
+        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, protectTreasureDomainForPersistence]);
 
-        /** 统一持久化：写 localStorage 并可选 POST。所有需立即落盘的操作均经此函数，避免分散写入导致覆盖。 */
+        /** 统一持久化：将当前完整数据写入服务器。 */
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
@@ -1783,9 +1636,8 @@ const INITIAL_TREASURES = [
                     deviceId: getDeviceId()
                 }
             };
-            writeLocalCaches(fullDataWithMeta);
-            return savePayloadToServer(fullDataWithMeta, fullDataWithMeta, nowTs);
-        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches, protectTreasureDomainForPersistence]);
+            return savePayloadToServer(fullDataWithMeta, nowTs);
+        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, protectTreasureDomainForPersistence]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -1795,8 +1647,8 @@ const INITIAL_TREASURES = [
             const apiUrl = getApiUrl();
             if (!apiUrl) {
                 if (!isAuto) {
-                    console.warn("Manual refresh ignored: Non-HTTP environment.");
-                    alert("当前为本地模式（非HTTP环境），无法连接服务器。");
+                    console.warn("Manual refresh ignored: unsupported runtime environment.");
+                    alert("当前环境无法连接服务器。");
                 }
                 return;
             }
@@ -1819,58 +1671,13 @@ const INITIAL_TREASURES = [
                     if (window.__handleAuthError__(res)) return;
                     return res.json();
                 })
-                .then(async data => {
+                .then(data => {
                     if (!data) return;
                     if (data && Object.keys(data).length > 0) {
-                        const offlineSnap = await readOfflineSnapshot();
                         const normalized = normalizeFullData(data);
                         const remoteTs = Number(normalized.__meta.updatedAt) || 0;
                         markServerMeta(remoteTs);
-                        const offlineTs = Number(offlineSnap?.ts) || 0;
-                        
-                        if (offlineSnap && !offlineHandledRef.current && offlineTs > remoteTs) {
-                            offlineHandledRef.current = true;
-                            setModal({
-                                open: true,
-                                title: "检测到离线数据",
-                                type: "info",
-                                onConfirm: null,
-                                content: h("div", { className: "space-y-4 text-sm text-gray-600" },
-                                    h("div", null, `离线时间：${new Date(offlineTs).toLocaleString()}`),
-                                    h("div", null, `服务器时间：${remoteTs ? new Date(remoteTs).toLocaleString() : "未知"}`),
-                                    h("div", { className: "flex flex-col gap-2" },
-                                        h("button", {
-                                            onClick: () => {
-                                                applyFullData(offlineSnap.data, { force: true, mergeAttendance: false });
-                                                persistData(offlineSnap.data).then(() => clearOfflineSnapshot());
-                                                setModal(m => ({ ...m, open: false }));
-                                            },
-                                            className: "px-3 py-2 bg-blue-600 text-white rounded"
-                                        }, "使用本地覆盖服务器"),
-                                        h("button", {
-                                            onClick: () => {
-                                                applyFullData(data, { force: true, mergeAttendance: true });
-                                                clearOfflineSnapshot();
-                                                setModal(m => ({ ...m, open: false }));
-                                            },
-                                            className: "px-3 py-2 bg-gray-200 text-gray-700 rounded"
-                                        }, "使用服务器覆盖本地"),
-                                        h("button", {
-                                            onClick: () => {
-                                                const merged = mergeFullData(data, offlineSnap.data);
-                                                applyFullData(merged, { force: true, mergeAttendance: false });
-                                                persistData(merged).then(() => clearOfflineSnapshot());
-                                                setModal(m => ({ ...m, open: false }));
-                                            },
-                                            className: "px-3 py-2 bg-green-600 text-white rounded"
-                                        }, "合并并同步")
-                                    )
-                                )
-                            });
-                        } else {
-                            applyFullData(data, { mergeAttendance: true });
-                            clearOfflineSnapshot();
-                        }
+                        applyFullData(data, { mergeAttendance: true });
                         setSyncStatus('success');
                         if(!isAuto) alert("数据已从服务器刷新！");
                         console.log(`[${getNow().toLocaleTimeString()}] 数据同步完成`);
@@ -1880,37 +1687,6 @@ const INITIAL_TREASURES = [
                         }
                     } else {
                         initialServerSyncDoneRef.current = true;
-                        const offlineSnap = await readOfflineSnapshot();
-                        if (offlineSnap && !offlineHandledRef.current) {
-                            offlineHandledRef.current = true;
-                            setModal({
-                                open: true,
-                                title: "服务器无数据",
-                                type: "info",
-                                onConfirm: null,
-                                content: h("div", { className: "space-y-4 text-sm text-gray-600" },
-                                    h("div", null, "检测到本地离线数据，是否上传到服务器？"),
-                                    h("div", { className: "flex flex-col gap-2" },
-                                        h("button", {
-                                            onClick: () => {
-                                                applyFullData(offlineSnap.data, { force: true, mergeAttendance: false });
-                                                persistData(offlineSnap.data).then(() => clearOfflineSnapshot());
-                                                setModal(m => ({ ...m, open: false }));
-                                            },
-                                            className: "px-3 py-2 bg-blue-600 text-white rounded"
-                                        }, "上传本地数据"),
-                                        h("button", {
-                                            onClick: () => {
-                                                clearOfflineSnapshot();
-                                                setModal(m => ({ ...m, open: false }));
-                                            },
-                                            className: "px-3 py-2 bg-gray-200 text-gray-700 rounded"
-                                        }, "放弃本地数据")
-                                    )
-                                )
-                            });
-                            return;
-                        }
                         if(!isAuto) alert("服务器无数据或数据为空。");
                     }
                 })
@@ -1926,62 +1702,9 @@ const INITIAL_TREASURES = [
                     }
                 });
         }, []);
-            
-        const loadFromLocal = () => {
-            const savedData = getStorageItem('class_manager_data');
-            if (savedData) {
-                const data = JSON.parse(savedData);
-                setStudents(data.students || []);
-                setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
-                setHistory(data.history || []);
-                const rawSavedConfig = data.config || {};
-                const savedConfig = sanitizeStoredConfig(rawSavedConfig);
-                setConfig({
-                    duty: { mon: ["", ""], tue: [""], wed: [""], thu: [""], fri: [""] },
-                    commissioners: getDefaultCommissioners({ systemConfig: rawSavedConfig.systemConfig }),
-                    lastWageDate: "",
-                    frozen: false,
-                    systemConfig: savedConfig.systemConfig || undefined,
-                    ...savedConfig
-                });
-                setQuotes(data.quotes && data.quotes.length > 0 ? data.quotes : window.DEFAULT_QUOTES);
-                if(data.messages) setMessages(data.messages);
-                if(data.teacherMessages) setTeacherMessages(data.teacherMessages);
-                if(data.redemptionHistory) setRedemptionHistory(data.redemptionHistory);
-                if(data.dailyRedemptionCounts) setDailyRedemptionCounts(data.dailyRedemptionCounts);
-                if(data.dailyUsageCounts) setDailyUsageCounts(data.dailyUsageCounts);
-                if(data.tasks) setTasks(data.tasks);
-                if(data.battle) setBattle(battleNormalize(data.battle));
-                setExamArchives(normalizeExamArchives(data.examArchives, data.battle));
-                setBattleSnapshots(normalizeBattleSnapshots(data.battleSnapshots));
-            } else {
-                 // Initialize defaults
-                setStudents([]);
-                setStudentProfiles(buildNormalizedStudentProfiles());
-                setQuotes(window.DEFAULT_QUOTES);
-                setExamArchives(normalizeExamArchives());
-                setBattleSnapshots(normalizeBattleSnapshots());
-            }
-                
-            const savedAtt = getStorageItem('attendance_records');
-            if (savedAtt) setAttendanceRecords(JSON.parse(savedAtt));
-                
-            const savedTreasures = getStorageItem('class_treasure_data');
-            if (savedTreasures) {
-                const data = JSON.parse(savedTreasures);
-                const savedConfig = savedData ? (JSON.parse(savedData).config || {}) : {};
-                setTreasures(resolveTreasuresData(data.treasures, savedConfig));
-                setStorage(data.storage || {});
-                setLogs(data.logs || []);
-            } else {
-                const savedConfig = savedData ? (JSON.parse(savedData).config || {}) : config;
-                setTreasures(resolveTreasuresData(undefined, savedConfig));
-            }
-        };
 
         useEffect(() => {
-            // 1. Initial Load
-            loadFromLocal(); 
+            // 1. Initial sync
             setLocalHydrationDone(true);
             fetchFromServer(true); // Initial server fetch (silent)
 
@@ -2037,11 +1760,6 @@ const INITIAL_TREASURES = [
                 if (!hasData) return;
 
                 // 收集快照数据
-                let att = {};
-                try {
-                    const raw = getStorageItem('attendance_records');
-                    if (raw) att = JSON.parse(raw);
-                } catch (_) {}
                 const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
 
                 const fullData = {
@@ -2056,7 +1774,7 @@ const INITIAL_TREASURES = [
                     dailyRedemptionCounts: dailyRedemptionCounts || {},
                     dailyUsageCounts: dailyUsageCounts || {},
                     tasks: tasks || [],
-                    attendanceRecords: att,
+                    attendanceRecords: attendanceRecords || {},
                     treasures: safeTreasureDomain.treasures,
                     storage: safeTreasureDomain.storage,
                     logs: safeTreasureDomain.logs,
@@ -2102,7 +1820,7 @@ const INITIAL_TREASURES = [
         useEffect(() => {
             const systemConfig = getSystemConfig(config);
             const className = systemConfig.className || "班级自在管理系统";
-            document.title = className + " (局域网版)";
+            document.title = className;
         }, [config]);
 
         const applyPenaltyDecay = useCallback(() => {
@@ -2162,11 +1880,6 @@ const INITIAL_TREASURES = [
                 const label = `${today} ${timeStr}${note}`;
 
                 // 收集当前内存态数据
-                let att = {};
-                try {
-                    const raw = getStorageItem('attendance_records');
-                    if (raw) att = JSON.parse(raw);
-                } catch (_) {}
                 const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
 
                 const fullData = {
@@ -2181,7 +1894,7 @@ const INITIAL_TREASURES = [
                     dailyRedemptionCounts: dailyRedemptionCounts || {},
                     dailyUsageCounts: dailyUsageCounts || {},
                     tasks: tasks || [],
-                    attendanceRecords: att,
+                    attendanceRecords: attendanceRecords || {},
                     treasures: safeTreasureDomain.treasures,
                     storage: safeTreasureDomain.storage,
                     logs: safeTreasureDomain.logs,
@@ -2216,16 +1929,7 @@ const INITIAL_TREASURES = [
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
-                const previewData = buildCurrentFullData();
-                const nowTs = getNow().getTime();
-                writeLocalCaches({
-                    ...previewData,
-                    __meta: {
-                        updatedAt: nowTs,
-                        baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
-                        deviceId: getDeviceId()
-                    }
-                });
+                isDirtyRef.current = false;
                 return undefined;
             }
 
@@ -2240,23 +1944,14 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [localHydrationDone, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
+        }, [localHydrationDone, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData]);
 
         useEffect(() => {
             if (!localHydrationDone) return undefined;
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
-                const previewData = buildCurrentFullData();
-                const nowTs = getNow().getTime();
-                writeLocalCaches({
-                    ...previewData,
-                    __meta: {
-                        updatedAt: nowTs,
-                        baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
-                        deviceId: getDeviceId()
-                    }
-                });
+                isDirtyRef.current = false;
                 return undefined;
             }
 
@@ -2274,7 +1969,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveBattleDomain, 1200);
             return () => clearTimeout(timer);
-        }, [localHydrationDone, battle, examArchives, battleSnapshots, persistDataPatch, buildCurrentFullData, writeLocalCaches]);
+        }, [localHydrationDone, battle, examArchives, battleSnapshots, persistDataPatch]);
 
 
         // NEW Batch Update Function
@@ -2447,16 +2142,11 @@ const INITIAL_TREASURES = [
             setStudents(result.nextStudents);
             setHistory(result.nextHistory);
 
-            let att = {};
-            try {
-                const raw = getStorageItem('attendance_records');
-                if (raw) att = JSON.parse(raw);
-            } catch (_) {}
             const fullData = {
                 students: result.nextStudents,
                 history: result.nextHistory,
                 config,
-                attendanceRecords: att,
+                attendanceRecords: attendanceRecords || {},
                 treasures,
                 storage,
                 logs,
@@ -2473,6 +2163,10 @@ const INITIAL_TREASURES = [
             return true;
         };
 
+        const handleAttendanceRecordsChange = useCallback((nextRecords) => {
+            setAttendanceRecords(nextRecords || {});
+        }, []);
+
         return h("div", { className: "min-h-screen pb-20" },
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
@@ -2480,7 +2174,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onAttendanceRecordsChange: handleAttendanceRecordsChange, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
