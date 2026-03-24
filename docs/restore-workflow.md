@@ -16,7 +16,6 @@
 不适用于：
 
 - `database/dump.sql`
-- 浏览器 `localStorage` 快照
 
 ## 脚本入口
 

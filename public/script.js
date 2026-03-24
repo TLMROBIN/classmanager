@@ -1705,6 +1705,10 @@ const INITIAL_TREASURES = [
 
         useEffect(() => {
             // 1. Initial sync
+            try {
+                localStorage.removeItem('class_manager_snapshots');
+                localStorage.removeItem('class_manager_snapshot_last_date');
+            } catch (_) {}
             setLocalHydrationDone(true);
             fetchFromServer(true); // Initial server fetch (silent)
 
@@ -1735,86 +1739,6 @@ const INITIAL_TREASURES = [
             if (legacy.length === 0) return;
             setBattleSnapshots(legacy);
         }, [battleSnapshots.length]);
-
-        // 4. 每日自动快照（22:30后触发，或错过22:30时补生成）
-        useEffect(() => {
-            const runAutoSnapshot = () => {
-                const now = getNow();
-                const hour = now.getHours();
-                const minute = now.getMinutes();
-                const today = getTodayStr();
-                const lastKey = 'class_manager_snapshot_last_date';
-                const lastDate = getStorageItem(lastKey);
-
-                // 已经为今天生成过快照，跳过
-                if (lastDate === today) return;
-
-                // 判断是否在快照时间窗口内（22:30后），或者是否需要补生成
-                const isInWindow = (hour === 22 && minute >= 30) || hour >= 23;
-                const shouldCatchUp = lastDate && lastDate < today; // 错过了昨天或更早的快照
-
-                if (!isInWindow && !shouldCatchUp) return;
-
-                // 检查是否有数据
-                const hasData = (students && students.length > 0) || (history && history.length > 0);
-                if (!hasData) return;
-
-                // 收集快照数据
-                const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
-
-                const fullData = {
-                    students: students || [],
-                    studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
-                    history: history || [],
-                    config: sanitizeStoredConfig(config || {}),
-                    quotes: quotes || [],
-                    messages: messages || [],
-                    teacherMessages: teacherMessages || [],
-                    redemptionHistory: redemptionHistory || {},
-                    dailyRedemptionCounts: dailyRedemptionCounts || {},
-                    dailyUsageCounts: dailyUsageCounts || {},
-                    tasks: tasks || [],
-                    attendanceRecords: attendanceRecords || {},
-                    treasures: safeTreasureDomain.treasures,
-                    storage: safeTreasureDomain.storage,
-                    logs: safeTreasureDomain.logs,
-                    battle: battle || {},
-                    examArchives: examArchives || normalizeExamArchives(undefined, battle),
-                    battleSnapshots: battleSnapshots || []
-                };
-
-                const snapKey = 'class_manager_snapshots';
-                let list = [];
-                try {
-                    const s = getStorageItem(snapKey);
-                    if (s) list = JSON.parse(s);
-                } catch (_) {}
-
-                const id = getNow().getTime();
-                const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-                const label = shouldCatchUp && !isInWindow 
-                    ? `${today} ${timeStr} (补生成)` 
-                    : `${today} ${timeStr}`;
-                list.push({ id, ts: id, label, data: fullData });
-                if (list.length > 10) list = list.slice(-10);
-                setStorageItem(snapKey, JSON.stringify(list));
-                setStorageItem(lastKey, today);
-                console.log(`[自动快照] 已生成: ${label}`);
-            };
-
-            const t = setInterval(runAutoSnapshot, 60 * 1000);
-            // 延迟1秒执行，确保数据已加载
-            const initTimer = setTimeout(runAutoSnapshot, 1000);
-            const onVisible = () => runAutoSnapshot();
-            document.addEventListener('visibilitychange', onVisible);
-            window.addEventListener('focus', onVisible);
-            return () => {
-                clearInterval(t);
-                clearTimeout(initTimer);
-                document.removeEventListener('visibilitychange', onVisible);
-                window.removeEventListener('focus', onVisible);
-            };
-        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs, protectTreasureDomainForPersistence]);
 
         // 动态更新页面标题
         useEffect(() => {
@@ -1869,58 +1793,6 @@ const INITIAL_TREASURES = [
         useEffect(() => {
             applyPenaltyDecay();
         }, [applyPenaltyDecay]);
-
-        // 手动/自动快照生成函数
-        const createSnapshot = useCallback((options = {}) => {
-            try {
-                const now = getNow();
-                const today = getTodayStr();
-                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                const note = options.note || '';
-                const label = `${today} ${timeStr}${note}`;
-
-                // 收集当前内存态数据
-                const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
-
-                const fullData = {
-                    students: students || [],
-                    studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
-                    history: history || [],
-                    config: sanitizeStoredConfig(config || {}),
-                    quotes: quotes || [],
-                    messages: messages || [],
-                    teacherMessages: teacherMessages || [],
-                    redemptionHistory: redemptionHistory || {},
-                    dailyRedemptionCounts: dailyRedemptionCounts || {},
-                    dailyUsageCounts: dailyUsageCounts || {},
-                    tasks: tasks || [],
-                    attendanceRecords: attendanceRecords || {},
-                    treasures: safeTreasureDomain.treasures,
-                    storage: safeTreasureDomain.storage,
-                    logs: safeTreasureDomain.logs,
-                    battle: battle || {},
-                    examArchives: examArchives || normalizeExamArchives(undefined, battle),
-                    battleSnapshots: battleSnapshots || []
-                };
-
-                const snapKey = 'class_manager_snapshots';
-                let list = [];
-                try {
-                    const s = getStorageItem(snapKey);
-                    if (s) list = JSON.parse(s);
-                } catch (_) {}
-
-                const id = getNow().getTime();
-                list.push({ id, ts: id, label, data: fullData });
-                if (list.length > 10) list = list.slice(-10);
-                setStorageItem(snapKey, JSON.stringify(list));
-                console.log(`[快照] 已生成: ${label}`);
-                return true;
-            } catch (e) {
-                console.error('生成快照失败:', e);
-                return false;
-            }
-        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots, protectTreasureDomainForPersistence]);
 
 
         // --- 自动保存逻辑 (Debounced) ---
@@ -2250,7 +2122,6 @@ const INITIAL_TREASURES = [
                     tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
                     redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
                     battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef,
-                    createSnapshot,
                     testMode, enterTestMode, exitTestMode,
                     simTime, setSimTime, timeSpeed, setTimeSpeed
                 })

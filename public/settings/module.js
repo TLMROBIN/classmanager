@@ -78,10 +78,9 @@
             throw new Error('SettingsView dependencies are missing');
         }
 
-    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, createSnapshot, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
-        const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
         const getReportRange = (days) => {
             const end = getTodayStr();
             const start = new Date(getNow());
@@ -472,53 +471,6 @@
         }
 
         // 验证通过后的功能逻辑
-        const getSnapshots = () => {
-            try {
-                const s = getStorageItem('class_manager_snapshots');
-                return s ? JSON.parse(s) : [];
-            } catch (_) { return []; }
-        };
-
-        const handleRestoreSnapshot = () => {
-            const list = getSnapshots();
-            const snap = list.find(x => x.id === selectedSnapshotId);
-            if (!snap) {
-                alert("请先选择一个快照");
-                return;
-            }
-            if (!confirm(`确定将系统数据恢复为快照「${snap.label}」吗？当前数据将被覆盖！`)) return;
-            const d = snap.data;
-            const nextStudentProfiles = restoreStudentProfilesFromData(d, studentProfiles, students);
-            if (d.students) setStudents(d.students);
-            if (hasStudentProfilesInData(d)) setStudentProfiles(nextStudentProfiles);
-            if (d.history) setHistory(d.history);
-            if (d.config) setConfigSafe(d.config);
-            if (d.attendanceRecords) setAttendanceRecords(d.attendanceRecords);
-            if (d.treasures) setTreasures(d.treasures || []);
-            if (d.storage) setStorage(d.storage || {});
-            if (d.logs) setLogs(d.logs || []);
-            if (d.quotes) setQuotes(d.quotes || []);
-            if (d.messages) setMessages(d.messages || []);
-            if (d.teacherMessages) setTeacherMessages(d.teacherMessages || []);
-            if (d.redemptionHistory) setRedemptionHistory(d.redemptionHistory || {});
-            if (d.dailyRedemptionCounts) setDailyRedemptionCounts(d.dailyRedemptionCounts || {});
-            if (d.dailyUsageCounts) setDailyUsageCounts(d.dailyUsageCounts || {});
-            if (d.tasks) setTasks(d.tasks || []);
-            if (d.battle) setBattle(battleNormalize(d.battle));
-            if (d.examArchives) setExamArchives(normalizeExamArchives(d.examArchives, d.battle || battle));
-            if (d.battleSnapshots) setBattleSnapshots(normalizeBattleSnapshots(d.battleSnapshots));
-            if (typeof persistData === 'function') persistData({ ...d, studentProfiles: nextStudentProfiles });
-            setSelectedSnapshotId(null);
-            alert("已恢复为选中快照！");
-        };
-
-        const handleManualSnapshot = () => {
-            if (!confirm("确定立即生成一个手动快照吗？")) return;
-            const ok = typeof createSnapshot === 'function' ? createSnapshot({ note: '(手动)' }) : false;
-            if (ok) alert("已生成快照！");
-            else alert("生成快照失败，请稍后重试");
-        };
-
         const handleExportScoreExcel = () => {
             const data = students.map(s => ({
                 "姓名": s.name, 
@@ -993,25 +945,6 @@
                             }, "重试")
                         )
                 )
-            ),
-            h("div", { className: "border-t pt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-2" }, "🕐 数据快照 (自动 + 手动，最多 10 个)"),
-                h("p", { className: "text-gray-500 text-sm mb-3" }, "系统每天 22:30 后自动保存快照；若错过会在下次打开时补生成。也可手动生成。"),
-                h("button", { onClick: handleManualSnapshot, className: "mb-3 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium flex items-center gap-2" }, h(Icon, { name: "plus", size: 16 }), "立即生成快照"),
-                (() => {
-                    const list = getSnapshots().slice().sort((a, b) => b.ts - a.ts);
-                    if (list.length === 0) return h("div", { className: "text-gray-400 text-sm py-4" }, "暂无快照");
-                    return h("div", { className: "space-y-2" },
-                        h("div", { className: "max-h-48 overflow-y-auto border rounded-lg bg-gray-50 p-2 space-y-1" },
-                            list.map(s => h("label", { key: s.id, className: "flex items-center gap-2 p-2 rounded hover:bg-white cursor-pointer" },
-                                h("input", { type: "radio", name: "snapshot", checked: selectedSnapshotId === s.id, onChange: () => setSelectedSnapshotId(s.id) }),
-                                h("span", { className: "text-sm font-medium" }, s.label),
-                                h("span", { className: "text-gray-400 text-xs" }, new Date(s.ts).toLocaleString())
-                            ))
-                        ),
-                        h("button", { onClick: handleRestoreSnapshot, disabled: selectedSnapshotId == null, className: "mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium" }, "恢复为选中快照")
-                    );
-                })()
             ),
             h("div", { className: "border-t pt-6", style: { order: -1 } },
                 h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "settings" }), "⚙️ 系统配置"),
