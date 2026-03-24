@@ -38,14 +38,6 @@
         return true;
     };
 
-    const buildStudentMap = (students) => {
-        const map = new Map();
-        (Array.isArray(students) ? students : []).forEach(student => {
-            map.set(String(student.id), student);
-        });
-        return map;
-    };
-
     const parseNumericInput = (value) => {
         const parsed = parseFloat(value);
         return Number.isFinite(parsed) ? parsed : 0;
@@ -71,6 +63,24 @@
             DEFAULT_POINT_SCENE,
             DEFAULT_POINT_CATEGORY
         } = deps || {};
+        const selectors = window.OperationSelectors || {};
+        const builders = window.OperationBuilders || {};
+        const {
+            buildStudentMap,
+            getFilteredStudents,
+            getFilteredSelectedCount,
+            getReasonsByType,
+            getHomeworkSubjects,
+            getHomeworkDates,
+            getRecentHistory,
+            sanitizeIdSetByStudents
+        } = selectors;
+        const {
+            buildModalStudents,
+            buildBatchUpdates,
+            buildHomeworkUpdates,
+            buildHomeworkConfirmMessage
+        } = builders;
 
         if (
             !h ||
@@ -89,7 +99,19 @@
             !POINT_SCENES ||
             !POINT_CATEGORIES ||
             !DEFAULT_POINT_SCENE ||
-            !DEFAULT_POINT_CATEGORY
+            !DEFAULT_POINT_CATEGORY ||
+            !buildStudentMap ||
+            !getFilteredStudents ||
+            !getFilteredSelectedCount ||
+            !getReasonsByType ||
+            !getHomeworkSubjects ||
+            !getHomeworkDates ||
+            !getRecentHistory ||
+            !sanitizeIdSetByStudents ||
+            !buildModalStudents ||
+            !buildBatchUpdates ||
+            !buildHomeworkUpdates ||
+            !buildHomeworkConfirmMessage
         ) {
             throw new Error('OperationView dependencies are missing');
         }
@@ -459,36 +481,20 @@
 
             const groupsConfig = getGroupsConfig(config);
             const dormsConfig = getDormsConfig(config);
-            const reasons = getReasonsPreset(config).filter(reason => reason.type === opTabState);
+            const reasons = getReasonsByType(getReasonsPreset(config), opTabState);
             const subjectsConfig = getSubjectsConfig(config);
-            const homeworkSubjects = subjectsConfig.map(subject => subject.name);
+            const homeworkSubjects = getHomeworkSubjects(subjectsConfig);
             const studentMap = buildStudentMap(students);
             const historyList = Array.isArray(history) ? history : [];
-            const homeworkDates = (() => {
-                const now = getNow();
-                const day = now.getDay();
-                const daysToFriday = (5 - day + 7) % 7;
-                const friday = new Date(now);
-                friday.setDate(now.getDate() + daysToFriday);
-                const sunday = new Date(friday);
-                sunday.setDate(friday.getDate() - 5);
-                const list = [];
-                for (let i = 0; i < 6; i++) {
-                    const date = new Date(sunday);
-                    date.setDate(sunday.getDate() + i);
-                    list.push(getDateString(date));
-                }
-                return list;
-            })();
+            const homeworkDates = getHomeworkDates({ getNow, getDateString });
 
             useEffect(() => {
-                const validIdKeys = new Set((Array.isArray(students) ? students : []).map(student => String(student.id)));
                 setSelectedIds(prev => {
-                    const next = new Set(Array.from(prev).filter(id => validIdKeys.has(String(id))));
+                    const next = sanitizeIdSetByStudents(prev, students);
                     return setsAreEqual(prev, next) ? prev : next;
                 });
                 setHwSelectedIds(prev => {
-                    const next = new Set(Array.from(prev).filter(id => validIdKeys.has(String(id))));
+                    const next = sanitizeIdSetByStudents(prev, students);
                     return setsAreEqual(prev, next) ? prev : next;
                 });
                 if (filterGroupState !== DEFAULT_UI_STATE.filterGroup && !Object.prototype.hasOwnProperty.call(groupsConfig, filterGroupState)) {
@@ -499,16 +505,15 @@
                 }
             }, [students, config, filterGroupState, filterDormState]);
 
-            const filteredStudents = (Array.isArray(students) ? students : []).filter(student => {
-                if (filterGroupState !== DEFAULT_UI_STATE.filterGroup && student.group !== filterGroupState) return false;
-                if (filterDormState !== DEFAULT_UI_STATE.filterDorm && student.dorm !== filterDormState) return false;
-                return true;
+            const filteredStudents = getFilteredStudents({
+                students,
+                filterGroup: filterGroupState,
+                filterDorm: filterDormState,
+                defaultFilter: DEFAULT_UI_STATE.filterGroup
             });
-            const filteredSelectedCount = filteredStudents.reduce((count, student) => (
-                selectedIdsState.has(student.id) ? count + 1 : count
-            ), 0);
+            const filteredSelectedCount = getFilteredSelectedCount(filteredStudents, selectedIdsState);
             const allFilteredSelected = filteredStudents.length > 0 && filteredSelectedCount === filteredStudents.length;
-            const recentHistory = historyList.slice(0, 50);
+            const recentHistory = getRecentHistory(historyList, 50);
 
             const toggleSelection = (id) => {
                 setSelectedIds(prev => {
@@ -531,20 +536,13 @@
                 });
             };
 
-            const buildModalStudents = (selectedIds, getInitialValue) => (
-                Array.from(selectedIds)
-                    .map(id => studentMap.get(String(id)))
-                    .filter(Boolean)
-                    .map(student => ({
-                        id: student.id,
-                        name: student.name,
-                        val: getInitialValue(student)
-                    }))
-            );
-
             const handleReasonClick = (reason) => {
                 if (selectedIdsState.size === 0) return alert("请先选择学生");
-                const modalStudents = buildModalStudents(selectedIdsState, () => (reason.isMulti ? 1 : Math.abs(reason.val)));
+                const modalStudents = buildModalStudents({
+                    selectedIds: selectedIdsState,
+                    studentMap,
+                    getInitialValue: () => (reason.isMulti ? 1 : Math.abs(reason.val))
+                });
                 if (modalStudents.length === 0) return alert("未找到有效的学生选择");
                 setBatchAdjustModal({
                     open: true,
@@ -562,7 +560,11 @@
 
             const handleCustomReason = () => {
                 if (selectedIdsState.size === 0) return alert("请先选择学生");
-                const modalStudents = buildModalStudents(selectedIdsState, () => 0);
+                const modalStudents = buildModalStudents({
+                    selectedIds: selectedIdsState,
+                    studentMap,
+                    getInitialValue: () => 0
+                });
                 if (modalStudents.length === 0) return alert("未找到有效的学生选择");
                 setBatchAdjustModal({
                     open: true,
@@ -599,26 +601,10 @@
                 if (batchAdjustModal.isCustom && !batchAdjustModal.customReasonName) return alert("请输入理由");
                 if (!batchAdjustModal.scene || !batchAdjustModal.category) return alert("请先选择场景与类别");
 
-                const reasonName = batchAdjustModal.isCustom ? batchAdjustModal.customReasonName : batchAdjustModal.reason.name;
-                const updates = batchAdjustModal.students.map(student => {
-                    let finalVal = Number.isFinite(Number(student.val)) ? Number(student.val) : 0;
-                    let finalReason = reasonName;
-                    if (batchAdjustModal.isMulti) {
-                        finalVal = finalVal * batchAdjustModal.factor;
-                        finalReason = reasonName.includes("卫生")
-                            ? `${reasonName} x${student.val}`
-                            : `${reasonName} (值:${student.val})`;
-                    }
-                    if (batchAdjustModal.type === 'penalty') finalVal = -Math.abs(finalVal);
-                    else finalVal = Math.abs(finalVal);
-                    return {
-                        id: student.id,
-                        val: finalVal,
-                        reason: finalReason,
-                        type: batchAdjustModal.type,
-                        scene: batchAdjustModal.scene,
-                        category: batchAdjustModal.category
-                    };
+                const updates = buildBatchUpdates({
+                    modalState: batchAdjustModal,
+                    normalizePointScene,
+                    normalizePointCategory
                 });
 
                 batchUpdatePoints(updates);
@@ -649,58 +635,25 @@
 
                 const subjectConfig = subjectsConfig.find(subject => subject.name === hwSubject);
                 const representatives = subjectConfig?.representatives || [];
-                const updates = [];
-
-                if (hwSelectedIds.size > 0) {
-                    Array.from(hwSelectedIds).forEach(id => {
-                        updates.push({
-                            id,
-                            val: -1,
-                            reason: `${hwSubject}作业未交 ${dateVal}`,
-                            type: 'penalty',
-                            scene: "班级",
-                            category: "学业"
-                        });
-                    });
-                }
-
-                representatives.forEach(repId => {
-                    if (!repId || !studentMap.has(String(repId))) return;
-                    updates.push({
-                        id: repId,
-                        val: 1,
-                        reason: `${hwSubject}作业登记 ${dateVal}`,
-                        type: 'bonus',
-                        scene: "班级",
-                        category: "班务"
-                    });
+                const updates = buildHomeworkUpdates({
+                    hwSubject,
+                    dateVal,
+                    hwSelectedIds,
+                    representatives,
+                    studentMap
                 });
 
                 if (updates.length === 0) {
                     return alert("没有需要登记的记录。请确保已设置课代表。");
                 }
 
-                const repNames = representatives
-                    .map(repId => studentMap.get(String(repId))?.name || '')
-                    .filter(Boolean)
-                    .join('、');
-
-                let confirmMsg = `确认提交 ${hwSubject} ${dateVal} 的作业登记？\n\n`;
-                confirmMsg += "⚠️ 提醒：每科每天只能登记一次，请确保无误再提交！\n\n";
-
-                if (hwSelectedIds.size > 0) {
-                    const unsubmittedStudents = Array.from(hwSelectedIds)
-                        .map(id => studentMap.get(String(id))?.name || '')
-                        .filter(Boolean)
-                        .join('、');
-                    confirmMsg += `未交作业学生 (${hwSelectedIds.size}人)：\n${unsubmittedStudents}\n\n`;
-                } else {
-                    confirmMsg += "✅ 无学生未交作业\n\n";
-                }
-
-                if (repNames) {
-                    confirmMsg += `课代表加分：${repNames} (+1分)`;
-                }
+                const confirmMsg = buildHomeworkConfirmMessage({
+                    hwSubject,
+                    dateVal,
+                    hwSelectedIds,
+                    representatives,
+                    studentMap
+                });
 
                 if (!confirm(confirmMsg)) return;
 
