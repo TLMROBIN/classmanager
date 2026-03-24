@@ -1675,6 +1675,144 @@ const INITIAL_TREASURES = [
             setDesktopBusy(false);
         };
 
+        const STUDENT_IMPORT_HEADERS = ["姓名", "性别", "小组", "职位", "宿舍"];
+        const getStudentImportArchitecture = () => {
+            const systemConfig = getSystemConfig(config);
+            return {
+                systemConfig,
+                groupsList: Array.isArray(systemConfig.organization?.groups) ? systemConfig.organization.groups : [],
+                dormsList: Array.isArray(systemConfig.organization?.dorms) ? systemConfig.organization.dorms : []
+            };
+        };
+        const validateStudentImportPrerequisites = (actionLabel) => {
+            const architecture = getStudentImportArchitecture();
+            const missing = [];
+            if (architecture.groupsList.length === 0) missing.push("小组");
+            if (architecture.dormsList.length === 0) missing.push("宿舍");
+            if (missing.length > 0) {
+                alert(`请先在“系统配置 -> 组织架构”中完成${missing.join("、")}设置，再${actionLabel}。`);
+                return null;
+            }
+            return architecture;
+        };
+        const handleDownloadStudentTemplate = () => {
+            const architecture = validateStudentImportPrerequisites("下载学生名单导入模板");
+            if (!architecture) return;
+            const { systemConfig, groupsList, dormsList } = architecture;
+            const templateSheet = XLSX.utils.aoa_to_sheet([STUDENT_IMPORT_HEADERS]);
+            templateSheet["!cols"] = [
+                { wch: 12 },
+                { wch: 8 },
+                { wch: 14 },
+                { wch: 10 },
+                { wch: 14 }
+            ];
+            const guideSheet = XLSX.utils.aoa_to_sheet([
+                ["说明", "请勿修改第 1 行表头。学生数据从第 2 行开始填写；任一条数据错误都会导致整批导入失败。"],
+                ["班级", systemConfig.className || ""],
+                ["模板生成日期", getTodayStr()],
+                [],
+                ["允许的性别"],
+                ["男"],
+                ["女"],
+                [],
+                ["允许的职位"],
+                ["组长"],
+                ["组员"],
+                [],
+                ["允许的小组", "ID", "颜色样式"],
+                ...groupsList.map(group => [group.name || "", group.id || "", group.color || ""]),
+                [],
+                ["允许的宿舍", "ID"],
+                ...dormsList.map(dorm => [dorm.name || "", dorm.id || ""])
+            ]);
+            guideSheet["!cols"] = [{ wch: 24 }, { wch: 30 }, { wch: 28 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, templateSheet, "学生名单");
+            XLSX.utils.book_append_sheet(wb, guideSheet, "导入说明");
+            XLSX.writeFile(wb, `学生名单导入模板_${getTodayStr()}.xlsx`);
+        };
+        const parseStudentImportWorkbook = (sheet) => {
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+            const headerRow = Array.isArray(rawRows[0]) ? rawRows[0].map(val => String(val || "").trim()) : [];
+            const expected = STUDENT_IMPORT_HEADERS;
+            const headerMatched = expected.every((label, idx) => headerRow[idx] === label);
+            const extraHeaders = headerRow.slice(expected.length).filter(Boolean);
+            if (!headerMatched || headerRow.length < expected.length || extraHeaders.length > 0) {
+                return {
+                    ok: false,
+                    error: `表头错误。\n要求表头：${expected.join(" / ")}\n当前表头：${headerRow.slice(0, expected.length).join(" / ") || "空"}`
+                };
+            }
+            return {
+                ok: true,
+                rows: rawRows.slice(1).map((row, index) => ({
+                    excelRow: index + 2,
+                    name: String(row[0] || "").trim(),
+                    genderRaw: String(row[1] || "").trim(),
+                    groupRaw: String(row[2] || "").trim(),
+                    roleRaw: String(row[3] || "").trim(),
+                    dormRaw: String(row[4] || "").trim()
+                }))
+            };
+        };
+        const validateStudentImportRows = (rows, architecture) => {
+            const groupMap = new Map();
+            const dormMap = new Map();
+            architecture.groupsList.forEach(group => {
+                if (group?.id != null) groupMap.set(String(group.id), String(group.id));
+                if (group?.name) groupMap.set(String(group.name), String(group.id));
+            });
+            architecture.dormsList.forEach(dorm => {
+                if (dorm?.id != null) dormMap.set(String(dorm.id), String(dorm.id));
+                if (dorm?.name) dormMap.set(String(dorm.name), String(dorm.id));
+            });
+
+            const errors = [];
+            const nameSeen = new Map();
+            const normalizedRows = [];
+            rows.forEach(row => {
+                const values = [row.name, row.genderRaw, row.groupRaw, row.roleRaw, row.dormRaw];
+                if (values.every(val => !String(val || "").trim())) return;
+
+                const genderToken = row.genderRaw ? String(row.genderRaw).trim().toUpperCase() : "";
+                const roleToken = row.roleRaw ? String(row.roleRaw).trim().toLowerCase() : "";
+                if (!row.name) {
+                    errors.push(`第 ${row.excelRow} 行：姓名不能为空`);
+                } else if (nameSeen.has(row.name)) {
+                    errors.push(`第 ${row.excelRow} 行：姓名“${row.name}”重复（首次出现在第 ${nameSeen.get(row.name)} 行）`);
+                } else {
+                    nameSeen.set(row.name, row.excelRow);
+                }
+                if (genderToken && genderToken !== "男" && genderToken !== "女" && genderToken !== "M" && genderToken !== "F") {
+                    errors.push(`第 ${row.excelRow} 行：性别“${row.genderRaw}”不合法，只允许填写 男/女`);
+                }
+                if (roleToken && roleToken !== "组长" && roleToken !== "组员" && roleToken !== "leader" && roleToken !== "member") {
+                    errors.push(`第 ${row.excelRow} 行：职位“${row.roleRaw}”不合法，只允许填写 组长/组员`);
+                }
+                if (row.groupRaw && !groupMap.has(row.groupRaw)) {
+                    errors.push(`第 ${row.excelRow} 行：小组“${row.groupRaw}”未在组织架构中定义`);
+                }
+                if (row.dormRaw && !dormMap.has(row.dormRaw)) {
+                    errors.push(`第 ${row.excelRow} 行：宿舍“${row.dormRaw}”未在组织架构中定义`);
+                }
+
+                normalizedRows.push({
+                    excelRow: row.excelRow,
+                    name: row.name,
+                    gender: genderToken === "男" || genderToken === "M" ? "M" : genderToken === "女" || genderToken === "F" ? "F" : "",
+                    group: row.groupRaw ? groupMap.get(row.groupRaw) : "",
+                    role: roleToken === "组长" || roleToken === "leader" ? "leader" : roleToken === "组员" || roleToken === "member" ? "member" : "",
+                    dorm: row.dormRaw ? dormMap.get(row.dormRaw) : ""
+                });
+            });
+
+            if (normalizedRows.length === 0) {
+                errors.push("导入文件中没有可用的学生数据");
+            }
+
+            return { errors, normalizedRows };
+        };
         const handleExportStudentsExcel = () => {
             const groupsConfig = getGroupsConfig(config);
             const dormsConfig = getDormsConfig(config);
@@ -1694,47 +1832,35 @@ const INITIAL_TREASURES = [
         const handleImportStudentsExcel = (e, mode = 'overwrite') => {
             const file = e.target.files[0];
             if (!file) return;
+            const architecture = validateStudentImportPrerequisites("导入学生名单");
+            if (!architecture) {
+                e.target.value = '';
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (evt) => {
                 const wb = XLSX.read(evt.target.result, { type: 'array' });
                 const sheetName = wb.SheetNames[0];
-                const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
-                if (!Array.isArray(rows)) { alert("解析失败"); return; }
-                const groupsList = getSystemConfig(config).organization.groups || [];
-                const dormsList = getSystemConfig(config).organization.dorms || [];
-                const toGroupId = (val) => {
-                    if (!val) return "";
-                    const g = groupsList.find(x => x.name === val || x.id === val);
-                    return g ? g.id : String(val);
-                };
-                const toDormId = (val) => {
-                    if (!val) return "";
-                    const d = dormsList.find(x => x.name === val || x.id === val);
-                    return d ? d.id : String(val);
-                };
-                const toRoleId = (val) => {
-                    if (!val) return "";
-                    if (val === '组长' || String(val).toLowerCase() === 'leader') return 'leader';
-                    if (val === '组员' || String(val).toLowerCase() === 'member') return 'member';
-                    return String(val);
-                };
-                const toGender = (val) => {
-                    if (!val) return "";
-                    if (val === '男' || String(val).toUpperCase() === 'M') return 'M';
-                    if (val === '女' || String(val).toUpperCase() === 'F') return 'F';
-                    return "";
-                };
+                const parsedWorkbook = parseStudentImportWorkbook(wb.Sheets[sheetName]);
+                if (!parsedWorkbook.ok) {
+                    alert(parsedWorkbook.error);
+                    return;
+                }
+                const validation = validateStudentImportRows(parsedWorkbook.rows, architecture);
+                if (validation.errors.length > 0) {
+                    const visibleErrors = validation.errors.slice(0, 12);
+                    const remaining = validation.errors.length - visibleErrors.length;
+                    alert([
+                        `导入失败，共发现 ${validation.errors.length} 处问题：`,
+                        ...visibleErrors,
+                        remaining > 0 ? `……其余 ${remaining} 处问题未展开` : ""
+                    ].filter(Boolean).join("\n"));
+                    return;
+                }
                 const normalizeName = (val) => String(val || "").trim();
-                const parseRow = (r) => ({
-                    name: normalizeName(r["姓名"] || r["name"]),
-                    gender: toGender(r["性别"] || r["gender"]),
-                    group: toGroupId(r["小组"] || r["group"]),
-                    role: toRoleId(r["职位"] || r["role"]),
-                    dorm: toDormId(r["宿舍"] || r["dorm"])
-                });
                 if (mode === 'merge') {
-                    if (!confirm(`解析到 ${rows.length} 条学生记录，确定【增量导入】吗？将更新同名学生并新增不存在学生。`)) return;
-                    const incoming = rows.map(parseRow).filter(s => s.name);
+                    if (!confirm(`解析到 ${validation.normalizedRows.length} 条学生记录，确定【增量导入】吗？将更新同名学生并新增不存在学生。`)) return;
+                    const incoming = validation.normalizedRows.map(({ excelRow, ...student }) => student).filter(s => s.name);
                     setStudents(prev => {
                         const list = Array.isArray(prev) ? prev : [];
                         const byName = new Map(list.map(s => [normalizeName(s.name), s]));
@@ -1753,10 +1879,10 @@ const INITIAL_TREASURES = [
                     });
                     alert("学生名单已增量导入");
                 } else {
-                    if (!confirm(`解析到 ${rows.length} 条学生记录，确定覆盖现有名单吗？`)) return;
+                    if (!confirm(`解析到 ${validation.normalizedRows.length} 条学生记录，确定覆盖现有名单吗？`)) return;
                     const now = Date.now();
-                    const newStudents = rows.map((r, idx) => {
-                        const parsed = parseRow(r);
+                    const newStudents = validation.normalizedRows.map((row, idx) => {
+                        const { excelRow, ...parsed } = row;
                         return {
                             id: now + idx,
                             ...parsed,
@@ -1764,7 +1890,7 @@ const INITIAL_TREASURES = [
                             balance: 0,
                             penalty: 0
                         };
-                    }).filter(s => s.name);
+                    });
                     setStudents(newStudents);
                     setStudentProfiles(remapStudentProfilesToStudentsByName(students, newStudents, studentProfiles));
                     alert("学生名单已更新");
@@ -2321,8 +2447,8 @@ const INITIAL_TREASURES = [
             });
         };
 
-        return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto space-y-8" },
-            h("div", { className: "border-b pb-4 flex justify-between items-center" }, 
+        return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto flex flex-col gap-8" },
+            h("div", { className: "border-b pb-4 flex justify-between items-center", style: { order: -2 } },
                 h("div", null,
                     h("h2", { className: "text-2xl font-bold text-gray-800" }, "🔧 系统维护中心"), 
                     h("p", { className: "text-gray-500 text-sm mt-1" }, "已获取管理员权限")
@@ -2420,6 +2546,7 @@ const INITIAL_TREASURES = [
                 h("h3", { className: "font-bold text-gray-700 mb-3" }, "学生名单维护"),
                 h("div", { className: "flex flex-wrap gap-2 mb-4" },
                     h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
+                    h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
                     h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
                         "增量导入",
                         h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
@@ -2430,6 +2557,7 @@ const INITIAL_TREASURES = [
                     ),
                     h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
                 ),
+                h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
                 h("div", { className: "max-h-96 overflow-y-auto border rounded" },
                     h("table", { className: "w-full text-sm text-left" },
                         h("thead", null,
@@ -2596,7 +2724,7 @@ const INITIAL_TREASURES = [
                     );
                 })()
             ),
-            h("div", { className: "border-t pt-6" },
+            h("div", { className: "border-t pt-6", style: { order: -1 } },
                 h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "settings" }), "⚙️ 系统配置"),
                 h("div", { className: "bg-gray-50 border rounded-lg p-6 space-y-8" },
                     h("div", { className: "flex flex-wrap gap-2" },
