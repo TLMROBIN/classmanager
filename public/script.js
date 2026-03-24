@@ -822,8 +822,10 @@ const INITIAL_TREASURES = [
             useEffect,
             Modal,
             Icon,
+            requireAdminAuth,
             getNow,
             getDateString,
+            getSystemConfig,
             getGroupsConfig,
             getDormsConfig,
             getReasonsPreset,
@@ -1501,11 +1503,6 @@ const INITIAL_TREASURES = [
         const [reportEnd, setReportEnd] = useState(() => getReportRange(7).end);
         const [countdownName, setCountdownName] = useState("");
         const [countdownDate, setCountdownDate] = useState("");
-        const [recordSearch, setRecordSearch] = useState("");
-        const [recordSelection, setRecordSelection] = useState(new Set());
-        const [recordScene, setRecordScene] = useState(DEFAULT_POINT_SCENE);
-        const [recordCategory, setRecordCategory] = useState(DEFAULT_POINT_CATEGORY);
-        const [showPendingOnly, setShowPendingOnly] = useState(false);
         const [showExamArchivesManager, setShowExamArchivesManager] = useState(false);
         const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
         const systemConfig = getSystemConfig(config);
@@ -1587,48 +1584,6 @@ const INITIAL_TREASURES = [
         };
 
         const historySource = Array.isArray(history) ? history : [];
-        useEffect(() => {
-            if (historySource.length === 0) return;
-            if (systemConfig && systemConfig.recordCategoryPendingMigrated) return;
-            const nextHistory = historySource.map(item => ({ ...item, category: "待定" }));
-            setHistory(nextHistory);
-            updateSystemConfig(sc => ({ ...sc, recordCategoryPendingMigrated: true }));
-        }, [historySource.length, systemConfig && systemConfig.recordCategoryPendingMigrated]);
-        const normalizedRecordSearch = (recordSearch || "").trim().toLowerCase();
-        const recordSearchTerms = normalizedRecordSearch ? normalizedRecordSearch.split(/\s+/) : [];
-        const filteredHistoryRecords = historySource.filter(item => {
-            if (showPendingOnly && normalizePointCategory(item.category) !== "待定") return false;
-            if (!recordSearchTerms.length) return true;
-            const haystack = `${item.studentName || ""} ${item.reason || ""} ${normalizePointScene(item.scene)} ${normalizePointCategory(item.category)}`.toLowerCase();
-            return recordSearchTerms.every(term => haystack.includes(term));
-        });
-        const visibleHistoryRecords = filteredHistoryRecords.slice(0, 200);
-        const toggleRecordSelection = (id) => {
-            setRecordSelection(prev => {
-                const next = new Set(prev);
-                if (next.has(id)) next.delete(id); else next.add(id);
-                return next;
-            });
-        };
-        const selectFilteredRecords = () => {
-            setRecordSelection(new Set(filteredHistoryRecords.map(item => item.id)));
-        };
-        const clearRecordSelection = () => {
-            setRecordSelection(new Set());
-        };
-        const applyRecordAttributes = () => {
-            if (recordSelection.size === 0) return alert("请先选择记录");
-            const nextHistory = historySource.map(item => recordSelection.has(item.id) ? { ...item, scene: normalizePointScene(recordScene), category: normalizePointCategory(recordCategory) } : item);
-            setHistory(nextHistory);
-            setRecordSelection(new Set());
-        };
-        const deleteSelectedRecords = () => {
-            if (recordSelection.size === 0) return alert("请先选择记录");
-            if (!confirm(`确定删除选中的 ${recordSelection.size} 条记录？\n注意：此操作仅删除记录，不会影响学生积分数据。`)) return;
-            const nextHistory = historySource.filter(item => !recordSelection.has(item.id));
-            setHistory(nextHistory);
-            setRecordSelection(new Set());
-        };
 
         useEffect(() => {
             if (!window.desktopApi) return;
@@ -2862,71 +2817,7 @@ const INITIAL_TREASURES = [
                         )
                     ),
                     h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "学科配置"),
-                        h("p", { className: "text-xs text-gray-500 mb-3" }, "配置班级开设的学科，用于作业登记功能。每个学科可设置1-2名课代表。"),
-                        h("div", { className: "flex justify-between items-center mb-2" },
-                            h("span", { className: "text-sm font-medium text-gray-700" }, "学科列表"),
-                            h("button", { onClick: () => updateSystemConfig(sc => {
-                                const list = [...(sc.subjects || [])];
-                                list.push({ id: `subject_${Date.now()}`, name: "新学科", representatives: [] });
-                                return { ...sc, subjects: list };
-                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增学科")
-                        ),
-                        h("div", { className: "space-y-3" },
-                            (systemConfig.subjects || []).map((s, idx) => h("div", { key: s.id || idx, className: "bg-white p-3 rounded border space-y-2" },
-                                h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-2" },
-                                    h("input", { className: "border rounded p-2 text-sm", value: s.id || "", onChange: e => updateSystemConfig(sc => {
-                                        const list = [...sc.subjects];
-                                        list[idx] = { ...list[idx], id: e.target.value };
-                                        return { ...sc, subjects: list };
-                                    }), placeholder: "id" }),
-                                    h("input", { className: "border rounded p-2 text-sm", value: s.name || "", onChange: e => updateSystemConfig(sc => {
-                                        const list = [...sc.subjects];
-                                        list[idx] = { ...list[idx], name: e.target.value };
-                                        return { ...sc, subjects: list };
-                                    }), placeholder: "学科名称" }),
-                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                        const list = [...sc.subjects];
-                                        list.splice(idx, 1);
-                                        return { ...sc, subjects: list };
-                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除学科")
-                                ),
-                                h("div", { className: "border-t pt-2" },
-                                    h("div", { className: "text-xs font-medium text-gray-600 mb-2" }, "课代表"),
-                                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-2" },
-                                        [0, 1].map(pos => {
-                                            const currentRepId = (s.representatives || [])[pos];
-                                            const currentStudent = (students || []).find(stu => stu.id === currentRepId);
-                                            return h("div", { key: pos, className: "flex items-center gap-2" },
-                                                h("span", { className: "text-xs text-gray-500 w-16" }, `课代表${pos + 1}`),
-                                                h("select", {
-                                                    className: "flex-1 border rounded p-2 text-sm",
-                                                    value: currentRepId || "",
-                                                    onChange: e => updateSystemConfig(sc => {
-                                                        const list = [...sc.subjects];
-                                                        const reps = [...(list[idx].representatives || [])];
-                                                        const selectedId = e.target.value ? (students.find(stu => String(stu.id) === String(e.target.value))?.id || e.target.value) : null;
-                                                        reps[pos] = selectedId;
-                                                        list[idx] = { ...list[idx], representatives: reps.filter(r => r) };
-                                                        return { ...sc, subjects: list };
-                                                    })
-                                                },
-                                                    h("option", { value: "" }, "- 不设置 -"),
-                                                    (students || []).map(student => h("option", { 
-                                                        key: student.id, 
-                                                        value: student.id,
-                                                        disabled: pos === 0 ? (s.representatives || [])[1] === student.id : (s.representatives || [])[0] === student.id
-                                                    }, student.name))
-                                                )
-                                            );
-                                        })
-                                    )
-                                )
-                            ))
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "积分设置"),
+                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "工资设置"),
                         h("div", { className: "bg-white border rounded-lg p-4 mb-4 space-y-4" },
                             h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
                                 h("div", null,
@@ -2974,125 +2865,6 @@ const INITIAL_TREASURES = [
                                         })
                                     ),
                                     h("p", { className: "text-xs text-gray-500 mt-1" }, "“一键工资”只会给这里勾选的小组成员发放工资。")
-                                )
-                            )
-                        ),
-                        h("div", { className: "flex justify-between items-center mb-2" },
-                            h("span", { className: "text-sm font-medium text-gray-700" }, "积分理由预设"),
-                            h("button", { onClick: () => updateSystemConfig(sc => {
-                                const list = [...(sc.points.reasons || [])];
-                                list.push({ name: "新理由", val: 0, type: "bonus", scene: DEFAULT_POINT_SCENE, category: DEFAULT_POINT_CATEGORY });
-                                return { ...sc, points: { ...sc.points, reasons: list } };
-                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增理由")
-                        ),
-                        h("div", { className: "space-y-3" },
-                            (systemConfig.points.reasons || []).map((r, idx) => h("div", { key: idx, className: "grid grid-cols-1 md:grid-cols-8 gap-2 bg-white p-3 rounded border" },
-                                h("input", { className: "border rounded p-2 text-sm md:col-span-2", value: r.name || "", onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], name: e.target.value };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }), placeholder: "名称" }),
-                                h("input", { type: "number", className: "border rounded p-2 text-sm", value: r.val ?? 0, onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], val: Number(e.target.value) };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }) }),
-                                h("select", { className: "border rounded p-2 text-sm", value: r.type || "bonus", onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], type: e.target.value };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }) }, h("option", { value: "bonus" }, "奖励"), h("option", { value: "penalty" }, "惩罚"), h("option", { value: "spending" }, "消费")),
-                                h("select", { className: "border rounded p-2 text-sm", value: normalizePointScene(r.scene), onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], scene: e.target.value };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }) }, POINT_SCENES.map(s => h("option", { key: s, value: s }, s))),
-                                h("select", { className: "border rounded p-2 text-sm", value: normalizePointCategory(r.category), onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], category: e.target.value };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }) }, POINT_CATEGORIES.map(c => h("option", { key: c, value: c }, c))),
-                                h("input", { className: "border rounded p-2 text-sm", value: r.note || "", onChange: e => updateSystemConfig(sc => {
-                                    const list = [...sc.points.reasons];
-                                    list[idx] = { ...list[idx], note: e.target.value };
-                                    return { ...sc, points: { ...sc.points, reasons: list } };
-                                }), placeholder: "备注" }),
-                                h("div", { className: "flex items-center gap-2 text-xs" },
-                                    h("label", { className: "flex items-center gap-1" }, h("input", { type: "checkbox", checked: !!r.editable, onChange: e => updateSystemConfig(sc => {
-                                        const list = [...sc.points.reasons];
-                                        list[idx] = { ...list[idx], editable: e.target.checked };
-                                        return { ...sc, points: { ...sc.points, reasons: list } };
-                                    }) }), "可编辑"),
-                                    h("label", { className: "flex items-center gap-1" }, h("input", { type: "checkbox", checked: !!r.isMulti, onChange: e => updateSystemConfig(sc => {
-                                        const list = [...sc.points.reasons];
-                                        list[idx] = { ...list[idx], isMulti: e.target.checked };
-                                        return { ...sc, points: { ...sc.points, reasons: list } };
-                                    }) }), "倍率")
-                                ),
-                                h("div", { className: "flex gap-2 items-center" },
-                                    h("input", { type: "number", className: "border rounded p-2 text-sm w-24", value: r.factor ?? 1, onChange: e => updateSystemConfig(sc => {
-                                        const list = [...sc.points.reasons];
-                                        list[idx] = { ...list[idx], factor: Number(e.target.value) };
-                                        return { ...sc, points: { ...sc.points, reasons: list } };
-                                    }) }),
-                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                        const list = [...sc.points.reasons];
-                                        list.splice(idx, 1);
-                                        return { ...sc, points: { ...sc.points, reasons: list } };
-                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除")
-                                )
-                            ))
-                        )
-                    ),
-                    h("div", { className: "bg-gray-50 border rounded-lg p-4 mt-4 space-y-3" },
-                        h("div", { className: "flex flex-wrap items-center justify-between gap-3" },
-                            h("div", null,
-                                h("div", { className: "font-bold text-gray-700 text-sm" }, "积分记录属性维护"),
-                                h("div", { className: "text-xs text-gray-500 mt-1" }, `共 ${filteredHistoryRecords.length} 条，当前展示 ${visibleHistoryRecords.length} 条`)
-                            ),
-                            h("div", { className: "flex flex-wrap gap-2" },
-                                h("button", { onClick: selectFilteredRecords, className: "px-3 py-1 bg-white border rounded text-xs hover:bg-gray-100" }, "全选筛选"),
-                                h("button", { onClick: clearRecordSelection, className: "px-3 py-1 bg-white border rounded text-xs hover:bg-gray-100" }, "清空选择"),
-                                h("button", { onClick: () => setShowPendingOnly(v => !v), className: `px-3 py-1 border rounded text-xs ${showPendingOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white hover:bg-gray-100'}` }, "仅显示待定类别记录"),
-                                h("button", { onClick: applyRecordAttributes, className: "px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700" }, "应用到已选"),
-                                h("button", { onClick: deleteSelectedRecords, className: "px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除已选")
-                            )
-                        ),
-                        h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-2" },
-                            h("input", { className: "border rounded p-2 text-sm", value: recordSearch, onChange: e => setRecordSearch(e.target.value), placeholder: "检索学生/理由/场景/类别" }),
-                            h("select", { className: "border rounded p-2 text-sm", value: recordScene, onChange: e => setRecordScene(e.target.value) },
-                                POINT_SCENES.map(s => h("option", { key: s, value: s }, s))
-                            ),
-                            h("select", { className: "border rounded p-2 text-sm", value: recordCategory, onChange: e => setRecordCategory(e.target.value) },
-                                POINT_CATEGORIES.map(c => h("option", { key: c, value: c }, c))
-                            )
-                        ),
-                        h("div", { className: "max-h-80 overflow-y-auto border rounded bg-white" },
-                            h("table", { className: "w-full text-xs text-left" },
-                                h("thead", { className: "bg-gray-50 sticky top-0" },
-                                    h("tr", null,
-                                        h("th", { className: "p-2 w-10" }, ""),
-                                        h("th", { className: "p-2" }, "时间"),
-                                        h("th", { className: "p-2" }, "学生"),
-                                        h("th", { className: "p-2" }, "事项"),
-                                        h("th", { className: "p-2" }, "场景"),
-                                        h("th", { className: "p-2" }, "类别"),
-                                        h("th", { className: "p-2 text-right" }, "变动")
-                                    )
-                                ),
-                                h("tbody", { className: "divide-y" },
-                                    visibleHistoryRecords.length === 0 ? h("tr", null, h("td", { colSpan: 7, className: "p-4 text-center text-gray-400" }, "暂无匹配记录")) :
-                                    visibleHistoryRecords.map(item => h("tr", { key: item.id, className: "hover:bg-gray-50" },
-                                        h("td", { className: "p-2" },
-                                            h("input", { type: "checkbox", checked: recordSelection.has(item.id), onChange: () => toggleRecordSelection(item.id) })
-                                        ),
-                                        h("td", { className: "p-2 text-gray-400" }, new Date(item.ts).toLocaleString()),
-                                        h("td", { className: "p-2 font-medium" }, item.studentName),
-                                        h("td", { className: "p-2 text-gray-600" }, item.reason),
-                                        h("td", { className: "p-2" }, normalizePointScene(item.scene)),
-                                        h("td", { className: "p-2" }, normalizePointCategory(item.category)),
-                                        h("td", { className: `p-2 text-right font-bold ${item.val > 0 ? 'text-green-600' : 'text-red-500'}` }, item.val > 0 ? `+${item.val}` : item.val)
-                                    ))
                                 )
                             )
                         )
@@ -4671,7 +4443,7 @@ const INITIAL_TREASURES = [
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
-                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config }),
+                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory }),
                 activeTab === 'attendance' && (
                     AttendanceView
                         ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: nextSystemConfig }); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })

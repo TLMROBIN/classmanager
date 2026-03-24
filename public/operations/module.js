@@ -6,8 +6,10 @@
             useEffect,
             Modal,
             Icon,
+            requireAdminAuth,
             getNow,
             getDateString,
+            getSystemConfig,
             getGroupsConfig,
             getDormsConfig,
             getReasonsPreset,
@@ -47,6 +49,7 @@
         } = builders;
         const createOperationHandlers = window.createOperationHandlers;
         const createOperationViews = window.createOperationViews;
+        const createOperationSettingsSections = window.createOperationSettingsSections;
 
         if (
             !h ||
@@ -54,8 +57,10 @@
             !useEffect ||
             !Modal ||
             !Icon ||
+            !requireAdminAuth ||
             !getNow ||
             !getDateString ||
+            !getSystemConfig ||
             !getGroupsConfig ||
             !getDormsConfig ||
             !getReasonsPreset ||
@@ -84,7 +89,8 @@
             !buildHomeworkUpdates ||
             !buildHomeworkConfirmMessage ||
             !createOperationHandlers ||
-            !createOperationViews
+            !createOperationViews ||
+            !createOperationSettingsSections
         ) {
             throw new Error('OperationView dependencies are missing');
         }
@@ -107,6 +113,24 @@
             DEFAULT_POINT_SCENE,
             DEFAULT_POINT_CATEGORY
         });
+        const {
+            SubjectConfigSection,
+            ReasonsConfigSection,
+            RecordAttributesSection
+        } = createOperationSettingsSections({
+            h,
+            useState,
+            useEffect,
+            Icon,
+            requireAdminAuth,
+            getSystemConfig,
+            normalizePointScene,
+            normalizePointCategory,
+            POINT_SCENES,
+            POINT_CATEGORIES,
+            DEFAULT_POINT_SCENE,
+            DEFAULT_POINT_CATEGORY
+        });
 
         return function OperationView({
             students,
@@ -114,7 +138,9 @@
             history,
             handleUndo,
             batchUpdatePoints,
-            config
+            config,
+            setConfig,
+            setHistory
         }) {
             const initialUiState = readUiState();
             const [selectedIdsState, setSelectedIdsState] = useState(() => new Set(initialUiState.selectedIds));
@@ -280,6 +306,10 @@
                     onReasonClick: handleReasonClick,
                     onCustomReason: handleCustomReason
                 }),
+                h(ReasonsConfigSection, {
+                    config,
+                    setConfig
+                }),
                 h(HomeworkPanel, {
                     students: Array.isArray(students) ? students : [],
                     homeworkSubjects,
@@ -293,9 +323,20 @@
                     onToggleHomeworkSelection: toggleHomeworkSelection,
                     onSubmit: handleHomeworkSubmit
                 }),
+                h(SubjectConfigSection, {
+                    students,
+                    config,
+                    setConfig
+                }),
                 h(RecentHistoryPanel, {
                     recentHistory,
                     onUndo: handleUndo
+                }),
+                h(RecordAttributesSection, {
+                    history,
+                    setHistory,
+                    config,
+                    setConfig
                 }),
                 h(BatchAdjustModalView, {
                     batchAdjustModal,
