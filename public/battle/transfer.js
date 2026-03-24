@@ -197,6 +197,21 @@
         }).payload
     });
 
+    const applySettlementPoints = ({ updates, summaryText, batchUpdatePoints }) => {
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return { applied: false, count: 0, skipped: true };
+        }
+        if (typeof batchUpdatePoints !== 'function') {
+            throw new Error('主积分入账函数缺失');
+        }
+        const shouldApply = confirm(summaryText || `本次双子星结算将生成 ${updates.length} 条主积分记录，是否同步入账？`);
+        if (!shouldApply) {
+            return { applied: false, count: updates.length, skipped: true };
+        }
+        const count = batchUpdatePoints(updates);
+        return { applied: true, count };
+    };
+
     const createBattleSnapshot = ({ reason, battle, examArchives, students, now }) => {
         const list = readLegacySnapshots();
         const entry = buildBattleSnapshotEntry({ reason, battle, examArchives, students, now });
@@ -218,6 +233,7 @@
     window.BattleTransfer = {
         buildBattleBackup,
         buildBattleSnapshotEntry,
+        applySettlementPoints,
         parseBattleBackupText,
         validateBattleBackupPayload,
         normalizeBattleSnapshots,
