@@ -1174,7 +1174,6 @@ const INITIAL_TREASURES = [
         const [config, setConfig] = useState({
             duty: { mon: ["", ""], tue: [""], wed: [""], thu: [""], fri: [""] },
             commissioners: getDefaultCommissioners(),
-            psychologyCommittee: [null, null, null, null],
             lastWageDate: "",
             frozen: false,
             scheduleNotes: {},

@@ -205,12 +205,10 @@
             ? systemConfig.points.dailyWageGroups
             : ['discipline', 'hygiene'];
         const targets = (Array.isArray(students) ? students : []).filter(student => wageGroups.includes(student.group));
-        const psychologyCommitteeIds = config.psychologyCommittee || [null, null, null, null];
-        const validPsychologyIds = psychologyCommitteeIds.filter(id => id != null);
         const customRoles = getCustomRoles(config);
         const paidCustomRoles = customRoles.filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
 
-        if (targets.length === 0 && validPsychologyIds.length === 0 && paidCustomRoles.length === 0) {
+        if (targets.length === 0 && paidCustomRoles.length === 0) {
             return alert("没有找到可发放工资或津贴的对象");
         }
 
@@ -222,17 +220,6 @@
             scene: "班级",
             category: "班务"
         }));
-
-        validPsychologyIds.forEach(psychologyId => {
-            updates.push({
-                id: psychologyId,
-                val: 1,
-                reason: "心理委员津贴",
-                type: 'bonus',
-                scene: "班级",
-                category: "班务"
-            });
-        });
 
         paidCustomRoles.forEach(role => {
             updates.push({
@@ -249,7 +236,6 @@
         setConfig({ ...config, lastWageDate: today });
 
         const extraNotes = [];
-        if (validPsychologyIds.length > 0) extraNotes.push(`${validPsychologyIds.length}位心理委员津贴`);
         if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
         alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
     };

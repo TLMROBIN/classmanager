@@ -95,6 +95,10 @@
         const [countdownName, setCountdownName] = useState("");
         const [countdownDate, setCountdownDate] = useState("");
         const [showExamArchivesManager, setShowExamArchivesManager] = useState(false);
+        const [showStudentRosterManager, setShowStudentRosterManager] = useState(false);
+        const [showOrganizationManager, setShowOrganizationManager] = useState(false);
+        const [showCustomRolesManager, setShowCustomRolesManager] = useState(false);
+        const [showDutyManager, setShowDutyManager] = useState(false);
         const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
         const systemConfig = getSystemConfig(config);
         const ExamArchivesView = examArchivesModuleStatus === 'ready' ? getExamArchivesView() : null;
@@ -1014,11 +1018,6 @@
         const handleCommissionerChange = (roleId, studentId) => {
             setConfig({ ...config, commissioners: { ...(config.commissioners || {}), [roleId]: studentId ? parseInt(studentId) : null } });
         };
-        const handlePsychologyCommitteeChange = (index, studentId) => {
-            const newPsychology = [...(config.psychologyCommittee || [null, null, null, null])];
-            newPsychology[index] = studentId ? parseInt(studentId) : null;
-            setConfig({ ...config, psychologyCommittee: newPsychology });
-        };
 
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
             if (isDirtyRef) isDirtyRef.current = true;
@@ -1094,96 +1093,67 @@
                 )
             ),
             h("div", { className: "border-t pt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-3" }, "岗位与值日维护"),
-                h("div", { className: "bg-gray-50 border rounded-lg p-6 space-y-6" },
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日设置"),
-                        h("div", { className: "space-y-2 text-sm" },
-                            Object.keys(config.duty || {}).map(day => h("div", { key: day, className: "flex items-center" },
-                                h("span", { className: "w-12 text-gray-500" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day]),
-                                (config.duty?.[day] || []).map((val, idx) => h("select", { key: idx, value: val, onChange: e => handleDutyChange(day, idx, e.target.value), className: "ml-2 border rounded p-1 flex-1 bg-white" }, h("option", { value: "" }, "-"), students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))))
-                            ))
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员设置"),
-                        h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
-                            getCommissionerRoles(config).map(role => h("div", { key: role.id },
-                                h("div", { className: "text-xs text-gray-500 mb-1" }, role.name),
-                                h("select", { value: config.commissioners?.[role.id] || "", onChange: e => handleCommissionerChange(role.id, e.target.value), className: "w-full border rounded p-2 text-sm bg-white" }, h("option", { value: "" }, "未设置"), students.filter(s => s.group === 'discipline').map(s => h("option", { key: s.id, value: s.id }, s.name)))
-                            ))
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "smile" }), "心理委员设置"),
-                        h("div", { className: "space-y-2" },
-                            [0, 1, 2, 3].map(idx =>
-                                h("div", { key: idx, className: "flex items-center gap-2" },
-                                    h("span", { className: "text-xs text-gray-500 w-16" }, `心理委员${idx + 1}`),
-                                    h("select", {
-                                        value: (config.psychologyCommittee && config.psychologyCommittee[idx]) || "",
-                                        onChange: e => handlePsychologyCommitteeChange(idx, e.target.value),
-                                        className: "flex-1 border rounded p-2 text-sm bg-white"
-                                    },
-                                        h("option", { value: "" }, "未设置"),
-                                        students.map(s => h("option", { key: s.id, value: s.id }, s.name))
-                                    )
-                                )
-                            ),
-                            h("div", { className: "text-xs text-gray-400 mt-2" }, "心理委员每次发工资时额外获得 +1 分")
-                        )
-                    )
-                )
-            ),
-            h("div", { className: "border-t pt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-3" }, "学生名单维护"),
-                h("div", { className: "flex flex-wrap gap-2 mb-4" },
-                    h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
-                    h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
-                    h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
-                        "增量导入",
-                        h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
-                    ),
-                    h("label", { className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm cursor-pointer" },
-                        "覆盖导入",
-                        h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'overwrite'), style: { display: 'none' } })
-                    ),
-                    h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
-                ),
-                h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
-                h("div", { className: "max-h-96 overflow-y-auto border rounded" },
-                    h("table", { className: "w-full text-sm text-left" },
-                        h("thead", null,
-                            h("tr", { className: "bg-gray-50" },
-                                h("th", { className: "p-2" }, "姓名"),
-                                h("th", { className: "p-2" }, "性别"),
-                                h("th", { className: "p-2" }, "小组"),
-                                h("th", { className: "p-2" }, "职位"),
-                                h("th", { className: "p-2" }, "宿舍"),
-                                h("th", { className: "p-2" }, "操作")
-                            )
+                h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
+                    h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                        h("div", null,
+                            h("h3", { className: "font-bold text-gray-700 mb-1" }, "学生名单维护"),
+                            h("p", { className: "text-xs text-gray-500" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
                         ),
-                        h("tbody", null,
-                            (Array.isArray(students) ? students : []).map(s => h("tr", { key: s.id, className: "border-t" },
-                                h("td", { className: "p-2" }, h("input", { className: "w-full border rounded p-1", value: s.name || "", onChange: e => updateStudent(s.id, { name: e.target.value }) })),
-                                h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.gender || "", onChange: e => updateStudent(s.id, { gender: e.target.value }) }, h("option", { value: "" }, "-"), h("option", { value: "M" }, "男"), h("option", { value: "F" }, "女"))),
-                                h("td", { className: "p-2" }, (() => {
-                                    const groups = systemConfig.organization.groups || [];
-                                    return h("select", { className: "w-full border rounded p-1", value: s.group || "", onChange: e => updateStudent(s.id, { group: e.target.value }) },
-                                        h("option", { value: "" }, "-"),
-                                        groups.map(g => h("option", { key: g.id, value: g.id }, g.name))
-                                    );
-                                })()),
-                                h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.role || "member", onChange: e => updateStudent(s.id, { role: e.target.value }) }, h("option", { value: "leader" }, "组长"), h("option", { value: "member" }, "组员"))),
-                                h("td", { className: "p-2" }, (() => {
-                                    const dorms = systemConfig.organization.dorms || [];
-                                    return h("select", { className: "w-full border rounded p-1", value: s.dorm || "", onChange: e => updateStudent(s.id, { dorm: e.target.value }) },
-                                        h("option", { value: "" }, "-"),
-                                        dorms.map(d => h("option", { key: d.id, value: d.id }, d.name))
-                                    );
-                                })()),
-                                h("td", { className: "p-2" }, h("button", { onClick: () => removeStudent(s.id), className: "px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除"))
-                            ))
+                        h("button", {
+                            onClick: () => setShowStudentRosterManager(prev => !prev),
+                            className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
+                        }, showStudentRosterManager ? "收起学生名单维护" : "打开学生名单维护")
+                    ),
+                    showStudentRosterManager && h("div", { className: "border-t pt-4" },
+                        h("div", { className: "flex flex-wrap gap-2 mb-4" },
+                            h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
+                            h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
+                            h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
+                                "增量导入",
+                                h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
+                            ),
+                            h("label", { className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm cursor-pointer" },
+                                "覆盖导入",
+                                h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'overwrite'), style: { display: 'none' } })
+                            ),
+                            h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
+                        ),
+                        h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
+                        h("div", { className: "max-h-96 overflow-y-auto border rounded" },
+                            h("table", { className: "w-full text-sm text-left" },
+                                h("thead", null,
+                                    h("tr", { className: "bg-gray-50" },
+                                        h("th", { className: "p-2" }, "姓名"),
+                                        h("th", { className: "p-2" }, "性别"),
+                                        h("th", { className: "p-2" }, "小组"),
+                                        h("th", { className: "p-2" }, "职位"),
+                                        h("th", { className: "p-2" }, "宿舍"),
+                                        h("th", { className: "p-2" }, "操作")
+                                    )
+                                ),
+                                h("tbody", null,
+                                    (Array.isArray(students) ? students : []).map(s => h("tr", { key: s.id, className: "border-t" },
+                                        h("td", { className: "p-2" }, h("input", { className: "w-full border rounded p-1", value: s.name || "", onChange: e => updateStudent(s.id, { name: e.target.value }) })),
+                                        h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.gender || "", onChange: e => updateStudent(s.id, { gender: e.target.value }) }, h("option", { value: "" }, "-"), h("option", { value: "M" }, "男"), h("option", { value: "F" }, "女"))),
+                                        h("td", { className: "p-2" }, (() => {
+                                            const groups = systemConfig.organization.groups || [];
+                                            return h("select", { className: "w-full border rounded p-1", value: s.group || "", onChange: e => updateStudent(s.id, { group: e.target.value }) },
+                                                h("option", { value: "" }, "-"),
+                                                groups.map(g => h("option", { key: g.id, value: g.id }, g.name))
+                                            );
+                                        })()),
+                                        h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.role || "member", onChange: e => updateStudent(s.id, { role: e.target.value }) }, h("option", { value: "leader" }, "组长"), h("option", { value: "member" }, "组员"))),
+                                        h("td", { className: "p-2" }, (() => {
+                                            const dorms = systemConfig.organization.dorms || [];
+                                            return h("select", { className: "w-full border rounded p-1", value: s.dorm || "", onChange: e => updateStudent(s.id, { dorm: e.target.value }) },
+                                                h("option", { value: "" }, "-"),
+                                                dorms.map(d => h("option", { key: d.id, value: d.id }, d.name))
+                                            );
+                                        })()),
+                                        h("td", { className: "p-2" }, h("button", { onClick: () => removeStudent(s.id), className: "px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除"))
+                                    ))
+                                )
+                            )
                         )
                     )
                 )
@@ -1396,181 +1366,239 @@
                         )
                     ),
                     h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "组织架构"),
-                        h("div", { className: "space-y-6" },
-                            h("div", { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start max-w-5xl" },
-                                h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                    h("div", { className: "flex justify-between items-center" },
-                                        h("span", { className: "text-sm font-medium text-gray-700" }, "小组管理"),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = [...(sc.organization.groups || [])];
-                                            list.push({ id: `group_${Date.now()}`, name: "新小组", color: "bg-gray-100 text-gray-700 border-gray-200" });
-                                            return { ...sc, organization: { ...sc.organization, groups: list } };
-                                        }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增小组")
+                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "组织与角色"),
+                        h("div", { className: "space-y-4" },
+                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
+                                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                    h("div", null,
+                                        h("div", { className: "text-sm font-medium text-gray-700" }, "组织架构"),
+                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "小组管理、宿舍管理和工资设置统一收在这里。")
                                     ),
-                                    (systemConfig.organization.groups || []).length === 0
-                                        ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无小组")
-                                        : h("div", { className: "space-y-2" },
-                                            (systemConfig.organization.groups || []).map((g, idx) => h("div", { key: g.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: g.name || "", onChange: e => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.groups];
-                                                    list[idx] = { ...list[idx], name: e.target.value };
-                                                    return { ...sc, organization: { ...sc.organization, groups: list } };
-                                                }), placeholder: "小组名称" }),
-                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.groups];
-                                                    list.splice(idx, 1);
-                                                    return { ...sc, organization: { ...sc.organization, groups: list } };
-                                                }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                            ))
-                                        )
+                                    h("button", {
+                                        onClick: () => setShowOrganizationManager(prev => !prev),
+                                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
+                                    }, showOrganizationManager ? "收起组织架构" : "打开组织架构")
                                 ),
-                                h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                    h("div", { className: "flex justify-between items-center" },
-                                        h("span", { className: "text-sm font-medium text-gray-700" }, "宿舍管理"),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = [...(sc.organization.dorms || [])];
-                                            list.push({ id: `dorm_${Date.now()}`, name: "新宿舍" });
-                                            return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                        }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增宿舍")
-                                    ),
-                                    (systemConfig.organization.dorms || []).length === 0
-                                        ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无宿舍")
-                                        : h("div", { className: "space-y-2" },
-                                            (systemConfig.organization.dorms || []).map((d, idx) => h("div", { key: d.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: d.name || "", onChange: e => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.dorms];
-                                                    list[idx] = { ...list[idx], name: e.target.value };
-                                                    return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                                }), placeholder: "宿舍名称" }),
-                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.dorms];
-                                                    list.splice(idx, 1);
-                                                    return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                                }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                            ))
-                                        )
-                                ),
-                                h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-4" },
-                                    h("div", { className: "text-sm font-medium text-gray-700" }, "工资设置"),
-                                    h("div", { className: "space-y-4" },
-                                        h("div", null,
-                                            h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "每日工资基础分"),
-                                            h("input", {
-                                                type: "number",
-                                                className: "w-full border rounded-lg p-2 text-sm",
-                                                value: systemConfig.points.dailyWageAmount ?? 5,
-                                                onChange: e => updateSystemConfig(sc => ({
-                                                    ...sc,
-                                                    points: {
-                                                        ...sc.points,
-                                                        dailyWageAmount: Number(e.target.value)
-                                                    }
-                                                }))
-                                            }),
-                                            h("p", { className: "text-xs text-gray-500 mt-1" }, "普通成员按此分值发放，组长固定额外 +1 分。")
+                                showOrganizationManager && h("div", { className: "border-t pt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start max-w-5xl" },
+                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
+                                        h("div", { className: "flex justify-between items-center" },
+                                            h("span", { className: "text-sm font-medium text-gray-700" }, "小组管理"),
+                                            h("button", { onClick: () => updateSystemConfig(sc => {
+                                                const list = [...(sc.organization.groups || [])];
+                                                list.push({ id: `group_${Date.now()}`, name: "新小组", color: "bg-gray-100 text-gray-700 border-gray-200" });
+                                                return { ...sc, organization: { ...sc.organization, groups: list } };
+                                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增小组")
                                         ),
-                                        h("div", null,
-                                            h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "发放工资的小组"),
-                                            h("div", { className: "space-y-2 border rounded-lg p-3 bg-gray-50" },
-                                                (systemConfig.organization.groups || []).map(group => {
-                                                    const selectedGroups = Array.isArray(systemConfig.points.dailyWageGroups) ? systemConfig.points.dailyWageGroups : [];
-                                                    const checked = selectedGroups.includes(group.id);
-                                                    return h("label", { key: group.id, className: "flex items-center gap-2 text-sm text-gray-700" },
-                                                        h("input", {
-                                                            type: "checkbox",
-                                                            checked,
-                                                            onChange: e => updateSystemConfig(sc => {
-                                                                const current = Array.isArray(sc.points.dailyWageGroups) ? sc.points.dailyWageGroups : [];
-                                                                const next = e.target.checked
-                                                                    ? [...new Set([...current, group.id])]
-                                                                    : current.filter(id => id !== group.id);
-                                                                return {
-                                                                    ...sc,
-                                                                    points: {
-                                                                        ...sc.points,
-                                                                        dailyWageGroups: next
-                                                                    }
-                                                                };
-                                                            })
-                                                        }),
-                                                        h("span", null, group.name || group.id)
-                                                    );
-                                                })
+                                        (systemConfig.organization.groups || []).length === 0
+                                            ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无小组")
+                                            : h("div", { className: "space-y-2" },
+                                                (systemConfig.organization.groups || []).map((g, idx) => h("div", { key: g.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
+                                                    h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: g.name || "", onChange: e => updateSystemConfig(sc => {
+                                                        const list = [...sc.organization.groups];
+                                                        list[idx] = { ...list[idx], name: e.target.value };
+                                                        return { ...sc, organization: { ...sc.organization, groups: list } };
+                                                    }), placeholder: "小组名称" }),
+                                                    h("button", { onClick: () => updateSystemConfig(sc => {
+                                                        const list = [...sc.organization.groups];
+                                                        list.splice(idx, 1);
+                                                        return { ...sc, organization: { ...sc.organization, groups: list } };
+                                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
+                                                ))
+                                            )
+                                    ),
+                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
+                                        h("div", { className: "flex justify-between items-center" },
+                                            h("span", { className: "text-sm font-medium text-gray-700" }, "宿舍管理"),
+                                            h("button", { onClick: () => updateSystemConfig(sc => {
+                                                const list = [...(sc.organization.dorms || [])];
+                                                list.push({ id: `dorm_${Date.now()}`, name: "新宿舍" });
+                                                return { ...sc, organization: { ...sc.organization, dorms: list } };
+                                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增宿舍")
+                                        ),
+                                        (systemConfig.organization.dorms || []).length === 0
+                                            ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无宿舍")
+                                            : h("div", { className: "space-y-2" },
+                                                (systemConfig.organization.dorms || []).map((d, idx) => h("div", { key: d.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
+                                                    h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: d.name || "", onChange: e => updateSystemConfig(sc => {
+                                                        const list = [...sc.organization.dorms];
+                                                        list[idx] = { ...list[idx], name: e.target.value };
+                                                        return { ...sc, organization: { ...sc.organization, dorms: list } };
+                                                    }), placeholder: "宿舍名称" }),
+                                                    h("button", { onClick: () => updateSystemConfig(sc => {
+                                                        const list = [...sc.organization.dorms];
+                                                        list.splice(idx, 1);
+                                                        return { ...sc, organization: { ...sc.organization, dorms: list } };
+                                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
+                                                ))
+                                            )
+                                    ),
+                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-4" },
+                                        h("div", { className: "text-sm font-medium text-gray-700" }, "工资设置"),
+                                        h("div", { className: "space-y-4" },
+                                            h("div", null,
+                                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "每日工资基础分"),
+                                                h("input", {
+                                                    type: "number",
+                                                    className: "w-full border rounded-lg p-2 text-sm",
+                                                    value: systemConfig.points.dailyWageAmount ?? 5,
+                                                    onChange: e => updateSystemConfig(sc => ({
+                                                        ...sc,
+                                                        points: {
+                                                            ...sc.points,
+                                                            dailyWageAmount: Number(e.target.value)
+                                                        }
+                                                    }))
+                                                }),
+                                                h("p", { className: "text-xs text-gray-500 mt-1" }, "普通成员按此分值发放，组长固定额外 +1 分。")
                                             ),
-                                            h("p", { className: "text-xs text-gray-500 mt-1" }, "“一键工资”只会给这里勾选的小组成员发放工资。")
+                                            h("div", null,
+                                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "发放工资的小组"),
+                                                h("div", { className: "space-y-2 border rounded-lg p-3 bg-gray-50" },
+                                                    (systemConfig.organization.groups || []).map(group => {
+                                                        const selectedGroups = Array.isArray(systemConfig.points.dailyWageGroups) ? systemConfig.points.dailyWageGroups : [];
+                                                        const checked = selectedGroups.includes(group.id);
+                                                        return h("label", { key: group.id, className: "flex items-center gap-2 text-sm text-gray-700" },
+                                                            h("input", {
+                                                                type: "checkbox",
+                                                                checked,
+                                                                onChange: e => updateSystemConfig(sc => {
+                                                                    const current = Array.isArray(sc.points.dailyWageGroups) ? sc.points.dailyWageGroups : [];
+                                                                    const next = e.target.checked
+                                                                        ? [...new Set([...current, group.id])]
+                                                                        : current.filter(id => id !== group.id);
+                                                                    return {
+                                                                        ...sc,
+                                                                        points: {
+                                                                            ...sc.points,
+                                                                            dailyWageGroups: next
+                                                                        }
+                                                                    };
+                                                                })
+                                                            }),
+                                                            h("span", null, group.name || group.id)
+                                                        );
+                                                    })
+                                                ),
+                                                h("p", { className: "text-xs text-gray-500 mt-1" }, "“一键工资”只会给这里勾选的小组成员发放工资。")
+                                            )
                                         )
                                     )
                                 )
                             ),
-                            h("div", { className: "grid grid-cols-1 xl:grid-cols-2 gap-4 items-start max-w-4xl" },
-                                h("div", { className: "w-full max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                    h("div", { className: "flex justify-between items-center" },
-                                        h("span", { className: "text-sm font-medium text-gray-700" }, "专员角色"),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = [...(sc.organization.commissionerRoles || [])];
-                                            list.push({ id: `role_${Date.now()}`, name: "新角色" });
-                                            return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                        }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增角色")
+                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
+                                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                    h("div", null,
+                                        h("div", { className: "text-sm font-medium text-gray-700" }, "自定义角色"),
+                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "专员角色、班级自定义角色和岗位值日维护统一收在这里。")
                                     ),
-                                    (systemConfig.organization.commissionerRoles || []).length === 0
-                                        ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无专员角色")
-                                        : h("div", { className: "space-y-2" },
-                                            (systemConfig.organization.commissionerRoles || []).map((r, idx) => h("div", { key: r.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: r.name || "", onChange: e => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.commissionerRoles];
-                                                    list[idx] = { ...list[idx], name: e.target.value };
-                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                }), placeholder: "角色名称" }),
-                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                    const list = [...sc.organization.commissionerRoles];
-                                                    list.splice(idx, 1);
-                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                            ))
-                                        )
+                                    h("button", {
+                                        onClick: () => setShowCustomRolesManager(prev => !prev),
+                                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
+                                    }, showCustomRolesManager ? "收起自定义角色" : "打开自定义角色")
                                 ),
-                                h("div", { className: "w-full max-w-xl bg-white border rounded-lg p-4 space-y-3" },
-                                    h("div", { className: "flex justify-between items-center" },
-                                        h("span", { className: "text-sm font-medium text-gray-700" }, "班级自定义角色"),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                            list.push({ id: `custom_role_${Date.now()}`, name: "新职务", dailyWage: 2, studentId: null });
-                                            return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                        }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增职务")
-                                    ),
-                                    h("p", { className: "text-xs text-gray-500" }, "只维护职务名称、每日工资和任职学生，内部编号继续保留但不在这里编辑。"),
-                                    getCustomRoles(config).length === 0
-                                        ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无班级自定义角色")
-                                        : h("div", { className: "space-y-2" },
-                                            getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "bg-gray-50 p-3 rounded border space-y-2" },
-                                                h("div", { className: "flex items-center gap-2" },
-                                                    h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: role.name || "", onChange: e => updateSystemConfig(sc => {
-                                                        const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                        list[idx] = { ...list[idx], name: e.target.value };
-                                                        return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                    }), placeholder: "职务名称" }),
-                                                    h("input", { type: "number", className: "w-24 border rounded p-2 text-sm bg-white", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
-                                                        const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                        list[idx] = { ...list[idx], dailyWage: Number(e.target.value) };
-                                                        return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                    }), placeholder: "工资" }),
-                                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                                        const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                        list.splice(idx, 1);
-                                                        return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                ),
-                                                h("select", { className: "w-full max-w-xs border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
-                                                    const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                    list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
-                                                    return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                }) },
-                                                    h("option", { value: "" }, "未设置任职学生"),
-                                                    (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
+                                showCustomRolesManager && h("div", { className: "border-t pt-4 space-y-4" },
+                                    h("div", { className: "grid grid-cols-1 xl:grid-cols-2 gap-4 items-start max-w-4xl" },
+                                        h("div", { className: "w-full max-w-sm bg-white border rounded-lg p-4 space-y-3" },
+                                            h("div", { className: "flex justify-between items-center" },
+                                                h("span", { className: "text-sm font-medium text-gray-700" }, "专员角色"),
+                                                h("button", { onClick: () => updateSystemConfig(sc => {
+                                                    const list = [...(sc.organization.commissionerRoles || [])];
+                                                    list.push({ id: `role_${Date.now()}`, name: "新角色" });
+                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增角色")
+                                            ),
+                                            (systemConfig.organization.commissionerRoles || []).length === 0
+                                                ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无专员角色")
+                                                : h("div", { className: "space-y-2" },
+                                                    (systemConfig.organization.commissionerRoles || []).map((r, idx) => h("div", { key: r.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
+                                                        h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: r.name || "", onChange: e => updateSystemConfig(sc => {
+                                                            const list = [...sc.organization.commissionerRoles];
+                                                            list[idx] = { ...list[idx], name: e.target.value };
+                                                            return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                        }), placeholder: "角色名称" }),
+                                                        h("button", { onClick: () => updateSystemConfig(sc => {
+                                                            const list = [...sc.organization.commissionerRoles];
+                                                            list.splice(idx, 1);
+                                                            return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                        }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
+                                                    ))
                                                 )
-                                            ))
+                                        ),
+                                        h("div", { className: "w-full max-w-xl bg-white border rounded-lg p-4 space-y-3" },
+                                            h("div", { className: "flex justify-between items-center" },
+                                                h("span", { className: "text-sm font-medium text-gray-700" }, "班级自定义角色"),
+                                                h("button", { onClick: () => updateSystemConfig(sc => {
+                                                    const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                    list.push({ id: `custom_role_${Date.now()}`, name: "新职务", dailyWage: 2, studentId: null });
+                                                    return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增职务")
+                                            ),
+                                            h("p", { className: "text-xs text-gray-500" }, "只维护职务名称、每日工资和任职学生，内部编号继续保留但不在这里编辑。"),
+                                            getCustomRoles(config).length === 0
+                                                ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无班级自定义角色")
+                                                : h("div", { className: "space-y-2" },
+                                                    getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "bg-gray-50 p-3 rounded border space-y-2" },
+                                                        h("div", { className: "flex items-center gap-2" },
+                                                            h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: role.name || "", onChange: e => updateSystemConfig(sc => {
+                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                                list[idx] = { ...list[idx], name: e.target.value };
+                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                            }), placeholder: "职务名称" }),
+                                                            h("input", { type: "number", className: "w-24 border rounded p-2 text-sm bg-white", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
+                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                                list[idx] = { ...list[idx], dailyWage: Number(e.target.value) };
+                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                            }), placeholder: "工资" }),
+                                                            h("button", { onClick: () => updateSystemConfig(sc => {
+                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                                list.splice(idx, 1);
+                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                            }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
+                                                        ),
+                                                        h("select", { className: "w-full max-w-xs border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
+                                                            const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                            list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
+                                                            return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                        }) },
+                                                            h("option", { value: "" }, "未设置任职学生"),
+                                                            (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
+                                                        )
+                                                    ))
+                                                )
                                         )
+                                    ),
+                                    h("div", { className: "w-full max-w-4xl bg-white border rounded-lg p-4 space-y-4" },
+                                        h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                            h("div", null,
+                                                h("h4", { className: "font-bold text-gray-800 mb-1 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "岗位与值日维护"),
+                                                h("p", { className: "text-xs text-gray-500" }, "卫生值日和纪律专员的人员安排统一收在这里。")
+                                            ),
+                                            h("button", {
+                                                onClick: () => setShowDutyManager(prev => !prev),
+                                                className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
+                                            }, showDutyManager ? "收起岗位与值日维护" : "打开岗位与值日维护")
+                                        ),
+                                        showDutyManager && h("div", { className: "border-t pt-4 space-y-6" },
+                                            h("div", null,
+                                                h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日设置"),
+                                                h("div", { className: "space-y-2 text-sm" },
+                                                    Object.keys(config.duty || {}).map(day => h("div", { key: day, className: "flex items-center" },
+                                                        h("span", { className: "w-12 text-gray-500" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day]),
+                                                        (config.duty?.[day] || []).map((val, idx) => h("select", { key: idx, value: val, onChange: e => handleDutyChange(day, idx, e.target.value), className: "ml-2 border rounded p-1 flex-1 bg-white" }, h("option", { value: "" }, "-"), students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))))
+                                                    ))
+                                                )
+                                            ),
+                                            h("div", null,
+                                                h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员设置"),
+                                                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                                                    getCommissionerRoles(config).map(role => h("div", { key: role.id },
+                                                        h("div", { className: "text-xs text-gray-500 mb-1" }, role.name),
+                                                        h("select", { value: config.commissioners?.[role.id] || "", onChange: e => handleCommissionerChange(role.id, e.target.value), className: "w-full border rounded p-2 text-sm bg-white" }, h("option", { value: "" }, "未设置"), students.filter(s => s.group === 'discipline').map(s => h("option", { key: s.id, value: s.id }, s.name)))
+                                                    ))
+                                                )
+                                            )
+                                        )
+                                    )
                                 )
                             )
                         )
