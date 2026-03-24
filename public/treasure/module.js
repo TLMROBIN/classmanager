@@ -28,34 +28,32 @@
 
         return function TreasureView({
             students,
-            updatePoints,
             adminPassword,
             treasures,
-            setTreasures,
             storage,
-            setStorage,
             logs,
-            setLogs,
             redemptionHistory = {},
-            setRedemptionHistory,
             dailyUsageCounts = {},
-            setDailyUsageCounts,
             onReturnItem,
             onRedeemTreasure,
-            onUseItem
+            onUseItem,
+            onPerformGacha,
+            onSaveItem,
+            onDeleteItem
         }) {
             const treasurePoints = window.TreasurePoints || {};
             const {
                 getTreasurePrice,
                 getNextTreasurePriceHint
             } = treasurePoints;
+            const createEmptyItemData = () => ({ id: null, name: '', rarity: 'N', price: 10, stock: 10, desc: '', ladderPrices: '', dailyLimit: 0 });
             const [tab, setTab] = useState('shop');
             const [selectedStudent, setSelectedStudent] = useState("");
             const [gachaResult, setGachaResult] = useState(null);
             const [isGachaAnimating, setIsGachaAnimating] = useState(false);
             const [addModalOpen, setAddModalOpen] = useState(false);
             const [editMode, setEditMode] = useState(false);
-            const [newItemData, setNewItemData] = useState({ id: null, name: '', rarity: 'N', price: 10, stock: 10, desc: '', ladderPrices: '', dailyLimit: 0 });
+            const [newItemData, setNewItemData] = useState(createEmptyItemData);
 
             const handleTabChange = (t) => {
                 if (t === 'admin') {
@@ -64,65 +62,24 @@
                 setTab(t);
             };
 
-            const addLog = (studentName, action, item, cost, note = '') => {
-                const log = { id: Date.now() + Math.random(), ts: Date.now(), studentName, action, itemName: item.name, rarity: item.rarity, cost, note };
-                setLogs(prev => [log, ...prev]);
-            };
-
-            const addToStorage = (studentId, item, count = 1) => {
-                setStorage(prev => {
-                    const sStore = { ...(prev[studentId] || {}) };
-                    sStore[item.id] = (sStore[item.id] || 0) + count;
-                    return { ...prev, [studentId]: sStore };
-                });
-            };
-
-            const deductStock = (item, count = 1) => {
-                setTreasures(prev => prev.map(t => t.id === item.id ? { ...t, stock: t.stock - count } : t));
-            };
-
-            const checkDailyUsageLimit = (itemId) => {
-                const item = treasures.find(t => t.id == itemId);
-                if (!item || !item.dailyLimit || item.dailyLimit <= 0) return true;
-                const today = getTodayStr();
-                const currentCount = dailyUsageCounts[today]?.[itemId] || 0;
-                if (currentCount >= item.dailyLimit) {
-                    alert(`该物品今日全班已使用 ${currentCount}/${item.dailyLimit} 次，达到上限。`);
-                    return false;
-                }
-                return true;
-            };
-
             const handleBuy = (item) => {
                 if (!selectedStudent) return alert("请先选择一名学生");
                 const student = students.find(s => s.id == selectedStudent);
                 if (!student) return;
-
-                if (item.stock <= 0) return alert("库存不足");
 
                 const currentPrice = getTreasurePrice({
                     studentId: student.id,
                     item,
                     redemptionHistory
                 });
-
-                if (item.price < 0) {
-                    if (student.balance >= 0) {
-                        return alert("负价格宝物只能在余额小于0时兑换");
-                    }
-                    if (student.balance - currentPrice > 0) {
-                        return alert("兑换后余额不能大于0");
-                    }
-                } else {
-                    if (student.balance < currentPrice) return alert("余额不足");
-                }
-
                 if (!confirm(`确定为 ${student.name} 兑换 ${item.name} 吗？\n消耗: ${currentPrice} 积分`)) return;
+                if (typeof onRedeemTreasure !== 'function') return alert("兑换功能不可用");
 
-                if (onRedeemTreasure && onRedeemTreasure(student.id, item.id)) {
+                const result = onRedeemTreasure(student.id, item.id);
+                if (result?.ok) {
                     alert("兑换成功！");
                 } else {
-                    alert("兑换失败，请重试");
+                    alert(result?.message || "兑换失败，请重试");
                 }
             };
 
@@ -133,13 +90,14 @@
                 const count = storage[student.id]?.[itemId] || 0;
                 if (count <= 0) return alert("该物品数量不足");
                 const item = treasures.find(t => t.id == itemId) || { name: "未知物品", rarity: "N" };
-                if (!checkDailyUsageLimit(itemId)) return;
                 if (!confirm(`确定要使用 ${item.name} 吗？`)) return;
+                if (typeof onUseItem !== 'function') return alert("使用功能不可用");
 
-                if (typeof onUseItem === 'function' && onUseItem(student.id, itemId)) {
+                const result = onUseItem(student.id, itemId);
+                if (result?.ok) {
                     alert("使用成功！");
                 } else {
-                    alert("使用失败，请重试");
+                    alert(result?.message || "使用失败，请重试");
                 }
             };
 
@@ -153,87 +111,40 @@
                 if (!item) return;
 
                 if (!requireAdminAuth("请输入管理员密码以退回宝物：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
-                if (typeof onReturnItem !== 'function') return;
-                onReturnItem(student.id, itemId);
-                alert("退回成功！");
+                if (typeof onReturnItem !== 'function') return alert("退回功能不可用");
+
+                const result = onReturnItem(student.id, itemId);
+                if (result?.ok) {
+                    alert("退回成功！");
+                } else if (result?.message) {
+                    alert(result.message);
+                }
             };
 
             const performGacha = (times) => {
                 if (!selectedStudent) return alert("请先选择祈愿对象");
                 const student = students.find(s => s.id == selectedStudent);
-                const cost = times === 1 ? 15 : 120;
-                if (student.balance < cost) return alert("积分不足");
+                if (!student) return;
                 setIsGachaAnimating(true);
 
                 setTimeout(() => {
-                    const results = [];
-                    const availableTreasures = treasures.filter(t => t.stock > 0);
-                    if (availableTreasures.length === 0) { setIsGachaAnimating(false); return alert("藏宝阁已被搬空！"); }
-                    const pick = (list) => list[Math.floor(Math.random() * list.length)];
-
-                    for (let i = 0; i < times; i++) {
-                        const roll = Math.random() * 100;
-                        let targetRarity = 'N';
-                        if (roll < 0.05) targetRarity = 'SSR';
-                        else if (roll < 5) targetRarity = 'SR';
-                        else if (roll < 30) targetRarity = 'R';
-
-                        let pool = availableTreasures.filter(t => t.rarity === targetRarity && t.stock > 0);
-                        if (pool.length === 0 && targetRarity === 'SSR') { targetRarity = 'SR'; pool = availableTreasures.filter(t => t.rarity === 'SR' && t.stock > 0); }
-                        if (pool.length === 0 && targetRarity === 'SR') { targetRarity = 'R'; pool = availableTreasures.filter(t => t.rarity === 'R' && t.stock > 0); }
-                        if (pool.length === 0 && targetRarity === 'R') { targetRarity = 'N'; pool = availableTreasures.filter(t => t.rarity === 'N' && t.stock > 0); }
-                        if (pool.length === 0) { targetRarity = 'N'; pool = availableTreasures.filter(t => t.stock > 0); }
-
-                        if (pool.length > 0) {
-                            const item = pick(pool);
-                            results.push(item);
-                        }
-                    }
-
-                    const newTreasures = [...treasures];
-                    const newStorage = { ...storage };
-                    const sStore = { ...(newStorage[student.id] || {}) };
-
-                    results.forEach(item => {
-                        const tIndex = newTreasures.findIndex(t => t.id === item.id);
-                        if (tIndex > -1) newTreasures[tIndex].stock--;
-                        sStore[item.id] = (sStore[item.id] || 0) + 1;
-                    });
-
-                    setTreasures(newTreasures);
-                    setStorage({ ...newStorage, [student.id]: sStore });
-                    updatePoints(new Set([student.id]), -cost, `祈愿 x${times}`, 'spending', "班级", "兑奖");
-                    addLog(student.name, "祈愿", { name: `${times}连抽`, rarity: 'MIX' }, cost);
-                    setGachaResult(results);
                     setIsGachaAnimating(false);
+                    if (typeof onPerformGacha !== 'function') return alert("祈愿功能不可用");
+
+                    const result = onPerformGacha(student.id, times);
+                    if (!result?.ok) return alert(result?.message || "祈愿失败，请重试");
+
+                    setGachaResult(Array.isArray(result?.ui?.gachaResults) ? result.ui.gachaResults : []);
                 }, 2500);
             };
 
             const handleSaveItem = () => {
-                if (!newItemData.name) return alert("名称不能为空");
-
-                const ladderPrices = newItemData.ladderPrices.toString().split(',').map(n => parseFloat(n.trim())).filter(n => !isNaN(n));
-                const newItem = {
-                    id: editMode ? newItemData.id : Date.now(),
-                    name: newItemData.name,
-                    rarity: newItemData.rarity,
-                    price: parseFloat(newItemData.price),
-                    stock: parseInt(newItemData.stock),
-                    desc: newItemData.desc,
-                    ladderPrices,
-                    dailyLimit: parseInt(newItemData.dailyLimit)
-                };
-
-                if (editMode) {
-                    setTreasures(prev => prev.map(t => t.id === newItem.id ? newItem : t));
-                    addLog("系统", "管理", newItem, 0, `更新了 ${newItem.name} (库存:${newItem.stock}, 价格:${newItem.price})`);
-                } else {
-                    setTreasures(prev => [...prev, newItem]);
-                    addLog("系统", "管理", newItem, 0, `添加了 ${newItem.name}`);
-                }
-
+                if (typeof onSaveItem !== 'function') return alert("保存功能不可用");
+                const result = onSaveItem(newItemData, editMode);
+                if (!result?.ok) return alert(result?.message || "保存失败，请重试");
                 setAddModalOpen(false);
-                setNewItemData({ name: '', rarity: 'N', price: 10, stock: 10, desc: '', ladderPrices: '', dailyLimit: 0 });
+                setEditMode(false);
+                setNewItemData(createEmptyItemData());
             };
 
             const openEditModal = (item) => {
@@ -249,46 +160,16 @@
             const handleDeleteItem = (item) => {
                 if (!item) return;
                 if (!confirm(`确定要删除宝物“${item.name}”吗？\n这会同时清理储物箱和统计中的对应记录。`)) return;
+                if (typeof onDeleteItem !== 'function') return alert("删除功能不可用");
 
-                setTreasures(prev => prev.filter(t => t.id !== item.id));
-
-                setStorage(prev => {
-                    const next = {};
-                    Object.entries(prev || {}).forEach(([studentId, studentStore]) => {
-                        const store = { ...(studentStore || {}) };
-                        delete store[item.id];
-                        next[studentId] = store;
-                    });
-                    return next;
-                });
-
-                setRedemptionHistory(prev => {
-                    const next = {};
-                    Object.entries(prev || {}).forEach(([studentId, studentHistory]) => {
-                        const history = { ...(studentHistory || {}) };
-                        delete history[item.id];
-                        next[studentId] = history;
-                    });
-                    return next;
-                });
-
-                setDailyUsageCounts(prev => {
-                    const next = {};
-                    Object.entries(prev || {}).forEach(([date, usageMap]) => {
-                        const usage = { ...(usageMap || {}) };
-                        delete usage[item.id];
-                        next[date] = usage;
-                    });
-                    return next;
-                });
+                const result = onDeleteItem(item.id);
+                if (!result?.ok) return alert(result?.message || "删除失败，请重试");
 
                 if (editMode && newItemData.id === item.id) {
                     setAddModalOpen(false);
                     setEditMode(false);
-                    setNewItemData({ id: null, name: '', rarity: 'N', price: 10, stock: 10, desc: '', ladderPrices: '', dailyLimit: 0 });
+                    setNewItemData(createEmptyItemData());
                 }
-
-                addLog("系统", "管理", item, 0, `删除了 ${item.name}`);
             };
 
             const rarityColor = (r) => {
@@ -482,7 +363,7 @@
                         h("div", { className: "bg-white p-4 rounded shadow" },
                             h("h4", { className: "font-bold mb-4" }, "库存管理 (仅管理员)"),
                             h("div", { className: "flex gap-2 mb-4" },
-                                h("button", { onClick: () => { setEditMode(false); setNewItemData({ name: '', rarity: 'N', price: 10, stock: 10, desc: '', ladderPrices: '', dailyLimit: 0 }); setAddModalOpen(true); }, className: "px-3 py-1 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm flex items-center gap-1" }, h(Icon, { name: "plus", size: 14 }), "手动添加")
+                                h("button", { onClick: () => { setEditMode(false); setNewItemData(createEmptyItemData()); setAddModalOpen(true); }, className: "px-3 py-1 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm flex items-center gap-1" }, h(Icon, { name: "plus", size: 14 }), "手动添加")
                             ),
                             h("div", { className: "max-h-60 overflow-y-auto border rounded" },
                                 h("table", { className: "w-full text-sm text-left" },

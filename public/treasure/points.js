@@ -163,14 +163,17 @@
     const buildTreasureUseState = ({ studentId, itemId, students, treasures, storage, logs, dailyUsageCounts, getTodayStr, getNow }) => {
         const student = (Array.isArray(students) ? students : []).find(item => item.id === studentId);
         const treasure = (Array.isArray(treasures) ? treasures : []).find(item => item.id == itemId);
-        if (!student || !treasure) return { ok: false };
+        if (!student) return { ok: false, message: "未找到学生" };
+        if (!treasure) return { ok: false, message: "未找到物品" };
         const count = storage?.[studentId]?.[itemId] || 0;
-        if (count <= 0) return { ok: false };
+        if (count <= 0) return { ok: false, message: "该物品数量不足" };
 
         const today = typeof getTodayStr === 'function' ? getTodayStr() : new Date().toISOString().slice(0, 10);
         if (treasure.dailyLimit > 0) {
             const currentCount = dailyUsageCounts?.[today]?.[itemId] || 0;
-            if (currentCount >= treasure.dailyLimit) return { ok: false };
+            if (currentCount >= treasure.dailyLimit) {
+                return { ok: false, message: `该物品今日全班已使用 ${currentCount}/${treasure.dailyLimit} 次，达到上限。` };
+            }
         }
 
         const newStorage = { ...(storage || {}) };
