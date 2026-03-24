@@ -138,13 +138,6 @@ const DEFAULT_SYSTEM_CONFIG = {
     ]
 };
 
-const POINT_SCENES = ["宿舍", "班级", "校级", "其他"];
-const POINT_CATEGORIES = ["待定", "学业", "纪律", "卫生", "兑奖", "出勤", "班务"];
-const DEFAULT_POINT_SCENE = "班级";
-const DEFAULT_POINT_CATEGORY = "纪律";
-
-const normalizePointScene = (scene) => POINT_SCENES.includes(scene) ? scene : DEFAULT_POINT_SCENE;
-const normalizePointCategory = (category) => POINT_CATEGORIES.includes(category) ? category : DEFAULT_POINT_CATEGORY;
 const normalizeCustomRoles = (roles, fallbackDailyWage = 0) => (
     Array.isArray(roles) ? roles : []
 ).map((role, idx) => ({
@@ -292,26 +285,6 @@ const getPenaltyRules = (config) => {
     return systemConfig.attendance.penaltyRules;
 };
 
-// 获取小组配置（转换为对象格式，兼容旧代码）
-const getGroupsConfig = (config) => {
-    const systemConfig = getSystemConfig(config);
-    const groupsObj = {};
-    systemConfig.organization.groups.forEach(g => {
-        groupsObj[g.id] = { name: g.name, color: g.color };
-    });
-    return groupsObj;
-};
-
-// 获取宿舍配置（转换为对象格式，兼容旧代码）
-const getDormsConfig = (config) => {
-    const systemConfig = getSystemConfig(config);
-    const dormsObj = {};
-    systemConfig.organization.dorms.forEach(d => {
-        dormsObj[d.id] = d.name;
-    });
-    return dormsObj;
-};
-
 // 获取专员角色配置
 const getCommissionerRoles = (config) => {
     const systemConfig = getSystemConfig(config);
@@ -321,12 +294,6 @@ const getCommissionerRoles = (config) => {
 const getCustomRoles = (config) => {
     const systemConfig = getSystemConfig(config);
     return normalizeCustomRoles(systemConfig.organization.customRoles || []);
-};
-
-// 获取积分理由预设
-const getReasonsPreset = (config) => {
-    const systemConfig = getSystemConfig(config);
-    return systemConfig.points.reasons;
 };
 
 // 获取藏宝阁商品配置
@@ -379,11 +346,32 @@ const protectTreasureDomain = (nextDomain, readExistingDomain, options = {}) => 
     return normalizedNext;
 };
 
-// 获取学科配置
-const getSubjectsConfig = (config) => {
-    const systemConfig = getSystemConfig(config);
-    return systemConfig.subjects || DEFAULT_SYSTEM_CONFIG.subjects;
-};
+if (typeof window.createPointsConfigHelpers !== 'function' || !window.PointsController) {
+    throw new Error('Points helpers are missing');
+}
+
+const {
+    POINT_SCENES,
+    POINT_CATEGORIES,
+    DEFAULT_POINT_SCENE,
+    DEFAULT_POINT_CATEGORY,
+    normalizePointScene,
+    normalizePointCategory,
+    getGroupsConfig,
+    getDormsConfig,
+    getReasonsPreset,
+    getSubjectsConfig
+} = window.createPointsConfigHelpers({
+    getSystemConfig,
+    DEFAULT_SYSTEM_CONFIG
+});
+const {
+    batchUpdatePoints: runBatchUpdatePoints,
+    updatePoints: runUpdatePoints,
+    handleUndo: runHandleUndo,
+    handleUndoByReasons: runHandleUndoByReasons,
+    handleWage: runHandleWage
+} = window.PointsController || {};
 
 const getDefaultCommissioners = (config) => {
     const roles = getCommissionerRoles(config);
@@ -5264,76 +5252,29 @@ const INITIAL_TREASURES = [
 
 
         // NEW Batch Update Function
-        const batchUpdatePoints = useCallback((updates) => {
-            if (!Array.isArray(updates) || updates.length === 0) return 0;
-            const invalid = updates.find(u => !u.scene || !u.category || !POINT_SCENES.includes(u.scene) || !POINT_CATEGORIES.includes(u.category));
-            if (invalid) {
-                alert("请先选择场景与类别");
-                return 0;
-            }
-            const ts = getNow().getTime();
-            
-            setStudents(prevStudents => {
-                const sourceStudents = (Array.isArray(prevStudents) && prevStudents.length > 0) ? prevStudents : GUEST_ROSTER;
-                const newStudents = sourceStudents.map(s => ({ ...s }));
-                
-                const newHistoryRecords = [];
-                
-                updates.forEach(update => {
-                    const idx = newStudents.findIndex(s => s.id === update.id);
-                    if (idx !== -1) {
-                        const s = newStudents[idx];
-                        s.zizai = Number.isFinite(Number(s.zizai)) ? Number(s.zizai) : 0;
-                        s.balance = Number.isFinite(Number(s.balance)) ? Number(s.balance) : 0;
-                        s.penalty = Number.isFinite(Number(s.penalty)) ? Number(s.penalty) : 0;
-                        const snapshot = { zizai: s.zizai, balance: s.balance, penalty: s.penalty };
-                        const valNum = Number(update.val);
-                        const val = Number.isFinite(valNum) ? valNum : 0;
+        const batchUpdatePoints = useCallback((updates) => runBatchUpdatePoints({
+            updates,
+            POINT_SCENES,
+            POINT_CATEGORIES,
+            getNow,
+            setStudents,
+            setHistory,
+            GUEST_ROSTER,
+            normalizePointScene,
+            normalizePointCategory
+        }), []);
 
-                        if (val > 0) s.zizai += val;
-                        s.balance += val;
-                        if (val < 0 && update.type === 'penalty') {
-                            s.penalty += Math.abs(val);
-                            s.lastPenaltyAt = ts;
-                        }
-                        
-                        const scene = normalizePointScene(update.scene);
-                        const category = normalizePointCategory(update.category);
-                        
-                        newHistoryRecords.push({ 
-                            id: ts + Math.random(), 
-                            ts, 
-                            studentId: s.id, 
-                            studentName: s.name, 
-                            val, 
-                            reason: update.reason, 
-                            snapshot,
-                            type: update.type,
-                            scene,
-                            category
-                        });
-                    }
-                });
-                
-                setHistory(prevHistory => {
-                    const sourceHistory = Array.isArray(prevHistory) ? prevHistory : [];
-                    return [...newHistoryRecords, ...sourceHistory];
-                });
-                
-                return newStudents;
-            });
-            
-            return updates.length;
-        }, []);
-
-        const updatePoints = (ids, val, reason, type = 'bonus', scene, category) => {
-            if (!scene || !category || !POINT_SCENES.includes(scene) || !POINT_CATEGORIES.includes(category)) {
-                alert("请先选择场景与类别");
-                return 0;
-            }
-            const updates = Array.from(ids).map(id => ({ id, val, reason, type, scene, category }));
-            return batchUpdatePoints(updates);
-        };
+        const updatePoints = (ids, val, reason, type = 'bonus', scene, category) => runUpdatePoints({
+            ids,
+            val,
+            reason,
+            type,
+            scene,
+            category,
+            POINT_SCENES,
+            POINT_CATEGORIES,
+            batchUpdatePoints
+        });
 
         const applyBattleSettlementToMainRecords = ({ updates, summaryText }) => {
             if (!Array.isArray(updates) || updates.length === 0) {
@@ -5347,122 +5288,32 @@ const INITIAL_TREASURES = [
             return { applied: true, count };
         };
 
-        const handleUndo = (recordId) => {
-            const record = history.find(h => h.id === recordId);
-            if (!record || record.isUndoLog) return;
-            const newStudents = [...students];
-            const idx = newStudents.findIndex(s => s.id === record.studentId);
-            let undoSnapshot = null;
-            if (idx !== -1) {
-                const s = newStudents[idx];
-                const val = record.val || 0;
-                
-                // 记录撤销前的状态
-                undoSnapshot = { zizai: s.zizai, balance: s.balance, penalty: s.penalty };
-                
-                // 撤销操作：反向加减，而不是恢复到 snapshot
-                if (val > 0) {
-                    s.zizai = (s.zizai || 0) - val;
-                }
-                s.balance = (s.balance || 0) - val;
-                if (val < 0 && record.type === 'penalty') {
-                    s.penalty = Math.max(0, (s.penalty || 0) + val);
-                }
-                
-                // 如果撤销的是扣分记录，重新计算 lastPenaltyAt
-                if (record.type === 'penalty') {
-                    const filtered = history.filter(h => h.id !== recordId && String(h.studentId) === String(record.studentId) && h.type === 'penalty' && !h.isUndoLog);
-                    if (filtered.length > 0) {
-                        const lastPenalty = filtered.reduce((max, h) => h.ts > max.ts ? h : max, filtered[0]);
-                        s.lastPenaltyAt = lastPenalty.ts;
-                    } else {
-                        s.lastPenaltyAt = 0;
-                    }
-                }
-            }
-            const filtered = history.filter(h => h.id !== recordId);
-            const ts = Date.now();
-            const undoEntry = {
-                id: ts + Math.random(),
-                ts,
-                studentId: record.studentId,
-                studentName: record.studentName,
-                val: -record.val,
-                reason: "撤销扣分: " + (record.reason || ""),
-                snapshot: undoSnapshot || { zizai: 0, balance: 0, penalty: 0 },
-                type: "bonus",
-                isUndoLog: true,
-                scene: normalizePointScene(record.scene),
-                category: normalizePointCategory(record.category)
-            };
-            setStudents(newStudents);
-            setHistory([undoEntry, ...filtered]);
-        };
+        const handleUndo = (recordId) => runHandleUndo({
+            recordId,
+            history,
+            students,
+            setStudents,
+            setHistory,
+            normalizePointScene,
+            normalizePointCategory
+        });
         
-        const handleUndoByReasons = (studentId, reasons) => {
-            const reasonList = Array.isArray(reasons) ? reasons.filter(Boolean) : [reasons].filter(Boolean);
-            if (reasonList.length === 0) return;
-            const record = history.find(h => String(h.studentId) === String(studentId) && !h.isUndoLog && reasonList.includes(h.reason));
-            if (!record) return alert("未找到对应的加扣分记录");
-            handleUndo(record.id);
-        };
+        const handleUndoByReasons = (studentId, reasons) => runHandleUndoByReasons({
+            studentId,
+            reasons,
+            history,
+            handleUndo
+        });
 
-        const handleWage = () => {
-            const today = getTodayStr();
-            if (config.lastWageDate === today) { if (!confirm("今日工资似乎已发放，确定要再次发放吗？")) return; }
-            const systemConfig = getSystemConfig(config);
-            const baseWage = Number(systemConfig.points?.dailyWageAmount);
-            const dailyWageAmount = Number.isFinite(baseWage) ? baseWage : 5;
-            const wageGroups = Array.isArray(systemConfig.points?.dailyWageGroups)
-                ? systemConfig.points.dailyWageGroups
-                : ['discipline', 'hygiene'];
-            const targets = students.filter(s => wageGroups.includes(s.group));
-            const psychologyCommitteeIds = config.psychologyCommittee || [null, null, null, null];
-            const validPsychologyIds = psychologyCommitteeIds.filter(id => id != null);
-            const customRoles = getCustomRoles(config);
-            const paidCustomRoles = customRoles.filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
-            if (targets.length === 0 && validPsychologyIds.length === 0 && paidCustomRoles.length === 0) {
-                return alert("没有找到可发放工资或津贴的对象");
-            }
-                
-            const updates = targets.map(t => ({
-                id: t.id,
-                val: t.role === 'leader' ? dailyWageAmount + 1 : dailyWageAmount,
-                reason: "每日工资",
-                type: 'bonus',
-                scene: "班级",
-                category: "班务"
-            }));
-            
-            validPsychologyIds.forEach(psychologyId => {
-                updates.push({
-                    id: psychologyId,
-                    val: 1,
-                    reason: "心理委员津贴",
-                    type: 'bonus',
-                    scene: "班级",
-                    category: "班务"
-                });
-            });
-
-            paidCustomRoles.forEach(role => {
-                updates.push({
-                    id: role.studentId,
-                    val: Number(role.dailyWage) || 0,
-                    reason: `班级职务津贴${role.name ? `: ${role.name}` : ''}`,
-                    type: 'bonus',
-                    scene: "班级",
-                    category: "班务"
-                });
-            });
-                
-            batchUpdatePoints(updates);
-            setConfig({ ...config, lastWageDate: today });
-            const extraNotes = [];
-            if (validPsychologyIds.length > 0) extraNotes.push(`${validPsychologyIds.length}位心理委员津贴`);
-            if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
-            alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
-        };
+        const handleWage = () => runHandleWage({
+            config,
+            students,
+            getTodayStr,
+            getSystemConfig,
+            getCustomRoles,
+            batchUpdatePoints,
+            setConfig
+        });
 
         const handleRedeemTreasure = (studentId, itemId) => {
             const student = students.find(s => s.id === studentId);
