@@ -22,6 +22,7 @@
             DEFAULT_SYSTEM_CONFIG,
             stripTreasureConfig,
             stripSystemConfigTreasures,
+            sanitizeStoredConfig,
             getLegacyTreasureList,
             normalizeCustomRoles,
             getCustomRoles,
@@ -59,6 +60,7 @@
             !DEFAULT_SYSTEM_CONFIG ||
             !stripTreasureConfig ||
             !stripSystemConfigTreasures ||
+            !sanitizeStoredConfig ||
             !getLegacyTreasureList ||
             !normalizeCustomRoles ||
             !getCustomRoles ||
@@ -100,6 +102,14 @@
         const [showCustomRolesManager, setShowCustomRolesManager] = useState(false);
         const [showDutyManager, setShowDutyManager] = useState(false);
         const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
+        const setConfigSafe = (next) => {
+            if (typeof setConfig !== 'function') return;
+            if (typeof next === 'function') {
+                setConfig(prev => sanitizeStoredConfig(next(prev)));
+                return;
+            }
+            setConfig(sanitizeStoredConfig(next));
+        };
         const systemConfig = getSystemConfig(config);
         const ExamArchivesView = examArchivesModuleStatus === 'ready' ? getExamArchivesView() : null;
         const formatDateTimeLocal = (ts) => {
@@ -111,7 +121,7 @@
 
         const applySystemConfig = (next) => {
             const newConfig = { ...config, systemConfig: stripSystemConfigTreasures(next) };
-            setConfig(newConfig);
+            setConfigSafe(newConfig);
             if (Array.isArray(next.quotes)) setQuotes(next.quotes);
         };
 
@@ -125,13 +135,13 @@
             if (!name || !countdownDate) return alert("请填写事件名称和日期");
             const list = Array.isArray(config.countdownEvents) ? [...config.countdownEvents] : [];
             list.push({ id: Date.now(), name, date: countdownDate });
-            setConfig({ ...config, countdownEvents: list });
+            setConfigSafe({ ...config, countdownEvents: list });
             setCountdownName("");
             setCountdownDate("");
         };
         const removeCountdownEvent = (id) => {
             const list = Array.isArray(config.countdownEvents) ? config.countdownEvents.filter(e => e.id !== id) : [];
-            setConfig({ ...config, countdownEvents: list });
+            setConfigSafe({ ...config, countdownEvents: list });
         };
         const handleGenerateBrief = () => {
             const start = new Date(reportStart);
@@ -565,7 +575,7 @@
                 if (saved) latestAttendance = JSON.parse(saved);
             } catch (_) {}
             const fullData = {
-                students, history, config: stripTreasureConfig(config),
+                students, history, config: sanitizeStoredConfig(config),
                 attendance_records: latestAttendance || {},
                 class_treasure_data: { treasures, storage, logs },
                 quotes: quotes,
@@ -599,7 +609,7 @@
                         if (data.history) setHistory(data.history);
                         if (data.config) {
                             const merged = getSystemConfig({ systemConfig: data.config.systemConfig || {} });
-                            setConfig(stripTreasureConfig({ ...data.config, systemConfig: merged }));
+                            setConfigSafe({ ...data.config, systemConfig: merged });
                             if (Array.isArray(merged.quotes)) setQuotes(merged.quotes);
                         }
                         if (data.attendance_records) {
@@ -645,7 +655,7 @@
             if (d.students) setStudents(d.students);
             if (hasStudentProfilesInData(d)) setStudentProfiles(nextStudentProfiles);
             if (d.history) setHistory(d.history);
-            if (d.config) setConfig(stripTreasureConfig(d.config));
+            if (d.config) setConfigSafe(d.config);
             if (d.attendanceRecords) setAttendanceRecords(d.attendanceRecords);
             if (d.treasures) setTreasures(d.treasures || []);
             if (d.storage) setStorage(d.storage || {});
@@ -1013,11 +1023,78 @@
             const row = Array.isArray(newDuty[day]) ? [...newDuty[day]] : [];
             row[idx] = name;
             newDuty[day] = row;
-            setConfig({ ...config, duty: newDuty });
+            setConfigSafe({ ...config, duty: newDuty });
         };
         const handleCommissionerChange = (roleId, studentId) => {
-            setConfig({ ...config, commissioners: { ...(config.commissioners || {}), [roleId]: studentId ? parseInt(studentId) : null } });
+            setConfigSafe({ ...config, commissioners: { ...(config.commissioners || {}), [roleId]: studentId ? parseInt(studentId) : null } });
         };
+
+        const renderStudentRosterManager = () => h("div", { className: "border-t pt-6" },
+            h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", null,
+                        h("h3", { className: "font-bold text-gray-700 mb-1" }, "学生名单维护"),
+                        h("p", { className: "text-xs text-gray-500" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
+                    ),
+                    h("button", {
+                        onClick: () => setShowStudentRosterManager(prev => !prev),
+                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
+                    }, showStudentRosterManager ? "收起学生名单维护" : "打开学生名单维护")
+                ),
+                showStudentRosterManager && h("div", { className: "border-t pt-4" },
+                    h("div", { className: "flex flex-wrap gap-2 mb-4" },
+                        h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
+                        h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
+                        h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
+                            "增量导入",
+                            h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
+                        ),
+                        h("label", { className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm cursor-pointer" },
+                            "覆盖导入",
+                            h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'overwrite'), style: { display: 'none' } })
+                        ),
+                        h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
+                    ),
+                    h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
+                    h("div", { className: "max-h-96 overflow-y-auto border rounded" },
+                        h("table", { className: "w-full text-sm text-left" },
+                            h("thead", null,
+                                h("tr", { className: "bg-gray-50" },
+                                    h("th", { className: "p-2" }, "姓名"),
+                                    h("th", { className: "p-2" }, "性别"),
+                                    h("th", { className: "p-2" }, "小组"),
+                                    h("th", { className: "p-2" }, "职位"),
+                                    h("th", { className: "p-2" }, "宿舍"),
+                                    h("th", { className: "p-2" }, "操作")
+                                )
+                            ),
+                            h("tbody", null,
+                                (Array.isArray(students) ? students : []).map(s => h("tr", { key: s.id, className: "border-t" },
+                                    h("td", { className: "p-2" }, h("input", { className: "w-full border rounded p-1", value: s.name || "", onChange: e => updateStudent(s.id, { name: e.target.value }) })),
+                                    h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.gender || "", onChange: e => updateStudent(s.id, { gender: e.target.value }) }, h("option", { value: "" }, "-"), h("option", { value: "M" }, "男"), h("option", { value: "F" }, "女"))),
+                                    h("td", { className: "p-2" }, (() => {
+                                        const groups = systemConfig.organization.groups || [];
+                                        return h("select", { className: "w-full border rounded p-1", value: s.group || "", onChange: e => updateStudent(s.id, { group: e.target.value }) },
+                                            h("option", { value: "" }, "-"),
+                                            groups.map(g => h("option", { key: g.id, value: g.id }, g.name))
+                                        );
+                                    })()),
+                                    h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.role || "member", onChange: e => updateStudent(s.id, { role: e.target.value }) }, h("option", { value: "leader" }, "组长"), h("option", { value: "member" }, "组员"))),
+                                    h("td", { className: "p-2" }, (() => {
+                                        const dorms = systemConfig.organization.dorms || [];
+                                        return h("select", { className: "w-full border rounded p-1", value: s.dorm || "", onChange: e => updateStudent(s.id, { dorm: e.target.value }) },
+                                            h("option", { value: "" }, "-"),
+                                            dorms.map(d => h("option", { key: d.id, value: d.id }, d.name))
+                                        );
+                                    })()),
+                                    h("td", { className: "p-2" }, h("button", { onClick: () => removeStudent(s.id), className: "px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除"))
+                                ))
+                            )
+                        )
+                    )
+                )
+            )
+        );
 
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
             if (isDirtyRef) isDirtyRef.current = true;
@@ -1092,72 +1169,6 @@
                         )
                 )
             ),
-            h("div", { className: "border-t pt-6" },
-                h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
-                    h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                        h("div", null,
-                            h("h3", { className: "font-bold text-gray-700 mb-1" }, "学生名单维护"),
-                            h("p", { className: "text-xs text-gray-500" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
-                        ),
-                        h("button", {
-                            onClick: () => setShowStudentRosterManager(prev => !prev),
-                            className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
-                        }, showStudentRosterManager ? "收起学生名单维护" : "打开学生名单维护")
-                    ),
-                    showStudentRosterManager && h("div", { className: "border-t pt-4" },
-                        h("div", { className: "flex flex-wrap gap-2 mb-4" },
-                            h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
-                            h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
-                            h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
-                                "增量导入",
-                                h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
-                            ),
-                            h("label", { className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm cursor-pointer" },
-                                "覆盖导入",
-                                h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'overwrite'), style: { display: 'none' } })
-                            ),
-                            h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
-                        ),
-                        h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
-                        h("div", { className: "max-h-96 overflow-y-auto border rounded" },
-                            h("table", { className: "w-full text-sm text-left" },
-                                h("thead", null,
-                                    h("tr", { className: "bg-gray-50" },
-                                        h("th", { className: "p-2" }, "姓名"),
-                                        h("th", { className: "p-2" }, "性别"),
-                                        h("th", { className: "p-2" }, "小组"),
-                                        h("th", { className: "p-2" }, "职位"),
-                                        h("th", { className: "p-2" }, "宿舍"),
-                                        h("th", { className: "p-2" }, "操作")
-                                    )
-                                ),
-                                h("tbody", null,
-                                    (Array.isArray(students) ? students : []).map(s => h("tr", { key: s.id, className: "border-t" },
-                                        h("td", { className: "p-2" }, h("input", { className: "w-full border rounded p-1", value: s.name || "", onChange: e => updateStudent(s.id, { name: e.target.value }) })),
-                                        h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.gender || "", onChange: e => updateStudent(s.id, { gender: e.target.value }) }, h("option", { value: "" }, "-"), h("option", { value: "M" }, "男"), h("option", { value: "F" }, "女"))),
-                                        h("td", { className: "p-2" }, (() => {
-                                            const groups = systemConfig.organization.groups || [];
-                                            return h("select", { className: "w-full border rounded p-1", value: s.group || "", onChange: e => updateStudent(s.id, { group: e.target.value }) },
-                                                h("option", { value: "" }, "-"),
-                                                groups.map(g => h("option", { key: g.id, value: g.id }, g.name))
-                                            );
-                                        })()),
-                                        h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.role || "member", onChange: e => updateStudent(s.id, { role: e.target.value }) }, h("option", { value: "leader" }, "组长"), h("option", { value: "member" }, "组员"))),
-                                        h("td", { className: "p-2" }, (() => {
-                                            const dorms = systemConfig.organization.dorms || [];
-                                            return h("select", { className: "w-full border rounded p-1", value: s.dorm || "", onChange: e => updateStudent(s.id, { dorm: e.target.value }) },
-                                                h("option", { value: "" }, "-"),
-                                                dorms.map(d => h("option", { key: d.id, value: d.id }, d.name))
-                                            );
-                                        })()),
-                                        h("td", { className: "p-2" }, h("button", { onClick: () => removeStudent(s.id), className: "px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除"))
-                                    ))
-                                )
-                            )
-                        )
-                    )
-                )
-            ),
             window.desktopApi && h("div", { className: "border-t pt-6" },
                 h("h3", { className: "font-bold text-gray-700 mb-2" }, "🖥️ 桌面端连接"),
                 !desktopConfig ? h("div", { className: "text-gray-400 text-sm" }, "正在加载桌面端配置...") : h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
@@ -1205,7 +1216,7 @@
                 h("button", {
                     onClick: () => {
                         const newFrozen = !config.frozen;
-                        setConfig(c => ({ ...c, frozen: newFrozen }));
+                        setConfigSafe(c => ({ ...c, frozen: newFrozen }));
                         
                         if (!newFrozen) {
                             const now = Date.now();
@@ -1485,6 +1496,7 @@
                                     )
                                 )
                             ),
+                            renderStudentRosterManager(),
                             h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
                                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                                     h("div", null,

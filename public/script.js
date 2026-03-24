@@ -222,6 +222,15 @@ const stripTreasureConfig = (config) => {
     return { ...config, systemConfig: nextSystemConfig };
 };
 
+const stripLegacyPsychologyCommittee = (config) => {
+    if (!config || typeof config !== 'object') return config || {};
+    if (!Object.prototype.hasOwnProperty.call(config, 'psychologyCommittee')) return config;
+    const { psychologyCommittee, ...rest } = config;
+    return rest;
+};
+
+const sanitizeStoredConfig = (config) => stripLegacyPsychologyCommittee(stripTreasureConfig(config));
+
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
 const getSystemConfig = (config) => {
@@ -1004,6 +1013,7 @@ const INITIAL_TREASURES = [
             DEFAULT_SYSTEM_CONFIG,
             stripTreasureConfig,
             stripSystemConfigTreasures,
+            sanitizeStoredConfig,
             getLegacyTreasureList,
             normalizeCustomRoles,
             getCustomRoles,
@@ -1350,7 +1360,7 @@ const INITIAL_TREASURES = [
                 students: safe.students,
                 studentProfiles: buildNormalizedStudentProfiles(safe.studentProfiles, safe.students),
                 history: safe.history,
-                config: safe.config,
+                config: sanitizeStoredConfig(safe.config),
                 attendanceRecords: safe.attendanceRecords || safe.attendance_records,
                 treasures: safe.treasures,
                 storage: safe.storage,
@@ -1404,7 +1414,7 @@ const INITIAL_TREASURES = [
                 const keepLocal = !options.force && hasLocalHistory && !hasIncomingHistory;
                 if (!keepLocal) setHistory(incomingHistory);
             }
-            if (use(normalized.flags.config)) setConfig(stripTreasureConfig(normalized.config || {}));
+            if (use(normalized.flags.config)) setConfig(sanitizeStoredConfig(normalized.config || {}));
 
             if (use(normalized.flags.attendanceRecords)) {
                 let att = normalized.attendanceRecords || {};
@@ -1446,7 +1456,7 @@ const INITIAL_TREASURES = [
                 students: mergedStudents,
                 studentProfiles: mergedStudentProfiles,
                 history: mergeArrayByKey(remote.history, local.history),
-                config: { ...(remote.config || {}), ...(local.config || {}) },
+                config: sanitizeStoredConfig({ ...(remote.config || {}), ...(local.config || {}) }),
                 attendanceRecords: mergeAttendanceRecords(remote.attendanceRecords || {}, local.attendanceRecords || {}),
                 treasures: mergeArrayByKey(remote.treasures, local.treasures),
                 storage: { ...(remote.storage || {}), ...(local.storage || {}) },
@@ -1478,7 +1488,7 @@ const INITIAL_TREASURES = [
                 students: deepClone(students),
                 studentProfiles: deepClone(buildNormalizedStudentProfiles(studentProfiles, students)),
                 history: deepClone(history),
-                config: deepClone(config),
+                config: deepClone(sanitizeStoredConfig(config)),
                 attendanceRecords: deepClone(attendanceRecords),
                 treasures: deepClone(effectiveTreasures),
                 storage: deepClone(storage),
@@ -1509,7 +1519,7 @@ const INITIAL_TREASURES = [
                 setStudents(snap.students || []);
                 setStudentProfiles(restoreStudentProfilesFromData(snap, studentProfiles, students));
                 setHistory(snap.history || []);
-                setConfig(stripTreasureConfig(snap.config || {}));
+                setConfig(sanitizeStoredConfig(snap.config || {}));
                 setAttendanceRecords(snap.attendanceRecords || {});
                 setTreasures(snap.treasures || []);
                 setStorage(snap.storage || {});
@@ -1542,7 +1552,7 @@ const INITIAL_TREASURES = [
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
             const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
             const rawNextConfig = Object.prototype.hasOwnProperty.call(overrides, 'config') ? overrides.config : config;
-            const nextConfig = stripTreasureConfig(rawNextConfig);
+            const nextConfig = sanitizeStoredConfig(rawNextConfig);
             const migratedTreasures = resolveTreasuresData(undefined, rawNextConfig);
             const nextTreasures = Object.prototype.hasOwnProperty.call(overrides, 'treasures')
                 ? overrides.treasures
@@ -1593,7 +1603,7 @@ const INITIAL_TREASURES = [
                 __meta
             } = fullDataWithMeta;
             const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
-            const safeConfig = stripTreasureConfig(config);
+            const safeConfig = sanitizeStoredConfig(config);
             setStorageItem('class_manager_data', JSON.stringify({
                 students,
                 studentProfiles,
@@ -1688,7 +1698,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
-                config: stripTreasureConfig(fullData?.config),
+                config: sanitizeStoredConfig(fullData?.config),
                 treasures: safeTreasureDomain.treasures,
                 storage: safeTreasureDomain.storage,
                 logs: safeTreasureDomain.logs,
@@ -1705,7 +1715,7 @@ const INITIAL_TREASURES = [
             writeLocalCaches(fullDataWithMeta);
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'config')) {
-                payload.config = stripTreasureConfig(partialData.config);
+                payload.config = sanitizeStoredConfig(partialData.config);
             }
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'treasures')) {
                 payload.treasures = safeTreasureDomain.treasures;
@@ -1741,7 +1751,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
-                config: stripTreasureConfig(fullData?.config),
+                config: sanitizeStoredConfig(fullData?.config),
                 treasures: safeTreasureDomain.treasures,
                 storage: safeTreasureDomain.storage,
                 logs: safeTreasureDomain.logs,
@@ -1907,7 +1917,7 @@ const INITIAL_TREASURES = [
                 setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
                 setHistory(data.history || []);
                 const rawSavedConfig = data.config || {};
-                const savedConfig = stripTreasureConfig(rawSavedConfig);
+                const savedConfig = sanitizeStoredConfig(rawSavedConfig);
                 setConfig({
                     duty: { mon: ["", ""], tue: [""], wed: [""], thu: [""], fri: [""] },
                     commissioners: getDefaultCommissioners({ systemConfig: rawSavedConfig.systemConfig }),
@@ -2020,7 +2030,7 @@ const INITIAL_TREASURES = [
                     students: students || [],
                     studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
                     history: history || [],
-                    config: config || {},
+                    config: sanitizeStoredConfig(config || {}),
                     quotes: quotes || [],
                     messages: messages || [],
                     teacherMessages: teacherMessages || [],
@@ -2145,7 +2155,7 @@ const INITIAL_TREASURES = [
                     students: students || [],
                     studentProfiles: buildNormalizedStudentProfiles(studentProfiles, students),
                     history: history || [],
-                    config: config || {},
+                    config: sanitizeStoredConfig(config || {}),
                     quotes: quotes || [],
                     messages: messages || [],
                     teacherMessages: teacherMessages || [],
@@ -2452,7 +2462,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) }); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
