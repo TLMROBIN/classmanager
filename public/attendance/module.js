@@ -17,7 +17,8 @@
             getScheduleConfig,
             getWeekendRules,
             getPenaltyRules,
-            attendancePoints
+            attendancePoints,
+            AttendanceSettingsSection
         } = deps || {};
 
         const {
@@ -65,7 +66,8 @@
             logs,
             attendanceRecords,
             handleUndoByReasons,
-            onCheckInSuccess
+            onCheckInSuccess,
+            onUpdateAttendanceConfig
         }) {
             const isFrozen = !!(config && config.frozen);
 
@@ -523,7 +525,10 @@
                 alert("发放成功！");
             };
 
-            return h("div", { className: "bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden relative" },
+            const currentAdminPassword = (getSystemConfig(config).adminPassword || adminPassword);
+
+            return h("div", { className: "space-y-4" },
+                h("div", { className: "bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden relative" },
                 checkInEffect && h("div", { className: "fixed inset-0 z-50 flex items-center justify-center pointer-events-none" },
                     h("div", { className: "absolute inset-0 bg-black/20 backdrop-blur-sm animate-fade-in" }),
                     h("div", { className: "bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-pop relative z-10 border-4 border-orange-200" },
@@ -753,6 +758,26 @@
                         h("div", { className: "border rounded bg-white max-h-80 overflow-y-auto" }, abnormalRecords.map(item => h("div", { key: item.id, className: "flex items-center p-2 border-b last:border-0 hover:bg-gray-50 text-xs cursor-pointer", onClick: () => { const set = new Set(selectedIssues); if (set.has(item.id)) set.delete(item.id); else set.add(item.id); setSelectedIssues(Array.from(set)); } }, h("input", { type: "checkbox", checked: selectedIssues.includes(item.id), readOnly: true, className: "mr-2" }), h("div", { className: "flex-1 grid grid-cols-4 gap-1" }, h("span", null, item.date), h("span", { className: "font-bold" }, item.name), h("span", { className: "text-gray-500" }, item.session), h("span", { className: item.type === 'late' ? 'text-red-500' : 'text-gray-500' }, item.desc)))))
                     )
                 )
+                ),
+                AttendanceSettingsSection
+                    ? h(AttendanceSettingsSection, {
+                        systemConfig: getSystemConfig(config),
+                        updateSystemConfig: (updater) => {
+                            if (typeof updater !== 'function') return;
+                            const nextSystemConfig = updater(getSystemConfig(config));
+                            if (!nextSystemConfig) return;
+                            if (typeof onUpdateAttendanceConfig === 'function') {
+                                onUpdateAttendanceConfig(nextSystemConfig);
+                                return;
+                            }
+                            alert("考勤设置已修改，但当前页面未提供配置持久化回调。");
+                        },
+                        adminPassword: currentAdminPassword
+                    })
+                    : h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-2" },
+                        h("div", { className: "font-bold text-sm text-gray-800" }, "考勤设置"),
+                        h("div", { className: "text-xs text-gray-500" }, "考勤设置模块加载失败，请检查 `attendance/settings.js` 是否正常加载。")
+                    )
             );
         };
     };

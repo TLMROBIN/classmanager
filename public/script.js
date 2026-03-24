@@ -936,9 +936,22 @@ const INITIAL_TREASURES = [
             getScheduleConfig,
             getWeekendRules,
             getPenaltyRules,
-            attendancePoints: window.AttendancePoints
+            attendancePoints: window.AttendancePoints,
+            AttendanceSettingsSection: getAttendanceSettingsSection()
         });
         return window.__AttendanceViewComponent__;
+    };
+
+    const getAttendanceSettingsSection = () => {
+        if (window.__AttendanceSettingsSection__) return window.__AttendanceSettingsSection__;
+        if (typeof window.createAttendanceSettingsSection !== 'function') return null;
+        window.__AttendanceSettingsSection__ = window.createAttendanceSettingsSection({
+            h,
+            useState,
+            Icon,
+            requireAdminAuth
+        });
+        return window.__AttendanceSettingsSection__;
     };
 
     const TreasureView = ({ students, updatePoints, adminPassword, treasures, setTreasures, storage, setStorage, logs, setLogs, redemptionHistory = {}, setRedemptionHistory, dailyUsageCounts = {}, setDailyUsageCounts, onReturnItem, onRedeemTreasure, onUseItem }) => {
@@ -2750,117 +2763,6 @@ const INITIAL_TREASURES = [
                                         }), className: "px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs" }, "删除")
                                     )),
                                     h("button", { onClick: () => updateSystemConfig(sc => ({ ...sc, quotes: [...(sc.quotes || []), ""] })), className: "px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs" }, "新增语录")
-                                )
-                            )
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "考勤设置"),
-                        h("div", { className: "space-y-6" },
-                            h("div", null,
-                                h("div", { className: "flex justify-between items-center mb-2" },
-                                    h("span", { className: "text-sm font-medium text-gray-700" }, "时段配置"),
-                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                        const list = [...(sc.attendance.schedule || [])];
-                                        list.push({ id: `period_${Date.now()}`, name: "新时段", start: "00:00", end: "00:00", lateTime: "00:00" });
-                                        return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                    }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增时段")
-                                ),
-                                h("div", { className: "space-y-3" },
-                                    (systemConfig.attendance.schedule || []).map((p, idx) => h("div", { key: p.id || idx, className: "grid grid-cols-1 md:grid-cols-6 gap-2 bg-white p-3 rounded border" },
-                                        h("input", { className: "border rounded p-2 text-sm md:col-span-1", value: p.id || "", onChange: e => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list[idx] = { ...list[idx], id: e.target.value };
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }), placeholder: "id" }),
-                                        h("input", { className: "border rounded p-2 text-sm md:col-span-1", value: p.name || "", onChange: e => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list[idx] = { ...list[idx], name: e.target.value };
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }), placeholder: "名称" }),
-                                        h("input", { type: "time", className: "border rounded p-2 text-sm", value: p.start || "", onChange: e => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list[idx] = { ...list[idx], start: e.target.value };
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }) }),
-                                        h("input", { type: "time", className: "border rounded p-2 text-sm", value: p.end || "", onChange: e => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list[idx] = { ...list[idx], end: e.target.value };
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }) }),
-                                        h("input", { type: "time", className: "border rounded p-2 text-sm", value: p.lateTime || "", onChange: e => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list[idx] = { ...list[idx], lateTime: e.target.value };
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }) }),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = [...sc.attendance.schedule];
-                                            list.splice(idx, 1);
-                                            return { ...sc, attendance: { ...sc.attendance, schedule: list } };
-                                        }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除")
-                                    ))
-                                )
-                            ),
-                            h("div", null,
-                                h("div", { className: "text-sm font-medium text-gray-700 mb-2" }, "周末规则"),
-                                h("div", { className: "space-y-3" },
-                                    ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(day => h("div", { key: day, className: "bg-white p-3 rounded border" },
-                                        h("div", { className: "text-xs text-gray-500 mb-2" }, { monday:"周一", tuesday:"周二", wednesday:"周三", thursday:"周四", friday:"周五", saturday:"周六", sunday:"周日" }[day]),
-                                        h("div", { className: "flex flex-wrap gap-3" },
-                                            (systemConfig.attendance.schedule || []).map((p, idx) => {
-                                                const rules = systemConfig.attendance.weekendRules[day] || [];
-                                                const checked = rules.includes(idx);
-                                                return h("label", { key: p.id || idx, className: "flex items-center gap-1 text-xs" },
-                                                    h("input", { type: "checkbox", checked, onChange: e => updateSystemConfig(sc => {
-                                                        const nextRules = { ...sc.attendance.weekendRules };
-                                                        const list = nextRules[day] ? [...nextRules[day]] : [];
-                                                        const exists = list.includes(idx);
-                                                        if (e.target.checked && !exists) list.push(idx);
-                                                        if (!e.target.checked && exists) list.splice(list.indexOf(idx), 1);
-                                                        nextRules[day] = list.sort((a, b) => a - b);
-                                                        return { ...sc, attendance: { ...sc.attendance, weekendRules: nextRules } };
-                                                    }) }),
-                                                    h("span", null, p.name || p.id || idx)
-                                                );
-                                            })
-                                        )
-                                    ))
-                                )
-                            ),
-                            h("div", null,
-                                h("div", { className: "text-sm font-medium text-gray-700 mb-2" }, "周日特殊迟到时间"),
-                                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
-                                    (systemConfig.attendance.schedule || []).map((p, idx) => h("div", { key: p.id || idx, className: "flex items-center gap-2 bg-white p-3 rounded border" },
-                                        h("span", { className: "text-xs text-gray-500 w-24" }, p.name || p.id || idx),
-                                        h("input", { type: "time", className: "border rounded p-2 text-sm flex-1", value: (systemConfig.attendance.sundaySpecialLateTime || {})[p.id] || "", onChange: e => updateSystemConfig(sc => {
-                                            const next = { ...(sc.attendance.sundaySpecialLateTime || {}) };
-                                            if (e.target.value) next[p.id] = e.target.value;
-                                            else delete next[p.id];
-                                            return { ...sc, attendance: { ...sc.attendance, sundaySpecialLateTime: next } };
-                                        }) }),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const next = { ...(sc.attendance.sundaySpecialLateTime || {}) };
-                                            delete next[p.id];
-                                            return { ...sc, attendance: { ...sc.attendance, sundaySpecialLateTime: next } };
-                                        }), className: "px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs" }, "清除")
-                                    ))
-                                )
-                            ),
-                            h("div", null,
-                                h("div", { className: "text-sm font-medium text-gray-700 mb-2" }, "扣分规则"),
-                                h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-3" },
-                                    h("div", null,
-                                        h("label", { className: "block text-xs text-gray-500 mb-1" }, "迟到扣分"),
-                                        h("input", { type: "number", className: "w-full border rounded p-2 text-sm", value: systemConfig.attendance.penaltyRules.late, onChange: e => updateSystemConfig(sc => ({ ...sc, attendance: { ...sc.attendance, penaltyRules: { ...sc.attendance.penaltyRules, late: Number(e.target.value) } } })) })
-                                    ),
-                                    h("div", null,
-                                        h("label", { className: "block text-xs text-gray-500 mb-1" }, "缺勤扣分"),
-                                        h("input", { type: "number", className: "w-full border rounded p-2 text-sm", value: systemConfig.attendance.penaltyRules.absent, onChange: e => updateSystemConfig(sc => ({ ...sc, attendance: { ...sc.attendance, penaltyRules: { ...sc.attendance.penaltyRules, absent: Number(e.target.value) } } })) })
-                                    ),
-                                    h("div", null,
-                                        h("label", { className: "block text-xs text-gray-500 mb-1" }, "全勤奖"),
-                                        h("input", { type: "number", className: "w-full border rounded p-2 text-sm", value: systemConfig.attendance.penaltyRules.perfectAttendance, onChange: e => updateSystemConfig(sc => ({ ...sc, attendance: { ...sc.attendance, penaltyRules: { ...sc.attendance.penaltyRules, perfectAttendance: Number(e.target.value) } } })) })
-                                    )
                                 )
                             )
                         )
@@ -4820,7 +4722,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: nextSystemConfig }); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
