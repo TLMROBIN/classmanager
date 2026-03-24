@@ -12,6 +12,53 @@ const dbPath = path.join(__dirname, 'database', 'classmanager.db');
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
+const normalizeTreasureDomain = (domain) => {
+    const safe = domain || {};
+    const storage = safe.storage && typeof safe.storage === 'object' && !Array.isArray(safe.storage)
+        ? safe.storage
+        : {};
+    return {
+        treasures: Array.isArray(safe.treasures) ? safe.treasures : [],
+        storage,
+        logs: Array.isArray(safe.logs) ? safe.logs : []
+    };
+};
+
+const hasTreasureDomainData = (domain) => {
+    const normalized = normalizeTreasureDomain(domain);
+    return normalized.treasures.length > 0
+        || normalized.logs.length > 0
+        || Object.keys(normalized.storage).length > 0;
+};
+
+const readStoredJson = (userId, dataKey) => {
+    const row = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, dataKey);
+    if (!row) return null;
+    try {
+        return JSON.parse(row.data_value);
+    } catch (_) {
+        return null;
+    }
+};
+
+const getStoredTreasureDomain = (userId) => normalizeTreasureDomain({
+    treasures: readStoredJson(userId, 'treasures'),
+    storage: readStoredJson(userId, 'storage'),
+    logs: readStoredJson(userId, 'logs')
+});
+
+const getProtectedTreasureDomain = (userId, data, incomingMeta) => {
+    if (incomingMeta?.allowTreasureEmptyOverwrite === true) return null;
+    const hasTreasureKeys = ['treasures', 'storage', 'logs'].every(key => Object.prototype.hasOwnProperty.call(data || {}, key));
+    if (!hasTreasureKeys) return null;
+    const incomingDomain = normalizeTreasureDomain(data);
+    if (hasTreasureDomainData(incomingDomain)) return null;
+    const existingDomain = getStoredTreasureDomain(userId);
+    if (!hasTreasureDomainData(existingDomain)) return null;
+    console.warn(`[藏宝阁] 阻止用户 ${userId} 的整域空覆盖保存`);
+    return existingDomain;
+};
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -160,6 +207,7 @@ app.post('/api/data', authMiddleware, (req, res) => {
                 serverUpdatedAt: existingUpdatedAt
             });
         }
+        const protectedTreasureDomain = getProtectedTreasureDomain(userId, data, incomingMeta);
 
         const upsert = db.prepare(`
             INSERT INTO class_data (user_id, data_key, data_value, updated_at)
@@ -170,7 +218,9 @@ app.post('/api/data', authMiddleware, (req, res) => {
         
         const transaction = db.transaction(() => {
             for (const [key, value] of Object.entries(data)) {
-                let finalValue = value;
+                let finalValue = protectedTreasureDomain && Object.prototype.hasOwnProperty.call(protectedTreasureDomain, key)
+                    ? protectedTreasureDomain[key]
+                    : value;
                 if (key === 'examArchives') {
                     const incomingExams = Array.isArray(value?.exams) ? value.exams : [];
                     if (incomingExams.length === 0) {

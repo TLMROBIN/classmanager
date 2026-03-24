@@ -267,7 +267,7 @@ const getSystemConfig = (config) => {
     }
     
     // 合并藏宝阁配置
-    if (userConfig.treasures) {
+    if (Array.isArray(userConfig.treasures)) {
         merged.treasures = userConfig.treasures;
     }
     
@@ -333,6 +333,50 @@ const getReasonsPreset = (config) => {
 const getTreasuresConfig = (config) => {
     const systemConfig = getSystemConfig(config);
     return systemConfig.treasures;
+};
+
+const resolveTreasuresData = (treasures, config) => {
+    if (Array.isArray(treasures)) {
+        return treasures;
+    }
+    if (Array.isArray(config?.systemConfig?.treasures)) {
+        return config.systemConfig.treasures;
+    }
+    return getTreasuresConfig(config);
+};
+
+const normalizeTreasureDomain = (domain) => {
+    const safe = domain || {};
+    const storage = safe.storage && typeof safe.storage === 'object' && !Array.isArray(safe.storage)
+        ? safe.storage
+        : {};
+    return {
+        treasures: Array.isArray(safe.treasures) ? safe.treasures : [],
+        storage,
+        logs: Array.isArray(safe.logs) ? safe.logs : []
+    };
+};
+
+const hasTreasureDomainData = (domain) => {
+    const normalized = normalizeTreasureDomain(domain);
+    return normalized.treasures.length > 0
+        || normalized.logs.length > 0
+        || Object.keys(normalized.storage).length > 0;
+};
+
+const protectTreasureDomain = (nextDomain, readExistingDomain, options = {}) => {
+    const normalizedNext = normalizeTreasureDomain(nextDomain);
+    if (options.allowEmptyOverwrite || hasTreasureDomainData(normalizedNext)) {
+        return normalizedNext;
+    }
+    const existing = typeof readExistingDomain === 'function'
+        ? normalizeTreasureDomain(readExistingDomain())
+        : normalizeTreasureDomain();
+    if (hasTreasureDomainData(existing)) {
+        console.warn('[藏宝阁] 检测到整域空覆盖风险，已保留现有藏宝阁数据');
+        return existing;
+    }
+    return normalizedNext;
 };
 
 // 获取学科配置
@@ -726,65 +770,17 @@ const INITIAL_TREASURES = [
         )
     );
 
-    // --- Nav Component ---
-    const Nav = ({ activeTab, setActiveTab, syncStatus, onRefresh, config }) => {
-        const systemConfig = getSystemConfig(config);
-        const battleEnabled = systemConfig.enabledFeatures?.battle ?? true;
-        const getSyncIcon = () => {
-            if (syncStatus === 'success' || syncStatus === 'saved') return h(Icon, { name: "cloud", className: "text-green-500", size: 16 });
-            if (syncStatus === 'unsaved' || syncStatus === 'error') return h(Icon, { name: "wifiOff", className: "text-red-500", size: 16 });
-            return h(Icon, { name: "wifi", className: "text-gray-400", size: 16 });
-        };
-
-        return h("nav", { className: "bg-white border-b sticky top-0 z-30 px-4" },
-            h("div", { className: "max-w-6xl mx-auto flex justify-between items-center" },
-                h("div", { className: "flex gap-6 overflow-x-auto scrollbar-hide flex-1" },
-                    [
-            { id: 'dashboard', label: '仪表盘', icon: 'chart' },
-            { id: 'operations', label: '积分', icon: 'star' },
-            { id: 'attendance', label: '考勤', icon: 'clock' },
-            { id: 'tasks', label: '任务', icon: 'tasks' },
-            { id: 'battle', label: '双子星', icon: 'swords', requiresFeature: 'battle' },
-            { id: 'treasure', label: '藏宝阁', icon: 'gift' },
-            { id: 'profile', label: '头像', icon: 'smile' },
-            { id: 'settings', label: '维护', icon: 'menu' }
-        ].filter(item => {
-            if (item.requiresFeature === 'battle') return battleEnabled;
-            return true;
-        }).map(item => 
-                        h("button", { key: item.id, onClick: () => setActiveTab(item.id), className: `flex items-center gap-2 py-4 px-2 border-b-2 font-medium transition whitespace-nowrap ${activeTab === item.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}` }, h(Icon, { name: item.icon }), item.label)
-                    )
-                ),
-                h("div", { className: "ml-4 flex items-center gap-3 text-xs" },
-                    h("button", { 
-                        onClick: onRefresh, 
-                        className: "flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-600 transition",
-                        title: "立即从服务器获取最新数据"
-                    }, h(Icon, { name: "refresh", size: 14 }), "刷新"),
-                    h("div", { className: `flex items-center gap-2`, title: "数据同步状态" },
-                        getSyncIcon(),
-                        h("span", { className: syncStatus === 'error' || syncStatus === 'unsaved' ? 'text-red-500' : 'text-gray-500' }, 
-                            syncStatus === 'success' ? '已同步' : 
-                            syncStatus === 'saved' ? '已保存' : 
-                            syncStatus === 'unsaved' ? '未同步' : '离线'
-                        )
-                    ),
-                    window.__getCurrentUser__() && h("div", { className: "flex items-center gap-2 border-l pl-3 ml-1" },
-                        h("span", { className: "font-medium text-gray-700" }, 
-                            window.__getCurrentUser__().username
-                        ),
-                        window.__getCurrentUser__().role === 'admin' && h("a", {
-                            href: "/admin",
-                            className: "px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium transition"
-                        }, "管理后台"),
-                        h("button", {
-                            onClick: () => window.__logout__(),
-                            className: "px-2 py-1 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition"
-                        }, "退出")
-                    )
-                )
-            )
-        );
+    const getNavView = () => {
+        if (window.__NavViewComponent__) return window.__NavViewComponent__;
+        if (typeof window.createNavView !== 'function') return null;
+        window.__NavViewComponent__ = window.createNavView({
+            h,
+            Icon,
+            getSystemConfig,
+            getCurrentUser: () => window.__getCurrentUser__(),
+            logout: () => window.__logout__()
+        });
+        return window.__NavViewComponent__;
     };
 
     const getTasksView = () => {
@@ -822,6 +818,30 @@ const INITIAL_TREASURES = [
             getProfileAvatarUI
         });
         return window.__DashboardViewComponent__;
+    };
+
+    const getOperationView = () => {
+        if (window.__OperationViewComponent__) return window.__OperationViewComponent__;
+        if (typeof window.createOperationView !== 'function') return null;
+        window.__OperationViewComponent__ = window.createOperationView({
+            h,
+            useState,
+            Modal,
+            Icon,
+            getNow,
+            getDateString,
+            getGroupsConfig,
+            getDormsConfig,
+            getReasonsPreset,
+            getSubjectsConfig,
+            normalizePointScene,
+            normalizePointCategory,
+            POINT_SCENES,
+            POINT_CATEGORIES,
+            DEFAULT_POINT_SCENE,
+            DEFAULT_POINT_CATEGORY
+        });
+        return window.__OperationViewComponent__;
     };
 
     const getProfileView = () => {
@@ -1604,464 +1624,6 @@ const INITIAL_TREASURES = [
         );
     };
 
-    // --- Operation View ---
-    const OperationView = ({ students, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, updatePoints, handleWage, adjustModal, setAdjustModal, history, handleUndo, batchUpdatePoints, config }) => {
-        const filteredStudents = students.filter(s => {
-            if (filterGroup !== 'all' && s.group !== filterGroup) return false;
-            if (filterDorm !== 'all' && s.dorm !== filterDorm) return false;
-            return true;
-        });
-        const toggleSelection = (id) => {
-            const newSet = new Set(selectedIds);
-            if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
-            setSelectedIds(newSet);
-        };
-        const selectAll = () => {
-            if (selectedIds.size === filteredStudents.length) setSelectedIds(new Set());
-            else setSelectedIds(new Set(filteredStudents.map(s => s.id)));
-        };
-        const handleReasonClick = (reason) => {
-            if (selectedIds.size === 0) return alert("请先选择学生");
-            setBatchAdjustModal({
-                open: true,
-                reason: reason,
-                students: Array.from(selectedIds).map(id => {
-                    const s = students.find(stu => stu.id === id);
-                    let initVal = Math.abs(reason.val);
-                    return { id: s.id, name: s.name, val: reason.isMulti ? 1 : initVal };
-                }),
-                type: opTab,
-                isMulti: reason.isMulti || false,
-                factor: reason.factor || 1,
-                isCustom: false,
-                customReasonName: "",
-                scene: normalizePointScene(reason.scene),
-                category: normalizePointCategory(reason.category)
-            });
-        };
-
-        const handleCustomReason = () => {
-            if (selectedIds.size === 0) return alert("请先选择学生");
-            setBatchAdjustModal({
-                open: true,
-                reason: { name: "", custom: true },
-                students: Array.from(selectedIds).map(id => {
-                    const s = students.find(stu => stu.id === id);
-                    return { id: s.id, name: s.name, val: 0 };
-                }),
-                type: opTab,
-                isMulti: false,
-                factor: 1,
-                isCustom: true,
-                customReasonName: "",
-                scene: "班级",
-                category: "兑奖"
-            });
-        };
-            
-        const [batchAdjustModal, setBatchAdjustModal] = useState({ open: false, reason: null, students: [], type: 'bonus', isMulti: false, factor: 1, isCustom: false, customReasonName: "", scene: DEFAULT_POINT_SCENE, category: DEFAULT_POINT_CATEGORY });
-        const [hwSubject, setHwSubject] = useState("");
-        const [hwDate, setHwDate] = useState("");
-        const [hwSelectedIds, setHwSelectedIds] = useState(new Set());
-        const subjectsConfig = getSubjectsConfig(config);
-        const homeworkSubjects = subjectsConfig.map(s => s.name);
-        const homeworkDates = (() => {
-            const now = getNow();
-            const day = now.getDay();
-            const daysToFriday = (5 - day + 7) % 7;
-            const friday = new Date(now);
-            friday.setDate(now.getDate() + daysToFriday);
-            const sunday = new Date(friday);
-            sunday.setDate(friday.getDate() - 5);
-            const list = [];
-            for (let i = 0; i < 6; i++) {
-                const d = new Date(sunday);
-                d.setDate(sunday.getDate() + i);
-                list.push(getDateString(d));
-            }
-            return list;
-        })();
-        const toggleHomeworkSelection = (id) => {
-            const next = new Set(hwSelectedIds);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            setHwSelectedIds(next);
-        };
-
-        const handleBatchConfirm = () => {
-            if (batchAdjustModal.isCustom && !batchAdjustModal.customReasonName) return alert("请输入理由");
-            if (!batchAdjustModal.scene || !batchAdjustModal.category) return alert("请先选择场景与类别");
-            const reasonName = batchAdjustModal.isCustom ? batchAdjustModal.customReasonName : batchAdjustModal.reason.name;
-            const updates = batchAdjustModal.students.map(s => {
-                let finalVal = s.val;
-                let finalReason = reasonName;
-                if (batchAdjustModal.isMulti) {
-                     finalVal = s.val * batchAdjustModal.factor; 
-                     if (reasonName.includes("卫生")) {
-                         finalReason = `${reasonName} x${s.val}`;
-                     } else {
-                         finalReason = `${reasonName} (值:${s.val})`;
-                     }
-                }
-                if (batchAdjustModal.type === 'penalty') finalVal = -Math.abs(finalVal);
-                else finalVal = Math.abs(finalVal);
-                return { id: s.id, val: finalVal, reason: finalReason, type: batchAdjustModal.type, scene: batchAdjustModal.scene, category: batchAdjustModal.category };
-            });
-            batchUpdatePoints(updates);
-            setBatchAdjustModal({ ...batchAdjustModal, open: false });
-            setSelectedIds(new Set());
-        };
-            
-        const updateStudentBatchValue = (id, newVal) => {
-            setBatchAdjustModal(prev => ({
-                ...prev,
-                students: prev.students.map(s => s.id === id ? { ...s, val: parseFloat(newVal) } : s)
-            }));
-        };
-            
-        const updateAllBatchValues = (newVal) => {
-            setBatchAdjustModal(prev => ({
-                ...prev,
-                students: prev.students.map(s => ({ ...s, val: parseFloat(newVal) }))
-            }));
-        };
-
-        const handleHomeworkSubmit = () => {
-            if (!hwSubject) return alert("请选择学科");
-            const dateVal = hwDate || homeworkDates[0];
-            if (!dateVal) return alert("请选择日期");
-            
-            const checkKey = `${hwSubject}_${dateVal}`;
-            const alreadySubmitted = history.some(h => 
-                h.reason && h.reason.includes(`${hwSubject}作业`) && h.reason.includes(dateVal)
-            );
-            if (alreadySubmitted) {
-                return alert(`${hwSubject} ${dateVal} 已完成登记，每科每天只能登记一次`);
-            }
-            
-            const subjectConfig = subjectsConfig.find(s => s.name === hwSubject);
-            const representatives = subjectConfig?.representatives || [];
-            
-            console.log('学科配置:', hwSubject, subjectConfig);
-            console.log('课代表IDs:', representatives);
-            
-            const updates = [];
-            
-            if (hwSelectedIds.size > 0) {
-                Array.from(hwSelectedIds).forEach(id => {
-                    updates.push({
-                        id,
-                        val: -1,
-                        reason: `${hwSubject}作业未交 ${dateVal}`,
-                        type: 'penalty',
-                        scene: "班级",
-                        category: "学业"
-                    });
-                });
-            }
-            
-            if (representatives.length > 0) {
-                representatives.forEach(repId => {
-                    if (repId) {
-                        console.log('为课代表加分:', repId);
-                        updates.push({
-                            id: repId,
-                            val: 1,
-                            reason: `${hwSubject}作业登记 ${dateVal}`,
-                            type: 'bonus',
-                            scene: "班级",
-                            category: "班务"
-                        });
-                    }
-                });
-            }
-            
-            console.log('所有更新:', updates);
-            
-            if (updates.length === 0) {
-                return alert("没有需要登记的记录。请确保已设置课代表。");
-            }
-            
-            const repNames = representatives.map(repId => {
-                const student = students.find(s => s.id === repId);
-                return student ? student.name : '';
-            }).filter(n => n).join('、');
-            
-            let confirmMsg = `确认提交 ${hwSubject} ${dateVal} 的作业登记？\n\n`;
-            confirmMsg += `⚠️ 提醒：每科每天只能登记一次，请确保无误再提交！\n\n`;
-            
-            if (hwSelectedIds.size > 0) {
-                const unsubmittedStudents = Array.from(hwSelectedIds).map(id => {
-                    const s = students.find(stu => stu.id === id);
-                    return s ? s.name : '';
-                }).filter(n => n).join('、');
-                confirmMsg += `未交作业学生 (${hwSelectedIds.size}人)：\n${unsubmittedStudents}\n\n`;
-            } else {
-                confirmMsg += `✅ 无学生未交作业\n\n`;
-            }
-            
-            if (repNames) {
-                confirmMsg += `课代表加分：${repNames} (+1分)`;
-            }
-            
-            if (!confirm(confirmMsg)) return;
-            
-            batchUpdatePoints(updates);
-            setHwSelectedIds(new Set());
-            setHwSubject("");
-        };
-
-        const recentHistory = history.slice(0, 50);
-
-        return h("div", { className: "space-y-6 animate-fade-in" },
-            h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-center justify-between" },
-                h("div", { className: "flex gap-2 items-center" },
-                    h(Icon, { name: "filter", className: "text-gray-400" }),
-                    h("select", { className: "border rounded p-2 text-sm", value: filterGroup, onChange: e => setFilterGroup(e.target.value) },
-                        h("option", { value: "all" }, "所有小组"),
-                        (() => {
-                            const groupsConfig = getGroupsConfig(config);
-                            return Object.entries(groupsConfig).map(([k, v]) => h("option", { key: k, value: k }, v.name));
-                        })()
-                    ),
-                    h("select", { className: "border rounded p-2 text-sm", value: filterDorm, onChange: e => setFilterDorm(e.target.value) },
-                        h("option", { value: "all" }, "所有宿舍"),
-                        (() => {
-                            const dormsConfig = getDormsConfig(config);
-                            return Object.entries(dormsConfig).map(([k, v]) => h("option", { key: k, value: k }, v));
-                        })()
-                    )
-                ),
-                h("div", { className: "flex gap-2" },
-                    h("button", { onClick: selectAll, className: "text-blue-600 text-sm font-bold" }, 
-                        selectedIds.size === filteredStudents.length && filteredStudents.length > 0 ? "取消全选" : "全选当前"
-                    ),
-                    h("button", { onClick: handleWage, className: "bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1" }, h(Icon, { name: "money", size: 16 }), "一键工资")
-                )
-            ),
-            h("div", { className: "grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3" },
-                filteredStudents.map(s => {
-                    const isSelected = selectedIds.has(s.id);
-                    return h("div", { key: s.id, onClick: () => toggleSelection(s.id), className: `cursor-pointer p-3 rounded-lg border-2 transition relative overflow-hidden ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-transparent bg-white hover:shadow-md'}` },
-                        isSelected && h("div", { className: "absolute top-1 right-1 text-blue-500" }, h(Icon, { name: "check", size: 16 })),
-                        h("div", { className: "text-center" },
-                            h("div", { className: "font-bold text-gray-800" }, s.name),
-                            h("div", { className: "text-xs text-gray-400 mt-1" }, (() => {
-                                const groupsConfig = getGroupsConfig(config);
-                                const groupName = groupsConfig[s.group]?.name || s.group;
-                                return groupName.split(' ')[1] || groupName;
-                            })())
-                        )
-                    );
-                })
-            ),
-
-            h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                h("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
-                    h("div", { className: "flex items-center gap-3" },
-                        h("span", { className: "font-bold text-gray-700" }, `已选 ${selectedIds.size} 人`),
-                        selectedIds.size === 0 && h("span", { className: "text-xs text-gray-400" }, "请选择学生后操作")
-                    ),
-                    h("div", { className: "flex items-center gap-2" },
-                        h("div", { className: "flex bg-gray-100 p-1 rounded-lg" },
-                            h("button", { 
-                                onClick: () => setOpTab('bonus'),
-                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'bonus' ? 'bg-white text-green-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
-                            }, h(Icon, { name: "plus", size: 14 }), "奖励"),
-                            h("button", { 
-                                onClick: () => setOpTab('penalty'),
-                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'penalty' ? 'bg-white text-red-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
-                            }, h(Icon, { name: "minus", size: 14 }), "扣分")
-                        ),
-                        h("button", { onClick: () => setSelectedIds(new Set()), className: "text-gray-400 hover:text-gray-600 px-2" }, "清空")
-                    )
-                ),
-                h("div", { className: "flex gap-2 overflow-x-auto scrollbar-hide pb-2" },
-                    (() => {
-                        const reasonsPreset = getReasonsPreset(config);
-                        return reasonsPreset.filter(r => r.type === opTab);
-                    })().map((r, idx) => 
-                        h("button", { 
-                            key: idx, 
-                            onClick: () => handleReasonClick(r),
-                            className: `flex-shrink-0 px-4 py-3 rounded-xl border text-sm font-medium whitespace-nowrap transition flex flex-col items-center min-w-[100px] ${r.type === 'bonus' ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'}`
-                        }, 
-                            h("span", { className: "font-bold" }, r.name),
-                            h("span", { className: "text-xs opacity-70 mt-1" }, r.val > 0 ? `+${r.val}` : r.val)
-                        )
-                    ),
-                    h("button", {
-                        onClick: handleCustomReason,
-                        className: `flex-shrink-0 px-4 py-3 rounded-xl border-2 border-dashed text-sm font-bold whitespace-nowrap transition flex flex-col items-center min-w-[100px] hover:bg-gray-50 ${opTab === 'bonus' ? 'border-green-300 text-green-600' : 'border-red-300 text-red-600'}`
-                    },
-                        h("span", null, "自定义"),
-                        h("span", { className: "text-xs opacity-70 mt-1" }, "输入理由")
-                    )
-                )
-            ),
-
-            h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "book" }), "作业登记"),
-                h("div", { className: "flex flex-wrap gap-2 mb-3" },
-                    homeworkSubjects.map(sub => h("button", {
-                        key: sub,
-                        onClick: () => setHwSubject(sub),
-                        className: `px-3 py-1 rounded-full text-xs font-bold border ${hwSubject === sub ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                    }, sub))
-                ),
-                h("div", { className: "flex flex-wrap gap-2 mb-3" },
-                    homeworkDates.map(d => h("button", {
-                        key: d,
-                        onClick: () => setHwDate(d),
-                        className: `px-3 py-1 rounded-full text-xs font-bold border ${((hwDate || homeworkDates[0]) === d) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                    }, d))
-                ),
-                h("div", { className: "flex justify-between items-center mb-2" },
-                    h("div", { className: "text-sm text-gray-600" }, "选择未交学生"),
-                    h("div", { className: "flex gap-2" },
-                        h("button", { onClick: () => setHwSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
-                        h("button", { onClick: () => setHwSelectedIds(new Set(students.map(s => s.id))), className: "text-xs text-blue-600" }, "全选")
-                    )
-                ),
-                h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-56 overflow-y-auto border rounded p-2" },
-                    students.map(s => {
-                        const chosen = hwSelectedIds.has(s.id);
-                        return h("button", {
-                            key: s.id,
-                            onClick: () => toggleHomeworkSelection(s.id),
-                            className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
-                        }, s.name);
-                    })
-                ),
-                h("div", { className: "pt-3 flex justify-end gap-2" },
-                    h("button", { 
-                        onClick: handleHomeworkSubmit, 
-                        className: "px-4 py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700" 
-                    }, hwSelectedIds.size === 0 ? "提交（无人未交）" : `提交未交记录 (${hwSelectedIds.size}人)` )
-                )
-            ),
-                
-            h("div", { className: "bg-white p-4 rounded-xl shadow-sm mt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "history" }), "积分变动记录 (最近50条)"),
-                h("div", { className: "max-h-60 overflow-y-auto border rounded-lg" },
-                    h("table", { className: "w-full text-sm text-left" },
-                        h("thead", { className: "bg-gray-50 sticky top-0" },
-                            h("tr", null,
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "时间"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "学生"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "事项"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "场景"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "类别"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "变动"),
-                                h("th", { className: "p-2 font-medium text-gray-500" }, "操作")
-                            )
-                        ),
-                        h("tbody", { className: "divide-y" },
-                            recentHistory.length === 0 ? h("tr", null, h("td", { colSpan: 7, className: "p-4 text-center text-gray-400" }, "暂无记录")) :
-                            recentHistory.map(item => 
-                                h("tr", { key: item.id, className: "hover:bg-gray-50" },
-                                    h("td", { className: "p-2 text-xs text-gray-400" }, new Date(item.ts).toLocaleString()),
-                                    h("td", { className: "p-2 font-medium" }, item.studentName),
-                                    h("td", { className: "p-2 text-gray-600" }, item.reason),
-                                    h("td", { className: "p-2 text-xs text-gray-500" }, normalizePointScene(item.scene)),
-                                    h("td", { className: "p-2 text-xs text-gray-500" }, normalizePointCategory(item.category)),
-                                    h("td", { className: `p-2 font-bold ${item.val > 0 ? 'text-green-600' : 'text-red-500'}` }, item.val > 0 ? `+${item.val}` : item.val),
-                                    h("td", { className: "p-2" },
-                                        item.isUndoLog ? null : h("button", { onClick: () => handleUndo(item.id), className: "text-blue-500 hover:underline text-xs" }, "撤销")
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            ),
-                
-            h(Modal, {
-                isOpen: batchAdjustModal.open,
-                title: batchAdjustModal.isCustom ? "自定义批量操作" : `批量调整: ${batchAdjustModal.reason?.name}`,
-                onClose: () => setBatchAdjustModal({ ...batchAdjustModal, open: false }),
-                onConfirm: handleBatchConfirm,
-                confirmText: "确认应用",
-                type: batchAdjustModal.type === 'penalty' ? 'danger' : 'info'
-            }, 
-                h("div", { className: "space-y-4" },
-                    batchAdjustModal.isCustom && h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "理由名称"),
-                        h("input", { 
-                            type: "text", 
-                            className: "w-full border rounded p-2", 
-                            placeholder: "例如: 好人好事",
-                            value: batchAdjustModal.customReasonName,
-                            onChange: e => setBatchAdjustModal({ ...batchAdjustModal, customReasonName: e.target.value })
-                        })
-                    ),
-
-                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
-                        h("div", null,
-                            h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "场景"),
-                            h("select", { className: "w-full border rounded p-2", value: batchAdjustModal.scene || DEFAULT_POINT_SCENE, onChange: e => setBatchAdjustModal({ ...batchAdjustModal, scene: e.target.value }) },
-                                POINT_SCENES.map(s => h("option", { key: s, value: s }, s))
-                            )
-                        ),
-                        h("div", null,
-                            h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "类别"),
-                            h("select", { className: "w-full border rounded p-2", value: batchAdjustModal.category || DEFAULT_POINT_CATEGORY, onChange: e => setBatchAdjustModal({ ...batchAdjustModal, category: e.target.value }) },
-                                POINT_CATEGORIES.map(c => h("option", { key: c, value: c }, c))
-                            )
-                        )
-                    ),
-                        
-                    h("div", { className: "bg-gray-50 p-3 rounded-lg" },
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-2" }, 
-                            `统一调整 (${batchAdjustModal.isMulti ? '次数' : '分值'})`
-                        ),
-                        h("div", { className: "flex items-center gap-4" },
-                            h("input", { 
-                                type: "range", 
-                                min: "0", 
-                                max: batchAdjustModal.isMulti ? "20" : "50", 
-                                step: batchAdjustModal.isMulti ? "1" : "0.5",
-                                defaultValue: batchAdjustModal.students[0]?.val || 0,
-                                onChange: e => updateAllBatchValues(e.target.value)
-                            }),
-                            h("span", { className: "text-xs text-gray-500" }, "拖动以统一设置")
-                        )
-                    ),
-
-                    h("div", { className: "max-h-60 overflow-y-auto border rounded-lg" },
-                        h("table", { className: "w-full text-sm" },
-                            h("thead", { className: "bg-gray-50 sticky top-0" },
-                                h("tr", null,
-                                    h("th", { className: "p-2 text-left" }, "学生"),
-                                    h("th", { className: "p-2 text-center" }, batchAdjustModal.isMulti ? `次数 (x${batchAdjustModal.factor})` : "分值")
-                                )
-                            ),
-                            h("tbody", null,
-                                batchAdjustModal.students.map(s => 
-                                    h("tr", { key: s.id, className: "border-t" },
-                                        h("td", { className: "p-2 font-bold" }, s.name),
-                                        h("td", { className: "p-2 flex items-center justify-center gap-2" },
-                                            h("input", { 
-                                                type: "number", 
-                                                className: "w-16 border rounded p-1 text-center font-mono font-bold",
-                                                value: s.val,
-                                                onChange: e => updateStudentBatchValue(s.id, e.target.value)
-                                            })
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                    ),
-                        
-                    h("div", { className: "p-2 rounded text-center text-xs font-bold " + (batchAdjustModal.type === 'bonus' ? 'text-green-600' : 'text-red-600') },
-                        batchAdjustModal.type === 'bonus' ? '即将增加积分' : '即将扣除积分'
-                    )
-                )
-            )
-        );
-    };
-
     const TreasureView = ({ students, updatePoints, adminPassword, treasures, setTreasures, storage, setStorage, logs, setLogs, redemptionHistory = {}, setRedemptionHistory, dailyUsageCounts = {}, setDailyUsageCounts, onReturnItem, onRedeemTreasure, onUseItem }) => {
         const [tab, setTab] = useState('shop');
         const [selectedStudent, setSelectedStudent] = useState("");
@@ -2646,6 +2208,11 @@ const INITIAL_TREASURES = [
         const updateSystemConfig = (updater) => {
             const next = updater(getSystemConfig(config));
             applySystemConfig(next);
+        };
+
+        const updateTreasureList = (list) => {
+            updateSystemConfig(sc => ({ ...sc, treasures: list }));
+            setTreasures(list);
         };
 
         const addCountdownEvent = () => {
@@ -4377,62 +3944,53 @@ const INITIAL_TREASURES = [
                         h("div", { className: "flex justify-between items-center mb-2" },
                             h("span", { className: "text-sm font-medium text-gray-700" }, "商品管理"),
                             h("button", { onClick: () => {
-                                const list = [...(systemConfig.treasures || [])];
+                                const list = [...(treasures || [])];
                                 list.push({ id: Date.now(), name: "新宝物", rarity: "N", price: 0, stock: 0, desc: "", ladderPrices: [], dailyLimit: 0 });
-                                updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                setTreasures(list);
+                                updateTreasureList(list);
                             }, className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增商品")
                         ),
                         h("div", { className: "space-y-3" },
-                            (systemConfig.treasures || []).map((t, idx) => h("div", { key: t.id || idx, className: "grid grid-cols-1 md:grid-cols-6 gap-2 bg-white p-3 rounded border" },
+                            (treasures || []).map((t, idx) => h("div", { key: t.id || idx, className: "grid grid-cols-1 md:grid-cols-6 gap-2 bg-white p-3 rounded border" },
                                 h("input", { className: "border rounded p-2 text-sm", value: t.name || "", onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], name: e.target.value };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, placeholder: "名称" }),
                                 h("input", { className: "border rounded p-2 text-sm", value: t.rarity || "", onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], rarity: e.target.value };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, placeholder: "稀有度" }),
                                 h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.price ?? 0, onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], price: Number(e.target.value) };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 } }),
                                 h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.stock ?? 0, onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], stock: Number(e.target.value) };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 } }),
                                 h("input", { className: "border rounded p-2 text-sm", value: t.desc || "", onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], desc: e.target.value };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, placeholder: "描述" }),
                                 h("button", { onClick: () => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list.splice(idx, 1);
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除"),
                                 h("input", { className: "border rounded p-2 text-sm md:col-span-3", value: (t.ladderPrices || []).join(','), onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     const vals = e.target.value.split(',').map(v => v.trim()).filter(v => v !== "").map(Number).filter(v => !isNaN(v));
                                     list[idx] = { ...list[idx], ladderPrices: vals };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, placeholder: "阶梯价格(逗号分隔)" }),
                                 h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.dailyLimit ?? 0, onChange: e => {
-                                    const list = [...systemConfig.treasures];
+                                    const list = [...(treasures || [])];
                                     list[idx] = { ...list[idx], dailyLimit: Number(e.target.value) };
-                                    updateSystemConfig(sc => ({ ...sc, treasures: list }));
-                                    setTreasures(list);
+                                    updateTreasureList(list);
                                 }, placeholder: "每日限额" })
                             ))
                         )
@@ -4640,9 +4198,8 @@ const INITIAL_TREASURES = [
         const [timeSpeed, setTimeSpeed] = useState(1);
         const testSnapshotRef = useRef(null);
 
-        // NEW: Auto-refresh state
-        const [autoRefresh, setAutoRefresh] = useState(false);
         const [syncStatus, setSyncStatus] = useState('idle'); // idle, success, error, saved, unsaved
+        const [localHydrationDone, setLocalHydrationDone] = useState(false);
             
         const [config, setConfig] = useState({
             duty: { mon: ["", ""], tue: [""], wed: [""], thu: [""], fri: [""] },
@@ -4653,6 +4210,7 @@ const INITIAL_TREASURES = [
             scheduleNotes: {},
             countdownEvents: []
         });
+        const effectiveTreasures = resolveTreasuresData(treasures, config);
         const prevFrozenRef = useRef(!!(config && config.frozen));
             
         // Moved state from OperationView to App to persist across tabs
@@ -4660,10 +4218,11 @@ const INITIAL_TREASURES = [
         const [filterGroup, setFilterGroup] = useState('all');
         const [filterDorm, setFilterDorm] = useState('all');
         const [opTab, setOpTab] = useState('bonus');
-        const [adjustModal, setAdjustModal] = useState({ open: false, reason: null, val: 0, count: 1, isMulti: false, isCustom: false, customName: "" });
             
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
+        const NavView = getNavView();
         const DashboardView = getDashboardView();
+        const OperationView = getOperationView();
         const ProfileView = profileModuleStatus === 'ready' ? getProfileView() : null;
         const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
         const BattleView = battleModuleStatus === 'ready' ? getBattleView() : null;
@@ -4797,6 +4356,19 @@ const INITIAL_TREASURES = [
             setStorageItem(OFFLINE_SNAPSHOT_KEY, "");
         };
 
+        const readLocalTreasureDomain = useCallback(() => {
+            try {
+                const raw = getStorageItem('class_treasure_data');
+                return raw ? JSON.parse(raw) : null;
+            } catch (_) {
+                return null;
+            }
+        }, []);
+
+        const protectTreasureDomainForPersistence = useCallback((nextDomain, options = {}) => {
+            return protectTreasureDomain(nextDomain, readLocalTreasureDomain, options);
+        }, [readLocalTreasureDomain]);
+
         const markServerMeta = (updatedAt) => {
             const ts = Number(updatedAt) || 0;
             if (ts > 0) {
@@ -4877,7 +4449,7 @@ const INITIAL_TREASURES = [
                 setStorageItem('attendance_records', JSON.stringify(att));
             }
 
-            if (use(normalized.flags.treasures)) setTreasures(normalized.treasures || []);
+            if (use(normalized.flags.treasures)) setTreasures(resolveTreasuresData(normalized.treasures, normalized.config || config));
             if (use(normalized.flags.storage)) setStorage(normalized.storage || {});
             if (use(normalized.flags.logs)) setLogs(normalized.logs || []);
             if (use(normalized.flags.quotes)) setQuotes(normalized.quotes && normalized.quotes.length > 0 ? normalized.quotes : window.DEFAULT_QUOTES);
@@ -4937,7 +4509,7 @@ const INITIAL_TREASURES = [
                 history: deepClone(history),
                 config: deepClone(config),
                 attendanceRecords: deepClone(attendanceRecords),
-                treasures: deepClone(treasures),
+                treasures: deepClone(effectiveTreasures),
                 storage: deepClone(storage),
                 logs: deepClone(logs),
                 quotes: deepClone(quotes),
@@ -4961,7 +4533,7 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
+        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
@@ -5006,11 +4578,14 @@ const INITIAL_TREASURES = [
             } catch (_) {}
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
             const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
+            const nextTreasures = Object.prototype.hasOwnProperty.call(overrides, 'treasures')
+                ? overrides.treasures
+                : effectiveTreasures;
             return {
                 history,
                 config,
                 attendanceRecords: att,
-                treasures,
+                treasures: Array.isArray(nextTreasures) ? nextTreasures : effectiveTreasures,
                 storage,
                 logs,
                 quotes,
@@ -5027,7 +4602,7 @@ const INITIAL_TREASURES = [
                 students: nextStudents,
                 studentProfiles: nextStudentProfiles
             };
-        }, [attendanceRecords, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
+        }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
 
         const writeLocalCaches = useCallback((fullDataWithMeta) => {
             const {
@@ -5051,6 +4626,7 @@ const INITIAL_TREASURES = [
                 battleSnapshots,
                 __meta
             } = fullDataWithMeta;
+            const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
             setStorageItem('class_manager_data', JSON.stringify({
                 students,
                 studentProfiles,
@@ -5069,8 +4645,8 @@ const INITIAL_TREASURES = [
                 __meta
             }));
             setStorageItem('attendance_records', JSON.stringify(attendanceRecords || {}));
-            setStorageItem('class_treasure_data', JSON.stringify({ treasures, storage, logs }));
-        }, []);
+            setStorageItem('class_treasure_data', JSON.stringify(safeTreasureDomain));
+        }, [protectTreasureDomainForPersistence]);
 
         const savePayloadToServer = useCallback((payload, fullDataWithMeta, nowTs) => {
             if (window.__CM_TEST_MODE__) {
@@ -5128,6 +4704,11 @@ const INITIAL_TREASURES = [
             const nowTs = getNow().getTime();
             const fullData = buildCurrentFullData(partialData || {});
             const normalizedInput = normalizeFullData(fullData);
+            const safeTreasureDomain = protectTreasureDomainForPersistence({
+                treasures: fullData?.treasures,
+                storage: fullData?.storage,
+                logs: fullData?.logs
+            });
             const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
@@ -5140,6 +4721,9 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                treasures: safeTreasureDomain.treasures,
+                storage: safeTreasureDomain.storage,
+                logs: safeTreasureDomain.logs,
                 studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
@@ -5152,14 +4736,28 @@ const INITIAL_TREASURES = [
             };
             writeLocalCaches(fullDataWithMeta);
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'treasures')) {
+                payload.treasures = safeTreasureDomain.treasures;
+            }
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'storage')) {
+                payload.storage = safeTreasureDomain.storage;
+            }
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'logs')) {
+                payload.logs = safeTreasureDomain.logs;
+            }
             return savePayloadToServer(payload, fullDataWithMeta, nowTs);
-        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
+        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches, protectTreasureDomainForPersistence]);
 
         /** 统一持久化：写 localStorage 并可选 POST。所有需立即落盘的操作均经此函数，避免分散写入导致覆盖。 */
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
             const normalizedInput = normalizeFullData(fullData);
+            const safeTreasureDomain = protectTreasureDomainForPersistence({
+                treasures: fullData?.treasures,
+                storage: fullData?.storage,
+                logs: fullData?.logs
+            });
             const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
@@ -5172,6 +4770,9 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                treasures: safeTreasureDomain.treasures,
+                storage: safeTreasureDomain.storage,
+                logs: safeTreasureDomain.logs,
                 studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
@@ -5184,7 +4785,7 @@ const INITIAL_TREASURES = [
             };
             writeLocalCaches(fullDataWithMeta);
             return savePayloadToServer(fullDataWithMeta, fullDataWithMeta, nowTs);
-        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches]);
+        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, writeLocalCaches, protectTreasureDomainForPersistence]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -5367,21 +4968,20 @@ const INITIAL_TREASURES = [
             const savedTreasures = getStorageItem('class_treasure_data');
             if (savedTreasures) {
                 const data = JSON.parse(savedTreasures);
-                // 优先使用配置中的treasures，如果没有则使用保存的，最后使用默认值
-                const systemConfig = getSystemConfig(config);
-                setTreasures(data.treasures || systemConfig.treasures || INITIAL_TREASURES);
+                const savedConfig = savedData ? (JSON.parse(savedData).config || {}) : {};
+                setTreasures(resolveTreasuresData(data.treasures, savedConfig));
                 setStorage(data.storage || {});
                 setLogs(data.logs || []);
             } else {
-                // 如果没有保存的treasures，从配置读取
-                const systemConfig = getSystemConfig(config);
-                setTreasures(systemConfig.treasures || INITIAL_TREASURES);
+                const savedConfig = savedData ? (JSON.parse(savedData).config || {}) : config;
+                setTreasures(resolveTreasuresData(undefined, savedConfig));
             }
         };
 
         useEffect(() => {
             // 1. Initial Load
             loadFromLocal(); 
+            setLocalHydrationDone(true);
             fetchFromServer(true); // Initial server fetch (silent)
 
             // 2. Auto Refresh every 10 minutes
@@ -5441,6 +5041,7 @@ const INITIAL_TREASURES = [
                     const raw = getStorageItem('attendance_records');
                     if (raw) att = JSON.parse(raw);
                 } catch (_) {}
+                const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
 
                 const fullData = {
                     students: students || [],
@@ -5455,9 +5056,9 @@ const INITIAL_TREASURES = [
                     dailyUsageCounts: dailyUsageCounts || {},
                     tasks: tasks || [],
                     attendanceRecords: att,
-                    treasures: treasures || [],
-                    storage: storage || {},
-                    logs: logs || [],
+                    treasures: safeTreasureDomain.treasures,
+                    storage: safeTreasureDomain.storage,
+                    logs: safeTreasureDomain.logs,
                     battle: battle || {},
                     examArchives: examArchives || normalizeExamArchives(undefined, battle),
                     battleSnapshots: battleSnapshots || []
@@ -5494,10 +5095,7 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onVisible);
                 window.removeEventListener('focus', onVisible);
             };
-        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs]);
-
-        // Update handleRefreshData to use new function
-        const handleRefreshData = () => fetchFromServer(false);
+        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, treasures, storage, logs, protectTreasureDomainForPersistence]);
 
         // 动态更新页面标题
         useEffect(() => {
@@ -5568,6 +5166,7 @@ const INITIAL_TREASURES = [
                     const raw = getStorageItem('attendance_records');
                     if (raw) att = JSON.parse(raw);
                 } catch (_) {}
+                const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
 
                 const fullData = {
                     students: students || [],
@@ -5582,9 +5181,9 @@ const INITIAL_TREASURES = [
                     dailyUsageCounts: dailyUsageCounts || {},
                     tasks: tasks || [],
                     attendanceRecords: att,
-                    treasures: treasures || [],
-                    storage: storage || {},
-                    logs: logs || [],
+                    treasures: safeTreasureDomain.treasures,
+                    storage: safeTreasureDomain.storage,
+                    logs: safeTreasureDomain.logs,
                     battle: battle || {},
                     examArchives: examArchives || normalizeExamArchives(undefined, battle),
                     battleSnapshots: battleSnapshots || []
@@ -5607,11 +5206,12 @@ const INITIAL_TREASURES = [
                 console.error('生成快照失败:', e);
                 return false;
             }
-        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots]);
+        }, [students, studentProfiles, history, config, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, treasures, storage, logs, battle, examArchives, battleSnapshots, protectTreasureDomainForPersistence]);
 
 
         // --- 自动保存逻辑 (Debounced) ---
         useEffect(() => {
+            if (!localHydrationDone) return undefined;
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
@@ -5639,9 +5239,10 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
+        }, [localHydrationDone, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData, writeLocalCaches]);
 
         useEffect(() => {
+            if (!localHydrationDone) return undefined;
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
@@ -5672,7 +5273,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveBattleDomain, 1200);
             return () => clearTimeout(timer);
-        }, [battle, examArchives, battleSnapshots, persistDataPatch, buildCurrentFullData, writeLocalCaches]);
+        }, [localHydrationDone, battle, examArchives, battleSnapshots, persistDataPatch, buildCurrentFullData, writeLocalCaches]);
 
 
         // NEW Batch Update Function
@@ -6215,10 +5816,10 @@ const INITIAL_TREASURES = [
         };
 
         return h("div", { className: "min-h-screen pb-20" },
-            h(Nav, { activeTab, setActiveTab, syncStatus, onRefresh: handleRefreshData, autoRefresh, setAutoRefresh, config }),
+            h(NavView, { activeTab, setActiveTab, syncStatus, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
-                activeTab === 'operations' && h(OperationView, { students: displayStudents, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, updatePoints, handleWage, adjustModal, setAdjustModal, history, handleUndo, batchUpdatePoints, config }),
+                activeTab === 'operations' && h(OperationView, { students: displayStudents, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, handleWage, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && h(AttendanceModule, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); } }),
                 activeTab === 'tasks' && (
                     tasksModuleStatus === 'ready' && TasksView
