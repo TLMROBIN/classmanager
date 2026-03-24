@@ -826,6 +826,7 @@ const INITIAL_TREASURES = [
         window.__OperationViewComponent__ = window.createOperationView({
             h,
             useState,
+            useEffect,
             Modal,
             Icon,
             getNow,
@@ -4213,12 +4214,6 @@ const INITIAL_TREASURES = [
         const effectiveTreasures = resolveTreasuresData(treasures, config);
         const prevFrozenRef = useRef(!!(config && config.frozen));
             
-        // Moved state from OperationView to App to persist across tabs
-        const [selectedIds, setSelectedIds] = useState(new Set());
-        const [filterGroup, setFilterGroup] = useState('all');
-        const [filterDorm, setFilterDorm] = useState('all');
-        const [opTab, setOpTab] = useState('bonus');
-            
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
         const NavView = getNavView();
         const DashboardView = getDashboardView();
@@ -4522,10 +4517,6 @@ const INITIAL_TREASURES = [
                 battle: deepClone(battle),
                 examArchives: deepClone(examArchives),
                 battleSnapshots: deepClone(battleSnapshots),
-                selectedIds: Array.from(selectedIds),
-                filterGroup,
-                filterDorm,
-                opTab,
                 activeTab
             };
             window.__CM_TEST_STORAGE__ = snapshotStorage();
@@ -4533,7 +4524,7 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, selectedIds, filterGroup, filterDorm, opTab, activeTab]);
+        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
@@ -4557,10 +4548,6 @@ const INITIAL_TREASURES = [
                 setBattle(battleNormalize(snap.battle || {}));
                 setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
                 setBattleSnapshots(normalizeBattleSnapshots(snap.battleSnapshots));
-                setSelectedIds(new Set(snap.selectedIds || []));
-                setFilterGroup(snap.filterGroup || 'all');
-                setFilterDorm(snap.filterDorm || 'all');
-                setOpTab(snap.opTab || 'bonus');
                 if (snap.activeTab) setActiveTab(snap.activeTab);
             }
             window.__CM_TEST_STORAGE__ = null;
@@ -5819,7 +5806,7 @@ const INITIAL_TREASURES = [
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
-                activeTab === 'operations' && h(OperationView, { students: displayStudents, selectedIds, setSelectedIds, filterGroup, setFilterGroup, filterDorm, setFilterDorm, opTab, setOpTab, handleWage, history, handleUndo, batchUpdatePoints, config }),
+                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && h(AttendanceModule, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); } }),
                 activeTab === 'tasks' && (
                     tasksModuleStatus === 'ready' && TasksView
