@@ -202,6 +202,26 @@ const getLatestExamArchiveRank = (examArchives, studentId) => {
     };
 };
 
+const getLegacyTreasureList = (config) => {
+    const treasures = config?.systemConfig?.treasures;
+    return Array.isArray(treasures) ? treasures : null;
+};
+
+const stripSystemConfigTreasures = (systemConfig) => {
+    if (!systemConfig || typeof systemConfig !== 'object') return systemConfig;
+    if (!Object.prototype.hasOwnProperty.call(systemConfig, 'treasures')) return systemConfig;
+    const { treasures, ...rest } = systemConfig;
+    return rest;
+};
+
+const stripTreasureConfig = (config) => {
+    if (!config || typeof config !== 'object') return config || {};
+    if (!config.systemConfig || typeof config.systemConfig !== 'object') return config;
+    const nextSystemConfig = stripSystemConfigTreasures(config.systemConfig);
+    if (nextSystemConfig === config.systemConfig) return config;
+    return { ...config, systemConfig: nextSystemConfig };
+};
+
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
 const getSystemConfig = (config) => {
@@ -306,8 +326,9 @@ const resolveTreasuresData = (treasures, config) => {
     if (Array.isArray(treasures)) {
         return treasures;
     }
-    if (Array.isArray(config?.systemConfig?.treasures)) {
-        return config.systemConfig.treasures;
+    const legacyTreasures = getLegacyTreasureList(config);
+    if (Array.isArray(legacyTreasures)) {
+        return legacyTreasures;
     }
     return getTreasuresConfig(config);
 };
@@ -987,7 +1008,7 @@ const INITIAL_TREASURES = [
         };
 
         const applySystemConfig = (next) => {
-            const newConfig = { ...config, systemConfig: next };
+            const newConfig = { ...config, systemConfig: stripSystemConfigTreasures(next) };
             setConfig(newConfig);
             if (Array.isArray(next.quotes)) setQuotes(next.quotes);
         };
@@ -995,11 +1016,6 @@ const INITIAL_TREASURES = [
         const updateSystemConfig = (updater) => {
             const next = updater(getSystemConfig(config));
             applySystemConfig(next);
-        };
-
-        const updateTreasureList = (list) => {
-            updateSystemConfig(sc => ({ ...sc, treasures: list }));
-            setTreasures(list);
         };
 
         const addCountdownEvent = () => {
@@ -1446,8 +1462,8 @@ const INITIAL_TREASURES = [
                 const saved = getStorageItem('attendance_records');
                 if (saved) latestAttendance = JSON.parse(saved);
             } catch (_) {}
-            const fullData = { 
-                students, history, config, 
+            const fullData = {
+                students, history, config: stripTreasureConfig(config),
                 attendance_records: latestAttendance || {},
                 class_treasure_data: { treasures, storage, logs },
                 quotes: quotes,
@@ -1473,12 +1489,15 @@ const INITIAL_TREASURES = [
                 try {
                     const data = JSON.parse(event.target.result);
                     if (confirm("确定要恢复全量备份吗？当前数据将被覆盖！")) {
+                        const importedTreasureList = Array.isArray(data?.class_treasure_data?.treasures)
+                            ? data.class_treasure_data.treasures
+                            : getLegacyTreasureList(data.config);
                         if (data.students) setStudents(data.students);
                         if (hasStudentProfilesInData(data)) setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
                         if (data.history) setHistory(data.history);
                         if (data.config) {
                             const merged = getSystemConfig({ systemConfig: data.config.systemConfig || {} });
-                            setConfig({ ...data.config, systemConfig: merged });
+                            setConfig(stripTreasureConfig({ ...data.config, systemConfig: merged }));
                             if (Array.isArray(merged.quotes)) setQuotes(merged.quotes);
                         }
                         if (data.attendance_records) {
@@ -1486,9 +1505,11 @@ const INITIAL_TREASURES = [
                             setStorageItem('attendance_records', JSON.stringify(data.attendance_records));
                         }
                         if (data.class_treasure_data) {
-                            setTreasures(data.class_treasure_data.treasures || []);
+                            if (Array.isArray(importedTreasureList)) setTreasures(importedTreasureList);
                             setStorage(data.class_treasure_data.storage || {});
                             setLogs(data.class_treasure_data.logs || []);
+                        } else if (Array.isArray(importedTreasureList)) {
+                            setTreasures(importedTreasureList);
                         }
                         if (data.quotes) setQuotes(data.quotes);
                         if (data.battle) setBattle(battleNormalize(data.battle));
@@ -1522,7 +1543,7 @@ const INITIAL_TREASURES = [
             if (d.students) setStudents(d.students);
             if (hasStudentProfilesInData(d)) setStudentProfiles(nextStudentProfiles);
             if (d.history) setHistory(d.history);
-            if (d.config) setConfig(d.config);
+            if (d.config) setConfig(stripTreasureConfig(d.config));
             if (d.attendanceRecords) setAttendanceRecords(d.attendanceRecords);
             if (d.treasures) setTreasures(d.treasures || []);
             if (d.storage) setStorage(d.storage || {});
@@ -1819,7 +1840,8 @@ const INITIAL_TREASURES = [
         };
 
         const handleExportSystemConfig = () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(systemConfig));
+            const { treasures, ...exportSystemConfig } = systemConfig;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportSystemConfig));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
             downloadAnchorNode.setAttribute("download", "system_config_" + getTodayStr() + ".json");
@@ -1836,8 +1858,9 @@ const INITIAL_TREASURES = [
                 try {
                     const data = JSON.parse(evt.target.result);
                     const merged = getSystemConfig({ systemConfig: data || {} });
+                    const importedTreasures = getLegacyTreasureList({ systemConfig: data || {} });
                     applySystemConfig(merged);
-                    if (Array.isArray(merged.treasures)) setTreasures(merged.treasures);
+                    if (Array.isArray(importedTreasures)) setTreasures(importedTreasures);
                     alert("系统配置已导入");
                 } catch (err) {
                     alert("配置文件格式错误");
@@ -2455,62 +2478,6 @@ const INITIAL_TREASURES = [
                         )
                     ),
                     h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "藏宝阁设置"),
-                        h("div", { className: "flex justify-between items-center mb-2" },
-                            h("span", { className: "text-sm font-medium text-gray-700" }, "商品管理"),
-                            h("button", { onClick: () => {
-                                const list = [...(treasures || [])];
-                                list.push({ id: Date.now(), name: "新宝物", rarity: "N", price: 0, stock: 0, desc: "", ladderPrices: [], dailyLimit: 0 });
-                                updateTreasureList(list);
-                            }, className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增商品")
-                        ),
-                        h("div", { className: "space-y-3" },
-                            (treasures || []).map((t, idx) => h("div", { key: t.id || idx, className: "grid grid-cols-1 md:grid-cols-6 gap-2 bg-white p-3 rounded border" },
-                                h("input", { className: "border rounded p-2 text-sm", value: t.name || "", onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], name: e.target.value };
-                                    updateTreasureList(list);
-                                }, placeholder: "名称" }),
-                                h("input", { className: "border rounded p-2 text-sm", value: t.rarity || "", onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], rarity: e.target.value };
-                                    updateTreasureList(list);
-                                }, placeholder: "稀有度" }),
-                                h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.price ?? 0, onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], price: Number(e.target.value) };
-                                    updateTreasureList(list);
-                                } }),
-                                h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.stock ?? 0, onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], stock: Number(e.target.value) };
-                                    updateTreasureList(list);
-                                } }),
-                                h("input", { className: "border rounded p-2 text-sm", value: t.desc || "", onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], desc: e.target.value };
-                                    updateTreasureList(list);
-                                }, placeholder: "描述" }),
-                                h("button", { onClick: () => {
-                                    const list = [...(treasures || [])];
-                                    list.splice(idx, 1);
-                                    updateTreasureList(list);
-                                }, className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs" }, "删除"),
-                                h("input", { className: "border rounded p-2 text-sm md:col-span-3", value: (t.ladderPrices || []).join(','), onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    const vals = e.target.value.split(',').map(v => v.trim()).filter(v => v !== "").map(Number).filter(v => !isNaN(v));
-                                    list[idx] = { ...list[idx], ladderPrices: vals };
-                                    updateTreasureList(list);
-                                }, placeholder: "阶梯价格(逗号分隔)" }),
-                                h("input", { type: "number", className: "border rounded p-2 text-sm", value: t.dailyLimit ?? 0, onChange: e => {
-                                    const list = [...(treasures || [])];
-                                    list[idx] = { ...list[idx], dailyLimit: Number(e.target.value) };
-                                    updateTreasureList(list);
-                                }, placeholder: "每日限额" })
-                            ))
-                        )
-                    ),
-                    h("div", null,
                         h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "倒数日设置"),
                         h("div", { className: "flex flex-col md:flex-row gap-2 mb-3" },
                             h("input", { className: "border rounded p-2 text-sm flex-1", value: countdownName, onChange: e => setCountdownName(e.target.value), placeholder: "事件名称" }),
@@ -2937,6 +2904,8 @@ const INITIAL_TREASURES = [
         const applyFullData = (data, options = {}) => {
             const normalized = normalizeFullData(data);
             const use = (flag) => options.force || flag;
+            const incomingTreasures = resolveTreasuresData(normalized.treasures, normalized.config || config);
+            const hasIncomingLegacyTreasureConfig = Array.isArray(getLegacyTreasureList(normalized.config));
 
             if (use(normalized.flags.students)) setStudents(normalized.students || []);
             if (use(normalized.flags.studentProfiles)) setStudentProfiles(restoreStudentProfilesFromData(normalized, studentProfiles, students));
@@ -2947,7 +2916,7 @@ const INITIAL_TREASURES = [
                 const keepLocal = !options.force && hasLocalHistory && !hasIncomingHistory;
                 if (!keepLocal) setHistory(incomingHistory);
             }
-            if (use(normalized.flags.config)) setConfig(normalized.config || {});
+            if (use(normalized.flags.config)) setConfig(stripTreasureConfig(normalized.config || {}));
 
             if (use(normalized.flags.attendanceRecords)) {
                 let att = normalized.attendanceRecords || {};
@@ -2961,7 +2930,9 @@ const INITIAL_TREASURES = [
                 setStorageItem('attendance_records', JSON.stringify(att));
             }
 
-            if (use(normalized.flags.treasures)) setTreasures(resolveTreasuresData(normalized.treasures, normalized.config || config));
+            if (use(normalized.flags.treasures) || hasIncomingLegacyTreasureConfig) {
+                setTreasures(Array.isArray(incomingTreasures) ? incomingTreasures : []);
+            }
             if (use(normalized.flags.storage)) setStorage(normalized.storage || {});
             if (use(normalized.flags.logs)) setLogs(normalized.logs || []);
             if (use(normalized.flags.quotes)) setQuotes(normalized.quotes && normalized.quotes.length > 0 ? normalized.quotes : window.DEFAULT_QUOTES);
@@ -3050,7 +3021,7 @@ const INITIAL_TREASURES = [
                 setStudents(snap.students || []);
                 setStudentProfiles(restoreStudentProfilesFromData(snap, studentProfiles, students));
                 setHistory(snap.history || []);
-                setConfig(snap.config || {});
+                setConfig(stripTreasureConfig(snap.config || {}));
                 setAttendanceRecords(snap.attendanceRecords || {});
                 setTreasures(snap.treasures || []);
                 setStorage(snap.storage || {});
@@ -3082,14 +3053,15 @@ const INITIAL_TREASURES = [
             } catch (_) {}
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
             const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
+            const rawNextConfig = Object.prototype.hasOwnProperty.call(overrides, 'config') ? overrides.config : config;
+            const nextConfig = stripTreasureConfig(rawNextConfig);
+            const migratedTreasures = resolveTreasuresData(undefined, rawNextConfig);
             const nextTreasures = Object.prototype.hasOwnProperty.call(overrides, 'treasures')
                 ? overrides.treasures
-                : effectiveTreasures;
+                : (Array.isArray(getLegacyTreasureList(rawNextConfig)) ? migratedTreasures : effectiveTreasures);
             return {
                 history,
-                config,
                 attendanceRecords: att,
-                treasures: Array.isArray(nextTreasures) ? nextTreasures : effectiveTreasures,
                 storage,
                 logs,
                 quotes,
@@ -3103,6 +3075,8 @@ const INITIAL_TREASURES = [
                 examArchives,
                 battleSnapshots,
                 ...overrides,
+                config: nextConfig,
+                treasures: Array.isArray(nextTreasures) ? nextTreasures : effectiveTreasures,
                 students: nextStudents,
                 studentProfiles: nextStudentProfiles
             };
@@ -3131,11 +3105,12 @@ const INITIAL_TREASURES = [
                 __meta
             } = fullDataWithMeta;
             const safeTreasureDomain = protectTreasureDomainForPersistence({ treasures, storage, logs });
+            const safeConfig = stripTreasureConfig(config);
             setStorageItem('class_manager_data', JSON.stringify({
                 students,
                 studentProfiles,
                 history,
-                config,
+                config: safeConfig,
                 quotes,
                 messages,
                 teacherMessages,
@@ -3225,6 +3200,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                config: stripTreasureConfig(fullData?.config),
                 treasures: safeTreasureDomain.treasures,
                 storage: safeTreasureDomain.storage,
                 logs: safeTreasureDomain.logs,
@@ -3240,6 +3216,9 @@ const INITIAL_TREASURES = [
             };
             writeLocalCaches(fullDataWithMeta);
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'config')) {
+                payload.config = stripTreasureConfig(partialData.config);
+            }
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'treasures')) {
                 payload.treasures = safeTreasureDomain.treasures;
             }
@@ -3274,6 +3253,7 @@ const INITIAL_TREASURES = [
             const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
+                config: stripTreasureConfig(fullData?.config),
                 treasures: safeTreasureDomain.treasures,
                 storage: safeTreasureDomain.storage,
                 logs: safeTreasureDomain.logs,
@@ -3438,10 +3418,11 @@ const INITIAL_TREASURES = [
                 setStudents(data.students || []);
                 setStudentProfiles(restoreStudentProfilesFromData(data, studentProfiles, students));
                 setHistory(data.history || []);
-                const savedConfig = data.config || {};
+                const rawSavedConfig = data.config || {};
+                const savedConfig = stripTreasureConfig(rawSavedConfig);
                 setConfig({
                     duty: { mon: ["", ""], tue: [""], wed: [""], thu: [""], fri: [""] },
-                    commissioners: getDefaultCommissioners({ systemConfig: savedConfig.systemConfig }),
+                    commissioners: getDefaultCommissioners({ systemConfig: rawSavedConfig.systemConfig }),
                     lastWageDate: "",
                     frozen: false,
                     systemConfig: savedConfig.systemConfig || undefined,
@@ -4032,7 +4013,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: nextSystemConfig }); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) }); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
