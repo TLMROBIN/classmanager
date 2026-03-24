@@ -162,7 +162,7 @@
             const commissionerAnnouncements = useMemo(() => {
                 return getCommissionerRoles(config)
                     .map((role, idx) => {
-                        const student = (Array.isArray(students) ? students : []).find(s => s.id === config.commissioners?.[role.id]);
+                        const student = (Array.isArray(students) ? students : []).find(s => s.id === role.studentId);
                         return {
                             id: role.id || `commissioner_${idx + 1}`,
                             name: role.name || `纪律专员${idx + 1}`,
@@ -222,14 +222,14 @@
                             )
                         ),
                         hygieneDutyAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                            h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日公示"),
+                            h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生督查公示"),
                             h("div", { className: "space-y-2" },
                                 hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
                                     h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
                                     h("div", { className: "text-xs text-gray-500 text-right" }, item.members.join("、"))
                                 ))
                             ),
-                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
+                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 卫生督查”")
                         ),
                         commissionerAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                             h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员公示"),
@@ -239,7 +239,7 @@
                                     h("div", { className: "text-xs text-gray-500" }, item.studentName)
                                 ))
                             ),
-                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“岗位与值日维护”")
+                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 专员角色”")
                         )
                     ),
                     h("div", { className: "space-y-6" },

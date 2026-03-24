@@ -24,6 +24,7 @@
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
             getLegacyTreasureList,
+            normalizeCommissionerRoles,
             normalizeCustomRoles,
             getCustomRoles,
             getCommissionerRoles,
@@ -62,6 +63,7 @@
             !stripSystemConfigTreasures ||
             !sanitizeStoredConfig ||
             !getLegacyTreasureList ||
+            !normalizeCommissionerRoles ||
             !normalizeCustomRoles ||
             !getCustomRoles ||
             !getCommissionerRoles ||
@@ -100,7 +102,6 @@
         const [showStudentRosterManager, setShowStudentRosterManager] = useState(false);
         const [showOrganizationManager, setShowOrganizationManager] = useState(false);
         const [showCustomRolesManager, setShowCustomRolesManager] = useState(false);
-        const [showDutyManager, setShowDutyManager] = useState(false);
         const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
         const setConfigSafe = (next) => {
             if (typeof setConfig !== 'function') return;
@@ -1025,16 +1026,11 @@
             newDuty[day] = row;
             setConfigSafe({ ...config, duty: newDuty });
         };
-        const handleCommissionerChange = (roleId, studentId) => {
-            setConfigSafe({ ...config, commissioners: { ...(config.commissioners || {}), [roleId]: studentId ? parseInt(studentId) : null } });
-        };
-
-        const renderStudentRosterManager = () => h("div", { className: "border-t pt-6" },
-            h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
+        const renderStudentRosterManager = () => h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                     h("div", null,
-                        h("h3", { className: "font-bold text-gray-700 mb-1" }, "学生名单维护"),
-                        h("p", { className: "text-xs text-gray-500" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
+                        h("div", { className: "text-sm font-medium text-gray-700" }, "学生名单维护"),
+                        h("p", { className: "text-xs text-gray-500 mt-1" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
                     ),
                     h("button", {
                         onClick: () => setShowStudentRosterManager(prev => !prev),
@@ -1093,7 +1089,6 @@
                         )
                     )
                 )
-            )
         );
 
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
@@ -1501,7 +1496,7 @@
                                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                                     h("div", null,
                                         h("div", { className: "text-sm font-medium text-gray-700" }, "自定义角色"),
-                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "专员角色、班级自定义角色和岗位值日维护统一收在这里。")
+                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "专员角色、卫生督查和班级自定义角色统一收在这里。")
                                     ),
                                     h("button", {
                                         onClick: () => setShowCustomRolesManager(prev => !prev),
@@ -1510,31 +1505,48 @@
                                 ),
                                 showCustomRolesManager && h("div", { className: "border-t pt-4 space-y-4" },
                                     h("div", { className: "grid grid-cols-1 xl:grid-cols-2 gap-4 items-start max-w-4xl" },
-                                        h("div", { className: "w-full max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                            h("div", { className: "flex justify-between items-center" },
-                                                h("span", { className: "text-sm font-medium text-gray-700" }, "专员角色"),
-                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                    const list = [...(sc.organization.commissionerRoles || [])];
-                                                    list.push({ id: `role_${Date.now()}`, name: "新角色" });
-                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增角色")
-                                            ),
-                                            (systemConfig.organization.commissionerRoles || []).length === 0
-                                                ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无专员角色")
+                                        h("div", { className: "w-full max-w-sm" },
+                                            h("div", { className: "bg-white border rounded-lg p-4 space-y-3" },
+                                                h("div", { className: "flex justify-between items-center" },
+                                                    h("span", { className: "text-sm font-medium text-gray-700" }, "专员角色"),
+                                                    h("button", { onClick: () => updateSystemConfig(sc => {
+                                                        const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
+                                                        list.push({ id: `role_${Date.now()}`, name: "新角色", studentId: null });
+                                                        return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                    }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增角色")
+                                                ),
+                                                h("p", { className: "text-xs text-gray-500" }, "一般用于纪律组内分工，不另外发工资，只用于首页公示提醒，不设置则不显示"),
+                                                (systemConfig.organization.commissionerRoles || []).length === 0
+                                                    ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无专员角色")
                                                 : h("div", { className: "space-y-2" },
-                                                    (systemConfig.organization.commissionerRoles || []).map((r, idx) => h("div", { key: r.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                        h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: r.name || "", onChange: e => updateSystemConfig(sc => {
-                                                            const list = [...sc.organization.commissionerRoles];
-                                                            list[idx] = { ...list[idx], name: e.target.value };
-                                                            return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                        }), placeholder: "角色名称" }),
-                                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                                            const list = [...sc.organization.commissionerRoles];
-                                                            list.splice(idx, 1);
-                                                            return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                        }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                    ))
-                                                )
+                                                        getCommissionerRoles(config).map((r, idx) => h("div", { key: r.id || idx, className: "bg-gray-50 p-2 rounded border" },
+                                                            h("div", { className: "flex flex-wrap sm:flex-nowrap items-center gap-2" },
+                                                                h("input", { className: "w-24 sm:w-28 border rounded p-2 text-sm bg-white shrink-0", value: r.name || "", onChange: e => updateSystemConfig(sc => {
+                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
+                                                                    list[idx] = { ...list[idx], name: e.target.value };
+                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                                }), placeholder: "角色名称" }),
+                                                                h("select", { className: "w-16 sm:w-20 border rounded p-2 text-sm bg-white shrink-0", value: r.studentId || "", onChange: e => updateSystemConfig(sc => {
+                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
+                                                                    list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
+                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                                }) },
+                                                                    h("option", { value: "" }, "未设置"),
+                                                                    Array.from(new Map(
+                                                                        (students || [])
+                                                                            .filter(student => student.group === 'discipline' || student.id === r.studentId)
+                                                                            .map(student => [student.id, student])
+                                                                    ).values()).map(student => h("option", { key: student.id, value: student.id }, student.name))
+                                                                ),
+                                                                h("button", { onClick: () => updateSystemConfig(sc => {
+                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
+                                                                    list.splice(idx, 1);
+                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
+                                                                }), className: "px-2 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
+                                                            )
+                                                        ))
+                                                    )
+                                            ),
                                         ),
                                         h("div", { className: "w-full max-w-xl bg-white border rounded-lg p-4 space-y-3" },
                                             h("div", { className: "flex justify-between items-center" },
@@ -1549,96 +1561,58 @@
                                             getCustomRoles(config).length === 0
                                                 ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无班级自定义角色")
                                                 : h("div", { className: "space-y-2" },
-                                                    getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "bg-gray-50 p-3 rounded border space-y-2" },
-                                                        h("div", { className: "flex items-center gap-2" },
-                                                            h("input", { className: "w-36 sm:w-40 max-w-full border rounded p-2 text-sm bg-white", value: role.name || "", onChange: e => updateSystemConfig(sc => {
+                                                    getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "bg-gray-50 p-2 rounded border" },
+                                                        h("div", { className: "flex flex-wrap sm:flex-nowrap items-center gap-2" },
+                                                            h("input", { className: "w-24 sm:w-28 shrink-0 border rounded p-2 text-sm bg-white", value: role.name || "", onChange: e => updateSystemConfig(sc => {
                                                                 const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                                 list[idx] = { ...list[idx], name: e.target.value };
                                                                 return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                                             }), placeholder: "职务名称" }),
-                                                            h("input", { type: "number", className: "w-24 border rounded p-2 text-sm bg-white", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
+                                                            h("input", { type: "number", className: "w-14 sm:w-16 shrink-0 border rounded p-2 text-sm bg-white", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
                                                                 const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                                 list[idx] = { ...list[idx], dailyWage: Number(e.target.value) };
                                                                 return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                                             }), placeholder: "工资" }),
+                                                            h("select", { className: "w-16 sm:w-20 shrink-0 border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
+                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
+                                                                list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
+                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
+                                                            }) },
+                                                                h("option", { value: "" }, "未设置"),
+                                                                (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
+                                                            ),
                                                             h("button", { onClick: () => updateSystemConfig(sc => {
                                                                 const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
                                                                 list.splice(idx, 1);
                                                                 return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                            }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                        ),
-                                                        h("select", { className: "w-full max-w-xs border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
-                                                            const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                            list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
-                                                            return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                        }) },
-                                                            h("option", { value: "" }, "未设置任职学生"),
-                                                            (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
+                                                            }), className: "px-2 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
                                                         )
                                                     ))
                                                 )
                                         )
                                     ),
-                                    h("div", { className: "w-full max-w-4xl bg-white border rounded-lg p-4 space-y-4" },
-                                        h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                                            h("div", null,
-                                                h("h4", { className: "font-bold text-gray-800 mb-1 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "岗位与值日维护"),
-                                                h("p", { className: "text-xs text-gray-500" }, "卫生值日和纪律专员的人员安排统一收在这里。")
-                                            ),
-                                            h("button", {
-                                                onClick: () => setShowDutyManager(prev => !prev),
-                                                className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
-                                            }, showDutyManager ? "收起岗位与值日维护" : "打开岗位与值日维护")
+                                    h("div", { className: "w-full bg-white border rounded-lg p-4 space-y-3" },
+                                        h("div", null,
+                                            h("div", { className: "text-sm font-medium text-gray-700" }, "卫生督查"),
+                                            h("p", { className: "text-xs text-gray-500 mt-1" }, "一般用于卫生组内分工，不另外发工资，只用于首页公示提醒，不设置则不显示")
                                         ),
-                                        showDutyManager && h("div", { className: "border-t pt-4 space-y-6" },
-                                            h("div", null,
-                                                h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生值日设置"),
-                                                h("div", { className: "space-y-2 text-sm" },
-                                                    Object.keys(config.duty || {}).map(day => h("div", { key: day, className: "flex items-center" },
-                                                        h("span", { className: "w-12 text-gray-500" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day]),
-                                                        (config.duty?.[day] || []).map((val, idx) => h("select", { key: idx, value: val, onChange: e => handleDutyChange(day, idx, e.target.value), className: "ml-2 border rounded p-1 flex-1 bg-white" }, h("option", { value: "" }, "-"), students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))))
-                                                    ))
-                                                )
-                                            ),
-                                            h("div", null,
-                                                h("h4", { className: "font-bold text-gray-800 mb-3 text-sm flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员设置"),
-                                                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
-                                                    getCommissionerRoles(config).map(role => h("div", { key: role.id },
-                                                        h("div", { className: "text-xs text-gray-500 mb-1" }, role.name),
-                                                        h("select", { value: config.commissioners?.[role.id] || "", onChange: e => handleCommissionerChange(role.id, e.target.value), className: "w-full border rounded p-2 text-sm bg-white" }, h("option", { value: "" }, "未设置"), students.filter(s => s.group === 'discipline').map(s => h("option", { key: s.id, value: s.id }, s.name)))
-                                                    ))
-                                                )
-                                            )
+                                        h("div", { className: "grid grid-cols-5 gap-3 text-sm" },
+                                            ['mon', 'tue', 'wed', 'thu', 'fri'].map(day => h("div", { key: `label_${day}`, className: "text-center text-sm font-medium text-gray-700" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day])),
+                                            ['mon', 'tue', 'wed', 'thu', 'fri'].map(day => h("div", { key: day, className: "bg-gray-50 border rounded-lg p-2 space-y-2" },
+                                                (config.duty?.[day] || []).map((val, idx) => h("select", {
+                                                    key: idx,
+                                                    value: val,
+                                                    onChange: e => handleDutyChange(day, idx, e.target.value),
+                                                    className: "w-full border rounded p-2 text-sm bg-white"
+                                                },
+                                                    h("option", { value: "" }, "未设置"),
+                                                    students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))
+                                                ))
+                                            ))
                                         )
                                     )
                                 )
                             )
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "倒数日设置"),
-                        h("div", { className: "flex flex-col md:flex-row gap-2 mb-3" },
-                            h("input", { className: "border rounded p-2 text-sm flex-1", value: countdownName, onChange: e => setCountdownName(e.target.value), placeholder: "事件名称" }),
-                            h("input", { type: "date", className: "border rounded p-2 text-sm", value: countdownDate, onChange: e => setCountdownDate(e.target.value) }),
-                            h("button", { onClick: addCountdownEvent, className: "px-3 py-2 bg-blue-600 text-white rounded text-sm" }, "新增")
-                        ),
-                        h("div", { className: "space-y-2" },
-                            (Array.isArray(config.countdownEvents) ? config.countdownEvents : []).map(e => h("div", { key: e.id || `${e.name}-${e.date}`, className: "flex items-center gap-2 bg-white p-2 rounded border text-sm" },
-                                h("div", { className: "flex-1" }, `${e.name} · ${e.date}`),
-                                h("button", { onClick: () => removeCountdownEvent(e.id), className: "px-2 py-1 text-xs bg-red-50 text-red-600 rounded" }, "删除")
-                            ))
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "简报生成"),
-                        h("div", { className: "flex flex-wrap gap-2 mb-3" },
-                            h("button", { onClick: () => { const r = getReportRange(7); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded" }, "近7天"),
-                            h("button", { onClick: () => { const r = getReportRange(30); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded" }, "近30天")
-                        ),
-                        h("div", { className: "flex flex-col md:flex-row gap-2" },
-                            h("input", { type: "date", className: "border rounded p-2 text-sm", value: reportStart, onChange: e => setReportStart(e.target.value) }),
-                            h("input", { type: "date", className: "border rounded p-2 text-sm", value: reportEnd, onChange: e => setReportEnd(e.target.value) }),
-                            h("button", { onClick: handleGenerateBrief, className: "px-3 py-2 bg-emerald-600 text-white rounded text-sm" }, "生成简报")
                         )
                     ),
                     h("div", { className: "border-t pt-4" },
@@ -1666,6 +1640,36 @@
                             },
                             className: "w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
                         }, "💾 保存配置")
+                    )
+                )
+            ),
+            h("div", { className: "border-t pt-6" },
+                h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "calendar" }), "倒数日设置"),
+                h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
+                    h("div", { className: "flex flex-col md:flex-row gap-2" },
+                        h("input", { className: "border rounded p-2 text-sm flex-1 bg-white", value: countdownName, onChange: e => setCountdownName(e.target.value), placeholder: "事件名称" }),
+                        h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: countdownDate, onChange: e => setCountdownDate(e.target.value) }),
+                        h("button", { onClick: addCountdownEvent, className: "px-3 py-2 bg-blue-600 text-white rounded text-sm" }, "新增")
+                    ),
+                    h("div", { className: "space-y-2" },
+                        (Array.isArray(config.countdownEvents) ? config.countdownEvents : []).map(e => h("div", { key: e.id || `${e.name}-${e.date}`, className: "flex items-center gap-2 bg-white p-2 rounded border text-sm" },
+                            h("div", { className: "flex-1" }, `${e.name} · ${e.date}`),
+                            h("button", { onClick: () => removeCountdownEvent(e.id), className: "px-2 py-1 text-xs bg-red-50 text-red-600 rounded" }, "删除")
+                        ))
+                    )
+                )
+            ),
+            h("div", { className: "border-t pt-6" },
+                h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "fileText" }), "简报生成"),
+                h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-4" },
+                    h("div", { className: "flex flex-wrap gap-2" },
+                        h("button", { onClick: () => { const r = getReportRange(7); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-white border text-gray-700 rounded" }, "近7天"),
+                        h("button", { onClick: () => { const r = getReportRange(30); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-white border text-gray-700 rounded" }, "近30天")
+                    ),
+                    h("div", { className: "flex flex-col md:flex-row gap-2" },
+                        h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: reportStart, onChange: e => setReportStart(e.target.value) }),
+                        h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: reportEnd, onChange: e => setReportEnd(e.target.value) }),
+                        h("button", { onClick: handleGenerateBrief, className: "px-3 py-2 bg-emerald-600 text-white rounded text-sm" }, "生成简报")
                     )
                 )
             ),

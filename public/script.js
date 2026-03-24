@@ -146,6 +146,23 @@ const normalizeCustomRoles = (roles, fallbackDailyWage = 0) => (
     studentId: role?.studentId != null && role.studentId !== "" ? Number(role.studentId) : null,
     dailyWage: Number.isFinite(Number(role?.dailyWage)) ? Number(role.dailyWage) : fallbackDailyWage
 }));
+const normalizeCommissionerRoles = (roles, legacyAssignments = null) => {
+    const roleList = Array.isArray(roles) ? roles : [];
+    const legacyMap = legacyAssignments && typeof legacyAssignments === 'object' ? legacyAssignments : {};
+    return roleList.map((role, idx) => {
+        const ownStudentId = role?.studentId != null && role.studentId !== ""
+            ? Number(role.studentId)
+            : null;
+        const legacyStudentId = role?.id && legacyMap[role.id] != null && legacyMap[role.id] !== ""
+            ? Number(legacyMap[role.id])
+            : null;
+        return {
+            id: role?.id || `commissioner_role_${idx + 1}`,
+            name: role?.name || "",
+            studentId: ownStudentId != null ? ownStudentId : legacyStudentId
+        };
+    });
+};
 const normalizeExamArchives = (examArchives, fallbackBattle = null) => {
     const source = examArchives || {};
     const fallbackExams = Array.isArray(fallbackBattle?.exams) ? fallbackBattle.exams : [];
@@ -234,12 +251,9 @@ const sanitizeStoredConfig = (config) => stripLegacyPsychologyCommittee(stripTre
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
 const getSystemConfig = (config) => {
-    if (!config || !config.systemConfig) {
-        return DEFAULT_SYSTEM_CONFIG;
-    }
     // 深度合并默认配置和用户配置
     const merged = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG));
-    const userConfig = config.systemConfig;
+    const userConfig = config?.systemConfig || {};
     
     // 合并基础配置
     if (userConfig.className !== undefined) merged.className = userConfig.className;
@@ -262,13 +276,16 @@ const getSystemConfig = (config) => {
     if (userConfig.organization) {
         if (userConfig.organization.groups) merged.organization.groups = userConfig.organization.groups;
         if (userConfig.organization.dorms) merged.organization.dorms = userConfig.organization.dorms;
-        if (userConfig.organization.commissionerRoles) merged.organization.commissionerRoles = userConfig.organization.commissionerRoles;
+        if (userConfig.organization.commissionerRoles) {
+            merged.organization.commissionerRoles = userConfig.organization.commissionerRoles;
+        }
         if (Array.isArray(userConfig.organization.customRoles)) {
             merged.organization.customRoles = normalizeCustomRoles(userConfig.organization.customRoles);
         } else if (Array.isArray(userConfig.organization.studentCouncilRoles)) {
             merged.organization.customRoles = normalizeCustomRoles(userConfig.organization.studentCouncilRoles, 2);
         }
     }
+    merged.organization.commissionerRoles = normalizeCommissionerRoles(merged.organization.commissionerRoles, config?.commissioners);
     
     // 合并积分系统配置
     if (userConfig.points) {
@@ -1015,6 +1032,7 @@ const INITIAL_TREASURES = [
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
             getLegacyTreasureList,
+            normalizeCommissionerRoles,
             normalizeCustomRoles,
             getCustomRoles,
             getCommissionerRoles,
