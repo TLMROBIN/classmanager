@@ -949,7 +949,8 @@ const INITIAL_TREASURES = [
             h,
             useState,
             Icon,
-            requireAdminAuth
+            requireAdminAuth,
+            getTodayStr
         });
         return window.__AttendanceSettingsSection__;
     };
@@ -2264,32 +2265,6 @@ const INITIAL_TREASURES = [
              e.target.value = '';
         };
 
-        const handleExportQuotesExcel = () => {
-            const data = quotes.map(q => ({ "内容": q }));
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "励志语录");
-            XLSX.writeFile(wb, `励志语录_${getTodayStr()}.xlsx`);
-        };
-
-        const handleImportQuotesExcel = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const wb = XLSX.read(evt.target.result, { type: 'array' });
-                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                const newQuotes = json.map(row => row["内容"]).filter(q => q);
-                if (newQuotes.length > 0 && confirm(`解析到 ${newQuotes.length} 条语录，确定覆盖现有语录吗？`)) {
-                    setQuotes(newQuotes);
-                    updateSystemConfig(sc => ({ ...sc, quotes: newQuotes }));
-                    alert("语录更新成功");
-                }
-            };
-            reader.readAsArrayBuffer(file);
-            e.target.value = '';
-        };
-
         const handleExportSystemConfig = () => {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(systemConfig));
             const downloadAnchorNode = document.createElement('a');
@@ -2405,8 +2380,7 @@ const INITIAL_TREASURES = [
             h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
                 h("div", { className: "border rounded-xl p-4 bg-blue-50 border-blue-100" }, h("h3", { className: "font-bold text-blue-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "star" }), "积分数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportScoreExcel, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportScoreExcel })), h("button", { onClick: handleRecoverFromHistory, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "从历史恢复"), h("button", { onClick: handleFixScore, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "手动修正积分"))),
                 h("div", { className: "border rounded-xl p-4 bg-green-50 border-green-100" }, h("h3", { className: "font-bold text-green-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "clock" }), "考勤数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportAttendanceExcel, className: "w-full py-2 bg-white border border-green-200 text-green-600 rounded hover:bg-green-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportAttendanceExcel })))),
-                h("div", { className: "border rounded-xl p-4 bg-purple-50 border-purple-100" }, h("h3", { className: "font-bold text-purple-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "gift" }), "藏宝阁数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportTreasureExcel, className: "w-full py-2 bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportTreasureExcel })))),
-                h("div", { className: "border rounded-xl p-4 bg-yellow-50 border-yellow-100" }, h("h3", { className: "font-bold text-yellow-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "flame" }), "励志语录"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportQuotesExcel, className: "w-full py-2 bg-white border border-yellow-200 text-yellow-600 rounded hover:bg-yellow-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportQuotesExcel }))))
+                h("div", { className: "border rounded-xl p-4 bg-purple-50 border-purple-100" }, h("h3", { className: "font-bold text-purple-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "gift" }), "藏宝阁数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportTreasureExcel, className: "w-full py-2 bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportTreasureExcel }))))
             ),
             h("div", { className: "border-t pt-6 space-y-4" },
                 h("div", { className: "border rounded-xl p-4 bg-indigo-50 border-indigo-100" },
@@ -2743,28 +2717,6 @@ const INITIAL_TREASURES = [
                                     )
                                 )
                             ),
-                            h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "励志语录"),
-                                h("div", { className: "space-y-2" },
-                                    (systemConfig.quotes || []).map((q, idx) => h("div", { key: idx, className: "flex gap-2" },
-                                        h("input", {
-                                            className: "flex-1 border rounded-lg p-2 text-sm",
-                                            value: q,
-                                            onChange: (e) => updateSystemConfig(sc => {
-                                                const list = [...(sc.quotes || [])];
-                                                list[idx] = e.target.value;
-                                                return { ...sc, quotes: list };
-                                            })
-                                        }),
-                                        h("button", { onClick: () => updateSystemConfig(sc => {
-                                            const list = [...(sc.quotes || [])];
-                                            list.splice(idx, 1);
-                                            return { ...sc, quotes: list };
-                                        }), className: "px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs" }, "删除")
-                                    )),
-                                    h("button", { onClick: () => updateSystemConfig(sc => ({ ...sc, quotes: [...(sc.quotes || []), ""] })), className: "px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs" }, "新增语录")
-                                )
-                            )
                         )
                     ),
                     h("div", null,
@@ -4722,7 +4674,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: nextSystemConfig }); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onCheckInSuccess: (newAttRec) => { setAttendanceRecords(newAttRec); persistData({ students, history, config, attendanceRecords: newAttRec, treasures, storage, logs, quotes, messages: messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle }); }, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig({ ...config, systemConfig: nextSystemConfig }); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
