@@ -40,12 +40,12 @@
             return true;
         };
 
-        const toggleManagedSection = ({ isOpen, setIsOpen, promptText, adminPassword }) => {
+        const toggleManagedSection = async ({ isOpen, setIsOpen, promptText }) => {
             if (isOpen) {
                 setIsOpen(false);
                 return;
             }
-            if (!requireAdminAuth(promptText, adminPassword)) return;
+            if (!await requireAdminAuth(promptText)) return;
             setIsOpen(true);
         };
 
@@ -54,7 +54,6 @@
             const systemConfig = getSystemConfig(config);
             const studentList = Array.isArray(students) ? students : [];
             const subjects = Array.isArray(systemConfig.subjects) ? systemConfig.subjects : [];
-            const adminPassword = systemConfig.adminPassword;
             const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
@@ -75,8 +74,7 @@
                             toggleManagedSection({
                                 isOpen,
                                 setIsOpen,
-                                promptText: "请输入管理员密码以打开课代表设置：",
-                                adminPassword
+                                promptText: "请输入维护密码以打开课代表设置："
                             });
                         },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
@@ -171,7 +169,6 @@
             const [isOpen, setIsOpen] = useState(false);
             const systemConfig = getSystemConfig(config);
             const reasons = (((systemConfig || {}).points || {}).reasons) || [];
-            const adminPassword = systemConfig.adminPassword;
             const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
@@ -192,8 +189,7 @@
                             toggleManagedSection({
                                 isOpen,
                                 setIsOpen,
-                                promptText: "请输入管理员密码以打开积分理由设置：",
-                                adminPassword
+                                promptText: "请输入维护密码以打开积分理由设置："
                             });
                         },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
@@ -348,7 +344,6 @@
             const [showPendingOnly, setShowPendingOnly] = useState(false);
 
             const systemConfig = getSystemConfig(config);
-            const adminPassword = systemConfig.adminPassword;
             const historyList = Array.isArray(history) ? history : [];
             const isVisible = isOpen;
 
@@ -425,8 +420,7 @@
                             toggleManagedSection({
                                 isOpen,
                                 setIsOpen,
-                                promptText: "请输入管理员密码以打开积分记录属性维护：",
-                                adminPassword
+                                promptText: "请输入维护密码以打开积分记录属性维护："
                             });
                         },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`

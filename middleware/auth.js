@@ -1,19 +1,43 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'classmanager-multi-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
+const MAINTENANCE_TOKEN_EXPIRES_IN = '10m';
+const MAINTENANCE_TOKEN_TTL_MS = 10 * 60 * 1000;
+
+if (!JWT_SECRET) {
+    throw new Error('缺少 JWT_SECRET 环境变量，服务拒绝启动');
+}
 
 const generateToken = (user) => {
     return jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
+        { type: 'access', id: user.id, username: user.username, role: user.role },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
     );
 };
 
+const generateMaintenanceToken = (userId) => {
+    return jwt.sign(
+        { type: 'maintenance', userId: Number(userId) },
+        JWT_SECRET,
+        { expiresIn: MAINTENANCE_TOKEN_EXPIRES_IN }
+    );
+};
+
 const verifyToken = (token) => {
     try {
-        return jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        return decoded?.type === 'access' ? decoded : null;
+    } catch (err) {
+        return null;
+    }
+};
+
+const verifyMaintenanceToken = (token) => {
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        return decoded?.type === 'maintenance' ? decoded : null;
     } catch (err) {
         return null;
     }
@@ -44,4 +68,20 @@ const adminMiddleware = (req, res, next) => {
     next();
 };
 
-module.exports = { generateToken, verifyToken, authMiddleware, adminMiddleware };
+const userMiddleware = (req, res, next) => {
+    if (req.user.role !== 'user') {
+        return res.status(403).json({ error: '普通用户页面不允许管理员访问' });
+    }
+    next();
+};
+
+module.exports = {
+    generateToken,
+    generateMaintenanceToken,
+    verifyToken,
+    verifyMaintenanceToken,
+    authMiddleware,
+    adminMiddleware,
+    userMiddleware,
+    MAINTENANCE_TOKEN_TTL_MS
+};

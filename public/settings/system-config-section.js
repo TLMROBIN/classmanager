@@ -25,6 +25,7 @@
                 handleDutyChange,
                 StudentRosterSection,
                 studentRosterProps,
+                onChangeMaintenancePassword,
                 onSaveConfig
             } = props || {};
 
@@ -48,38 +49,14 @@
                                 })
                             ),
                             h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "管理员密码"),
+                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "维护密码"),
                                 h("div", { className: "flex gap-2" },
                                     h("button", {
-                                        onClick: () => {
-                                            const oldPassInput = prompt("请输入旧密码以验证：");
-                                            if (oldPassInput === null) return;
-
-                                            const currentPass = systemConfig.adminPassword || DEFAULT_SYSTEM_CONFIG.adminPassword;
-                                            if (oldPassInput !== currentPass) {
-                                                return alert("旧密码验证失败！");
-                                            }
-
-                                            const newPassInput = prompt("验证成功！请输入新密码：");
-                                            if (newPassInput === null) return;
-                                            if (!newPassInput.trim()) return alert("新密码不能为空！");
-
-                                            updateSystemConfig(sc => ({ ...sc, adminPassword: newPassInput.trim() }));
-                                            alert("密码修改成功，请牢记新密码。");
-                                        },
+                                        onClick: onChangeMaintenancePassword,
                                         className: "px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium shadow-sm"
-                                    }, "🔐 修改管理员密码"),
-                                    h("button", {
-                                        onClick: () => {
-                                            if (confirm(`确定要重置为默认密码吗？（默认密码：${DEFAULT_SYSTEM_CONFIG.adminPassword}）`)) {
-                                                updateSystemConfig(sc => ({ ...sc, adminPassword: DEFAULT_SYSTEM_CONFIG.adminPassword }));
-                                                alert(`已重置为默认密码：${DEFAULT_SYSTEM_CONFIG.adminPassword}`);
-                                            }
-                                        },
-                                        className: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium"
-                                    }, "重置默认")
+                                    }, "🔐 修改维护密码")
                                 ),
-                                h("p", { className: "text-xs text-gray-500 mt-2" }, "修改密码后，所有受限操作（如修改设置、修正积分等）将使用新密码验证。")
+                                h("p", { className: "text-xs text-gray-500 mt-2" }, "维护密码由服务器保存为哈希值，不再以内置默认密码或明文配置的方式存储。")
                             ),
                             h("div", null,
                                 h("label", { className: "block text-sm font-medium text-gray-700 mb-2" }, "功能开关"),

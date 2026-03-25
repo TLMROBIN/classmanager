@@ -14,6 +14,14 @@
         window.__checkAuth__ = function() {
             const token = localStorage.getItem('token');
             if (!token) { window.location.href = '/login.html'; return false; }
+            try {
+                const userStr = localStorage.getItem('user');
+                const user = userStr ? JSON.parse(userStr) : null;
+                if (user && user.role === 'admin') {
+                    window.location.href = '/admin.html';
+                    return false;
+                }
+            } catch (_) {}
             return true;
         };
         window.__getAuthHeaders__ = function() {
@@ -25,6 +33,8 @@
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('cm_battle_snapshots_v1');
+                sessionStorage.removeItem('maintenance_token');
+                sessionStorage.removeItem('maintenance_token_expires_at');
                 window.location.href = '/login.html';
                 return true;
             }
@@ -34,6 +44,8 @@
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('cm_battle_snapshots_v1');
+            sessionStorage.removeItem('maintenance_token');
+            sessionStorage.removeItem('maintenance_token_expires_at');
             window.location.href = '/login.html';
         };
         window.__getCurrentUser__ = function() {

@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=-__PROJECT_DIR__/.env.runtime
 Environment=NODE_ENV=production
 Environment=PORT=3002
 ExecStart=/usr/bin/env node server.js

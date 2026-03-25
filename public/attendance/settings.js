@@ -26,8 +26,7 @@
 
         return function AttendanceSettingsSection({
             systemConfig,
-            updateSystemConfig,
-            adminPassword
+            updateSystemConfig
         }) {
             const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
             const [isQuotesOpen, setIsQuotesOpen] = useState(false);
@@ -39,7 +38,7 @@
             const penaltyRules = attendanceConfig.penaltyRules || {};
             const quoteList = Array.isArray(systemConfig && systemConfig.quotes) ? systemConfig.quotes : [];
 
-            const togglePanelWithAuth = (panel) => {
+            const togglePanelWithAuth = async (panel) => {
                 const isOpen = panel === 'attendance' ? isAttendanceOpen : isQuotesOpen;
                 if (isOpen) {
                     if (panel === 'attendance') setIsAttendanceOpen(false);
@@ -47,9 +46,9 @@
                     return;
                 }
                 const promptText = panel === 'attendance'
-                    ? "请输入管理员密码以打开考勤设置："
-                    : "请输入管理员密码以打开语录设置：";
-                if (!requireAdminAuth(promptText, adminPassword)) return;
+                    ? "请输入维护密码以打开考勤设置："
+                    : "请输入维护密码以打开语录设置：";
+                if (!await requireAdminAuth(promptText)) return;
                 if (panel === 'attendance') setIsAttendanceOpen(true);
                 else setIsQuotesOpen(true);
             };

@@ -8,6 +8,12 @@ echo "=========================================="
 echo "  班级管理系统（多用户版）启动脚本"
 echo "=========================================="
 
+if [ -f ".env.runtime" ]; then
+    set -a
+    . ".env.runtime"
+    set +a
+fi
+
 # 检查 Node.js
 if ! command -v node &> /dev/null; then
     echo "❌ 错误: 未找到 Node.js，请先安装 Node.js"
@@ -28,6 +34,12 @@ fi
 if [ ! -f "database/classmanager.db" ]; then
     echo "🗄️  初始化数据库..."
     node database/init.js
+fi
+
+if [ -z "${JWT_SECRET:-}" ]; then
+    echo "❌ 错误: 未设置 JWT_SECRET"
+    echo "   请先在环境变量或 .env.runtime 中配置 JWT_SECRET"
+    exit 1
 fi
 
 # 检查是否已在运行
@@ -55,7 +67,7 @@ if ps -p $PID > /dev/null 2>&1; then
     echo ""
     echo "   访问地址: http://localhost:3002"
     echo "   管理后台: http://localhost:3002/admin.html"
-    echo "   默认账户: admin / admin123"
+    echo "   首个管理员请使用: npm run bootstrap-admin"
     echo ""
     echo "   日志文件: $(pwd)/server.log"
     echo "   进程 PID: $PID"

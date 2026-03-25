@@ -222,12 +222,12 @@
             const historyList = Array.isArray(history) ? history : [];
             const homeworkDates = getHomeworkDates({ getNow, getDateString });
 
-            const toggleSettingsPanel = () => {
+            const toggleSettingsPanel = async () => {
                 if (settingsOpen) {
                     setSettingsOpen(false);
                     return;
                 }
-                if (!requireAdminAuth("请输入管理员密码以打开积分操作区设置：", systemConfig.adminPassword)) return;
+                if (!await requireAdminAuth("请输入维护密码以打开积分操作区设置：")) return;
                 setSettingsOpen(true);
             };
             const handleExportScoreExcel = () => operationAdminTools.exportScoreExcel({

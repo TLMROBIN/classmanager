@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "init-db": "node database/init.js",
+    "bootstrap-admin": "node scripts/bootstrap-admin.js",
+    "migrate:security": "node scripts/migrate-maintenance-secrets.js",
     "backup:sqlite": "node scripts/backup-sqlite.js",
     "backup:verify": "node scripts/verify-backup.js --latest",
     "backup:prune": "node scripts/prune-backups.js",

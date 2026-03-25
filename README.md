@@ -33,6 +33,20 @@ npm run init-db
 
 ### 4. 启动服务
 
+启动前必须先配置 `JWT_SECRET`。推荐在项目根目录创建 `.env.runtime`：
+
+```bash
+cat > .env.runtime <<'EOF'
+JWT_SECRET=请替换为至少32位的随机字符串
+EOF
+```
+
+首次部署还需要先创建首个管理员：
+
+```bash
+npm run bootstrap-admin
+```
+
 使用以下命令启动服务器：
 
 ```bash

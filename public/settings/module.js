@@ -8,16 +8,16 @@
             getNow,
             getDateString,
             getTodayStr,
-            getStorageItem,
-            setStorageItem,
             getSystemConfig,
             getGroupsConfig,
             getDormsConfig,
             getScheduleConfig,
             isAdminAuthed,
             clearAdminAuth,
-            setAdminAuthUntil,
-            ADMIN_AUTH_TTL_MS,
+            unlockAdminAuth,
+            setupAdminAuth,
+            changeAdminAuthPassword,
+            fetchMaintenanceStatus,
             DEFAULT_SYSTEM_CONFIG,
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
@@ -47,16 +47,16 @@
             !getNow ||
             !getDateString ||
             !getTodayStr ||
-            !getStorageItem ||
-            !setStorageItem ||
             !getSystemConfig ||
             !getGroupsConfig ||
             !getDormsConfig ||
             !getScheduleConfig ||
             !isAdminAuthed ||
             !clearAdminAuth ||
-            !setAdminAuthUntil ||
-            !ADMIN_AUTH_TTL_MS ||
+            !unlockAdminAuth ||
+            !setupAdminAuth ||
+            !changeAdminAuthPassword ||
+            !fetchMaintenanceStatus ||
             !DEFAULT_SYSTEM_CONFIG ||
             !stripSystemConfigTreasures ||
             !sanitizeStoredConfig ||
@@ -88,6 +88,16 @@
     const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
+        const [setupPassword, setSetupPassword] = useState('');
+        const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
+        const [authPending, setAuthPending] = useState(false);
+        const [maintenanceStatus, setMaintenanceStatus] = useState({
+            loading: true,
+            configured: false,
+            unlocked: isAdminAuthed(),
+            expiresAt: null,
+            error: ''
+        });
         const getReportRange = (days) => {
             const end = getTodayStr();
             const start = new Date(getNow());
@@ -118,6 +128,104 @@
             if (isNaN(d.getTime())) return "";
             const pad = (n) => String(n).padStart(2, '0');
             return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+
+        const refreshMaintenanceState = () => {
+            setMaintenanceStatus(prev => ({ ...prev, loading: true, error: '' }));
+            return fetchMaintenanceStatus()
+                .then(status => {
+                    const nextStatus = {
+                        loading: false,
+                        configured: !!status?.configured,
+                        unlocked: !!status?.unlocked,
+                        expiresAt: status?.expiresAt || null,
+                        error: ''
+                    };
+                    setMaintenanceStatus(nextStatus);
+                    setIsAuthenticated(nextStatus.unlocked);
+                    return nextStatus;
+                })
+                .catch(err => {
+                    console.error('获取维护状态失败:', err);
+                    setMaintenanceStatus({
+                        loading: false,
+                        configured: false,
+                        unlocked: false,
+                        expiresAt: null,
+                        error: err?.message || '获取维护状态失败'
+                    });
+                    setIsAuthenticated(false);
+                    return null;
+                });
+        };
+
+        useEffect(() => {
+            refreshMaintenanceState();
+        }, []);
+
+        const handleUnlock = () => {
+            const nextPassword = pwd.trim();
+            if (!nextPassword) return alert("请输入维护密码");
+            setAuthPending(true);
+            unlockAdminAuth(nextPassword)
+                .then(() => {
+                    setPwd('');
+                    setIsAuthenticated(true);
+                    return refreshMaintenanceState();
+                })
+                .catch(err => {
+                    if (err?.code !== 'AUTH_REQUIRED') {
+                        alert(err?.message || '维护密码验证失败');
+                    }
+                })
+                .finally(() => setAuthPending(false));
+        };
+
+        const handleSetupMaintenance = () => {
+            const nextPassword = setupPassword.trim();
+            const confirmPassword = setupConfirmPassword.trim();
+            if (!nextPassword) return alert("请输入新的维护密码");
+            if (nextPassword.length < 6) return alert("维护密码长度至少 6 个字符");
+            if (nextPassword !== confirmPassword) return alert("两次输入的维护密码不一致");
+            setAuthPending(true);
+            setupAdminAuth(nextPassword)
+                .then(() => {
+                    setSetupPassword('');
+                    setSetupConfirmPassword('');
+                    setIsAuthenticated(true);
+                    return refreshMaintenanceState();
+                })
+                .catch(err => {
+                    if (err?.code !== 'AUTH_REQUIRED') {
+                        alert(err?.message || '初始化维护密码失败');
+                    }
+                })
+                .finally(() => setAuthPending(false));
+        };
+
+        const handleChangeMaintenancePassword = () => {
+            const currentPassword = prompt("请输入当前维护密码：");
+            if (currentPassword === null) return;
+            const newPassword = prompt("请输入新的维护密码：");
+            if (newPassword === null) return;
+            const confirmPassword = prompt("请再次输入新的维护密码：");
+            if (confirmPassword === null) return;
+            if (newPassword.trim() !== confirmPassword.trim()) {
+                alert("两次输入的维护密码不一致");
+                return;
+            }
+            setAuthPending(true);
+            changeAdminAuthPassword(currentPassword.trim(), newPassword.trim())
+                .then(() => {
+                    alert("维护密码已更新");
+                    return refreshMaintenanceState();
+                })
+                .catch(err => {
+                    if (err?.code !== 'AUTH_REQUIRED') {
+                        alert(err?.message || '修改维护密码失败');
+                    }
+                })
+                .finally(() => setAuthPending(false));
         };
 
         const applySystemConfig = (next) => {
@@ -432,47 +540,62 @@
             return h("div", { className: "min-h-[500px] flex items-center justify-center animate-fade-in" },
                 h("div", { className: "bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center" },
                     h("div", { className: "mx-auto bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-blue-600" }, h(Icon, { name: "lock", size: 32 })),
-                    h("h2", { className: "text-2xl font-bold text-gray-800 mb-2" }, "管理员验证"),
-                    h("p", { className: "text-gray-500 mb-4 text-sm" }, "进入维护中心需要验证权限"),
-                    h("div", { className: "bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left" },
-                        h("p", { className: "text-xs text-amber-600 mb-1" }, "默认管理密码："),
-                        h("p", { className: "text-sm font-mono text-amber-800 font-semibold" }, "K9x4B2m7Q5w8Z1v3"),
-                        h("p", { className: "text-xs text-amber-500 mt-1" }, "登录后可在「系统配置」中修改密码")
-                    ),
-                    h("input", { 
-                        type: "password", 
-                        value: pwd,
-                        onChange: e => setPwd(e.target.value),
-                        onKeyDown: e => {
-                            if (e.key === 'Enter') {
-                                const systemConfig = getSystemConfig(config);
-                                if (pwd === systemConfig.adminPassword) {
-                                    setAdminAuthUntil(getNow().getTime() + ADMIN_AUTH_TTL_MS);
-                                    setIsAuthenticated(true);
-                                    setPwd('');
-                                } else {
-                                    alert("密码错误");
-                                    setPwd('');
-                                }
-                            }
-                        },
-                        placeholder: "请输入管理员密码",
-                        className: "w-full border rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    }),
-                    h("button", {
-                        onClick: () => {
-                            const systemConfig = getSystemConfig(config);
-                            if (pwd === systemConfig.adminPassword) {
-                                setAdminAuthUntil(getNow().getTime() + ADMIN_AUTH_TTL_MS);
-                                setIsAuthenticated(true);
-                                setPwd('');
-                            } else {
-                                alert("密码错误");
-                                setPwd('');
-                            }
-                        },
-                        className: "w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition"
-                    }, "解锁进入")
+                    h("h2", { className: "text-2xl font-bold text-gray-800 mb-2" }, "维护验证"),
+                    h("p", { className: "text-gray-500 mb-4 text-sm" }, maintenanceStatus.loading ? "正在检查维护权限..." : "进入维护中心需要维护密码验证"),
+                    maintenanceStatus.error && h("div", { className: "bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-sm text-red-600" }, maintenanceStatus.error),
+                    maintenanceStatus.loading
+                        ? h("div", { className: "text-sm text-gray-500 py-6" }, "请稍候...")
+                        : maintenanceStatus.error
+                            ? h("div", { className: "space-y-4" },
+                                h("div", { className: "text-sm text-gray-500" }, "无法获取维护状态，请检查服务后重试。"),
+                                h("button", {
+                                    onClick: refreshMaintenanceState,
+                                    className: "w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition"
+                                }, "重新检查")
+                            )
+                            : maintenanceStatus.configured
+                            ? h("div", { className: "space-y-4" },
+                                h("input", {
+                                    type: "password",
+                                    value: pwd,
+                                    onChange: e => setPwd(e.target.value),
+                                    onKeyDown: e => {
+                                        if (e.key === 'Enter' && !authPending) handleUnlock();
+                                    },
+                                    placeholder: "请输入维护密码",
+                                    className: "w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                                }),
+                                h("button", {
+                                    onClick: handleUnlock,
+                                    disabled: authPending,
+                                    className: "w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
+                                }, authPending ? "验证中..." : "解锁进入")
+                            )
+                            : h("div", { className: "space-y-4 text-left" },
+                                h("div", { className: "bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700" }, "当前账号尚未初始化维护密码。设置完成后，修改设置和维护数据时将使用新的维护密码验证。"),
+                                h("input", {
+                                    type: "password",
+                                    value: setupPassword,
+                                    onChange: e => setSetupPassword(e.target.value),
+                                    placeholder: "请输入新的维护密码",
+                                    className: "w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                                }),
+                                h("input", {
+                                    type: "password",
+                                    value: setupConfirmPassword,
+                                    onChange: e => setSetupConfirmPassword(e.target.value),
+                                    onKeyDown: e => {
+                                        if (e.key === 'Enter' && !authPending) handleSetupMaintenance();
+                                    },
+                                    placeholder: "请再次输入维护密码",
+                                    className: "w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                                }),
+                                h("button", {
+                                    onClick: handleSetupMaintenance,
+                                    disabled: authPending,
+                                    className: "w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
+                                }, authPending ? "初始化中..." : "初始化维护密码")
+                            )
                 )
             );
         }
@@ -561,10 +684,14 @@
             h("div", { className: "border-b pb-4 flex justify-between items-center", style: { order: -2 } },
                 h("div", null,
                     h("h2", { className: "text-2xl font-bold text-gray-800" }, "🔧 系统维护中心"), 
-                    h("p", { className: "text-gray-500 text-sm mt-1" }, "已获取管理员权限")
+                    h("p", { className: "text-gray-500 text-sm mt-1" }, "已获取维护权限")
                 ),
                 h("button", { 
-                    onClick: () => { clearAdminAuth(); setIsAuthenticated(false); }, 
+                    onClick: () => {
+                        clearAdminAuth();
+                        setIsAuthenticated(false);
+                        setMaintenanceStatus(prev => ({ ...prev, unlocked: false }));
+                    }, 
                     className: "text-sm text-red-500 hover:underline" 
                 }, "退出登录")
             ),
@@ -597,6 +724,7 @@
                     updateStudent,
                     removeStudent
                 },
+                onChangeMaintenancePassword: handleChangeMaintenancePassword,
                 onSaveConfig: handleSaveConfigChanges
             }),
             renderToolsSection({

@@ -144,11 +144,12 @@
                     localStorage.removeItem('class_manager_snapshots');
                     localStorage.removeItem('class_manager_snapshot_last_date');
                     localStorage.removeItem('cm_battle_snapshots_v1');
-                    localStorage.removeItem('admin_auth_until');
+                    sessionStorage.removeItem('maintenance_token');
+                    sessionStorage.removeItem('maintenance_token_expires_at');
                     // 保存新的登录信息
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));
-                    window.location.href = '/';
+                    window.location.href = data.user && data.user.role === 'admin' ? '/admin.html' : '/';
                 } else {
                     alert(data.error || '登录失败');
                     showLoading(false);
@@ -201,11 +202,12 @@
                     localStorage.removeItem('class_manager_snapshots');
                     localStorage.removeItem('class_manager_snapshot_last_date');
                     localStorage.removeItem('cm_battle_snapshots_v1');
-                    localStorage.removeItem('admin_auth_until');
+                    sessionStorage.removeItem('maintenance_token');
+                    sessionStorage.removeItem('maintenance_token_expires_at');
                     // 保存新的登录信息
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));
-                    window.location.href = '/';
+                    window.location.href = data.user && data.user.role === 'admin' ? '/admin.html' : '/';
                 } else {
                     alert(data.error || '注册失败');
                     showLoading(false);

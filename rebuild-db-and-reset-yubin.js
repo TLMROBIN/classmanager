@@ -5,6 +5,12 @@ const fs = require('fs');
 
 console.log('=== 重建数据库并重置用户 yubin ===\n');
 
+const adminPassword = process.env.REBUILD_ADMIN_PASSWORD;
+if (!adminPassword || adminPassword.length < 8) {
+    console.error('❌ 请通过 REBUILD_ADMIN_PASSWORD 环境变量提供新的管理员密码，且长度至少 8 个字符');
+    process.exit(1);
+}
+
 const dbPath = path.join(__dirname, 'database', 'classmanager.db');
 
 console.log('1. 备份并删除旧数据库...');
@@ -44,13 +50,13 @@ db.exec(`
 console.log('   - 表结构已创建\n');
 
 console.log('3. 创建 admin 用户...');
-const adminPasswordHash = bcrypt.hashSync('admin123', 10);
+const adminPasswordHash = bcrypt.hashSync(adminPassword, 10);
 const adminResult = db.prepare(`
     INSERT INTO users (username, password_hash, role)
     VALUES (?, ?, 'admin')
 `).run('admin', adminPasswordHash);
 const adminId = adminResult.lastInsertRowid;
-console.log(`   - admin 用户已创建 (id: ${adminId}, 密码: admin123)\n`);
+console.log(`   - admin 用户已创建 (id: ${adminId})\n`);
 
 console.log('4. 导入 admin 数据...');
 const dataExportPath = path.join(__dirname, 'admin_data_export.json');
@@ -115,7 +121,7 @@ for (const user of existingUsers) {
 
 console.log('\n=== 操作完成 ===');
 console.log('\n用户账户信息:');
-console.log('  admin / admin123 (管理员)');
+console.log('  admin / <由 REBUILD_ADMIN_PASSWORD 提供> (管理员)');
 console.log('  yubin / yubin123 (已复制 admin 数据)');
 
 db.close();

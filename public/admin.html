@@ -78,6 +78,13 @@
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('cm_battle_snapshots_v1');
+                sessionStorage.removeItem('maintenance_token');
+                sessionStorage.removeItem('maintenance_token_expires_at');
+                window.location.href = '/login.html';
+                return null;
+            }
+            if (res.status === 403) {
+                alert('当前账户没有管理员权限');
                 window.location.href = '/login.html';
                 return null;
             }
@@ -165,6 +172,8 @@
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('cm_battle_snapshots_v1');
+            sessionStorage.removeItem('maintenance_token');
+            sessionStorage.removeItem('maintenance_token_expires_at');
             window.location.href = '/login.html';
         }
 

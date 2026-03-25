@@ -122,7 +122,6 @@
 
         return function TreasureView({
             students,
-            adminPassword,
             treasures,
             storage,
             logs,
@@ -157,9 +156,9 @@
             const [gachaDraft, setGachaDraft] = useState(() => createGachaDraft(resolvedGachaConfig, resolvedDefaultGachaConfig));
             const [isSavingGachaConfig, setIsSavingGachaConfig] = useState(false);
 
-            const handleTabChange = (t) => {
+            const handleTabChange = async (t) => {
                 if (t === 'admin') {
-                    if (!requireAdminAuth("请输入管理员密码以进入管理模式：", adminPassword)) return;
+                    if (!await requireAdminAuth("请输入维护密码以进入管理模式：")) return;
                     setGachaDraft(createGachaDraft(resolvedGachaConfig, resolvedDefaultGachaConfig));
                 }
                 setTab(t);
@@ -204,7 +203,7 @@
                 }
             };
 
-            const handleReturnItem = (itemId) => {
+            const handleReturnItem = async (itemId) => {
                 if (!selectedStudent) return alert("请先选择学生");
                 const student = students.find(s => s.id == selectedStudent);
                 if (!student) return;
@@ -213,7 +212,7 @@
                 const item = treasures.find(t => t.id == itemId);
                 if (!item) return;
 
-                if (!requireAdminAuth("请输入管理员密码以退回宝物：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
+                if (!await requireAdminAuth("请输入维护密码以退回宝物：")) return;
                 if (typeof onReturnItem !== 'function') return alert("退回功能不可用");
 
                 const result = onReturnItem(student.id, itemId);

@@ -408,7 +408,7 @@
                                 }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
                             )
                         ),
-                        !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
+                        !examUnlocked && h("button", { onClick: async () => { if (await requireAdminAuth("请输入维护密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
                         examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "锁定排名")
                     )
                 ),

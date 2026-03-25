@@ -57,7 +57,6 @@
             students,
             updatePoints,
             config,
-            adminPassword,
             quotes,
             teacherMessages,
             setTeacherMessages,
@@ -362,9 +361,8 @@
                 return { stats, bestStreaks, mostLates, mostAbsents, perfects, dates: list };
             }, [records, students, startDate, endDate, currentTime]);
 
-            const handleRevokeAuth = () => {
-                const systemConfig = getSystemConfig(config);
-                if (requireAdminAuth("请输入管理员密码：", systemConfig.adminPassword)) setView('revoke');
+            const handleRevokeAuth = async () => {
+                if (await requireAdminAuth("请输入维护密码：")) setView('revoke');
             };
 
             const handleExportAttendanceExcel = () => attendanceAdminTools.exportAttendanceExcel({
@@ -489,8 +487,6 @@
                 });
                 alert("发放成功！");
             };
-
-            const currentAdminPassword = (getSystemConfig(config).adminPassword || adminPassword);
 
             return h("div", { className: "space-y-4" },
                 h("div", { className: "bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden relative" },
@@ -749,8 +745,7 @@
                                 return;
                             }
                             alert("考勤设置已修改，但当前页面未提供配置持久化回调。");
-                        },
-                        adminPassword: currentAdminPassword
+                        }
                     })
                     : h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-2" },
                         h("div", { className: "font-bold text-sm text-gray-800" }, "考勤设置"),

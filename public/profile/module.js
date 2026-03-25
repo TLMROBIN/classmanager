@@ -20,7 +20,7 @@
             throw new Error('ProfileView dependencies are missing');
         }
 
-        return function ProfileView({ students, studentProfiles, setStudentProfiles, history, adminPassword }) {
+        return function ProfileView({ students, studentProfiles, setStudentProfiles, history }) {
             const [viewHistoryStudent, setViewHistoryStudent] = useState(null);
             const [filterType, setFilterType] = useState('all');
 
@@ -48,18 +48,18 @@
                 });
             };
 
-            const handleAvatarUpload = (studentId, mood, file) => {
+            const handleAvatarUpload = async (studentId, mood, file) => {
                 if (!file) return;
-                if (!requireAdminAuth("修改头像需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
+                if (!await requireAdminAuth("修改头像需要维护密码，请输入：")) return;
                 compressImage(file, (base64) => {
                     updateStudentProfile(studentId, mood === 'happy' ? { avatarHappy: base64 } : { avatarSad: base64 });
                 });
             };
 
-            const handleSetTitle = (studentId, side) => {
+            const handleSetTitle = async (studentId, side) => {
                 const student = (students || []).find(item => item.id === studentId);
                 if (!student) return;
-                if (!requireAdminAuth("设置称号需要管理员权限，请输入密码：", adminPassword || window.DEFAULT_ADMIN_PASSWORD)) return;
+                if (!await requireAdminAuth("设置称号需要维护密码，请输入：")) return;
 
                 const currentProfile = getStudentProfile(studentProfiles, student.id, student);
                 const currentValue = side === 'left' ? (currentProfile.titleLeft || "") : (currentProfile.titleRight || "");

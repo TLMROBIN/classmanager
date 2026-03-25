@@ -63,7 +63,7 @@
                         currentUser && h("div", { className: "flex items-center gap-2 border-l pl-3 ml-1" },
                             h("span", { className: "font-medium text-gray-700" }, currentUser.username),
                             currentUser.role === 'admin' && h("a", {
-                                href: "/admin",
+                                href: "/admin.html",
                                 className: "px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium transition"
                             }, "管理后台"),
                             h("button", {

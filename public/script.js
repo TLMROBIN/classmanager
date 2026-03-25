@@ -1,6 +1,3 @@
-// --- 1. 静态数据配置（保留作为默认值，用于向后兼容） ---
-window.DEFAULT_ADMIN_PASSWORD = "K9x4B2m7Q5w8Z1v3"; // 全局管理员密码（默认值）
-
 window.SCHEDULE_CONFIG = [
   { id: 'morning', name: '早读', start: '06:00', end: '07:20', lateTime: '07:00' },
   { id: 'noon', name: '午练', start: '14:00', end: '14:40', lateTime: '14:20' },
@@ -113,7 +110,6 @@ const formatTreasureGachaSettingsSummary = (input) => {
 const DEFAULT_SYSTEM_CONFIG = {
 // 基础配置
     className: "班级自在管理系统",
-    adminPassword: window.DEFAULT_ADMIN_PASSWORD,
     quotes: [...window.DEFAULT_QUOTES],
     recordCategoryPendingMigrated: false,
     
@@ -332,7 +328,15 @@ const stripLegacyPsychologyCommittee = (config) => {
     return rest;
 };
 
-const sanitizeStoredConfig = (config) => stripLegacyPsychologyCommittee(stripTreasureConfig(config));
+const stripLegacyAdminPasswordFromConfig = (config) => {
+    if (!config || typeof config !== 'object') return config || {};
+    if (!config.systemConfig || typeof config.systemConfig !== 'object') return config;
+    if (!Object.prototype.hasOwnProperty.call(config.systemConfig, 'adminPassword')) return config;
+    const { adminPassword, ...restSystemConfig } = config.systemConfig;
+    return { ...config, systemConfig: restSystemConfig };
+};
+
+const sanitizeStoredConfig = (config) => stripLegacyPsychologyCommittee(stripLegacyAdminPasswordFromConfig(stripTreasureConfig(config)));
 
 // --- 配置管理函数 ---
 // 获取系统配置（从config.systemConfig读取，如果没有则使用默认值）
@@ -343,7 +347,6 @@ const getSystemConfig = (config) => {
     
     // 合并基础配置
     if (userConfig.className !== undefined) merged.className = userConfig.className;
-    if (userConfig.adminPassword !== undefined) merged.adminPassword = userConfig.adminPassword;
     if (userConfig.quotes !== undefined) merged.quotes = userConfig.quotes;
     if (userConfig.recordCategoryPendingMigrated !== undefined) merged.recordCategoryPendingMigrated = userConfig.recordCategoryPendingMigrated;
     
@@ -764,6 +767,39 @@ const INITIAL_TREASURES = [
             localStorage.setItem(key, value);
         } catch (_) {}
     };
+    const getSessionItem = (key) => {
+        try {
+            if (window.__CM_TEST_MODE__) {
+                const store = window.__CM_TEST_STORAGE__ || {};
+                return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+            }
+            return sessionStorage.getItem(key);
+        } catch (_) {
+            return null;
+        }
+    };
+    const setSessionItem = (key, value) => {
+        try {
+            if (window.__CM_TEST_MODE__) {
+                const store = window.__CM_TEST_STORAGE__ || {};
+                store[key] = value;
+                window.__CM_TEST_STORAGE__ = store;
+                return;
+            }
+            sessionStorage.setItem(key, value);
+        } catch (_) {}
+    };
+    const removeSessionItem = (key) => {
+        try {
+            if (window.__CM_TEST_MODE__) {
+                const store = window.__CM_TEST_STORAGE__ || {};
+                delete store[key];
+                window.__CM_TEST_STORAGE__ = store;
+                return;
+            }
+            sessionStorage.removeItem(key);
+        } catch (_) {}
+    };
     const snapshotStorage = () => {
         const store = {};
         try {
@@ -775,40 +811,180 @@ const INITIAL_TREASURES = [
         return store;
     };
 
-    const ADMIN_AUTH_KEY = 'admin_auth_until';
-    const ADMIN_AUTH_TTL_MS = 5 * 60 * 1000; // 5 minutes
+    const ADMIN_AUTH_TOKEN_KEY = 'maintenance_token';
+    const ADMIN_AUTH_EXPIRES_KEY = 'maintenance_token_expires_at';
+    const ADMIN_AUTH_TTL_MS = 10 * 60 * 1000;
 
     const getAdminAuthUntil = () => {
         try {
-            const raw = getStorageItem(ADMIN_AUTH_KEY);
+            const raw = getSessionItem(ADMIN_AUTH_EXPIRES_KEY);
             return raw ? Number(raw) : 0;
         } catch (_) {
             return 0;
         }
     };
 
-    const setAdminAuthUntil = (until) => {
+    const getAdminAuthToken = () => {
+        const token = getSessionItem(ADMIN_AUTH_TOKEN_KEY);
+        if (!token) return null;
+        const expiresAt = getAdminAuthUntil();
+        if (!expiresAt || expiresAt <= getNow().getTime()) {
+            clearAdminAuth();
+            return null;
+        }
+        return token;
+    };
+
+    const setAdminAuthSession = ({ token, expiresAt }) => {
+        if (!token) return;
+        setSessionItem(ADMIN_AUTH_TOKEN_KEY, token);
+        if (expiresAt) {
+            setSessionItem(ADMIN_AUTH_EXPIRES_KEY, String(expiresAt));
+        } else {
+            setSessionItem(ADMIN_AUTH_EXPIRES_KEY, String(getNow().getTime() + ADMIN_AUTH_TTL_MS));
+        }
+    };
+
+    const clearAdminAuth = () => {
+        removeSessionItem(ADMIN_AUTH_TOKEN_KEY);
+        removeSessionItem(ADMIN_AUTH_EXPIRES_KEY);
+    };
+
+    const isAdminAuthed = () => Boolean(getAdminAuthToken());
+
+    const getAdminAuthHeaders = () => {
+        const token = getAdminAuthToken();
+        return token ? { 'X-Maintenance-Token': token } : {};
+    };
+
+    const parseApiResponse = async (res) => {
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.includes('application/json')) {
+            try {
+                const text = await res.text();
+                return { data: {}, text };
+            } catch (_) {
+                return { data: {}, text: '' };
+            }
+        }
         try {
-            setStorageItem(ADMIN_AUTH_KEY, String(until));
-        } catch (_) {}
+            return { data: await res.json(), text: '' };
+        } catch (_) {
+            return { data: {}, text: '' };
+        }
     };
 
-    const clearAdminAuth = () => setAdminAuthUntil(0);
-
-    const isAdminAuthed = () => {
-        const until = getAdminAuthUntil();
-        return until && getNow().getTime() < until;
+    const requestMaintenanceJson = async (url, options = {}) => {
+        const res = await fetch(url, {
+            ...options,
+            headers: {
+                ...window.__getAuthHeaders__(),
+                ...getAdminAuthHeaders(),
+                ...(options.headers || {})
+            }
+        });
+        if (window.__handleAuthError__(res)) {
+            const error = new Error('登录已失效，请重新登录');
+            error.code = 'AUTH_REQUIRED';
+            throw error;
+        }
+        const { data, text } = await parseApiResponse(res);
+        if (!res.ok) {
+            let message = data.error || '请求失败';
+            if (res.status === 404 && url.startsWith('/api/maintenance/')) {
+                message = '当前运行的后端尚未启用维护接口，请重启服务后重试';
+            } else if (!data.error && text) {
+                message = `服务返回异常响应（HTTP ${res.status}）`;
+            }
+            const error = new Error(message);
+            error.code = data.code || (res.status === 404 && url.startsWith('/api/maintenance/')
+                ? 'MAINTENANCE_API_MISSING'
+                : `HTTP_${res.status}`);
+            throw error;
+        }
+        return data;
     };
 
-    const requireAdminAuth = (promptText = "请输入管理员密码：", adminPassword = window.DEFAULT_ADMIN_PASSWORD) => {
+    const fetchMaintenanceStatus = async () => {
+        if (window.__CM_TEST_MODE__) {
+            return {
+                success: true,
+                configured: true,
+                unlocked: isAdminAuthed(),
+                expiresAt: getAdminAuthUntil() || (getNow().getTime() + ADMIN_AUTH_TTL_MS)
+            };
+        }
+        return requestMaintenanceJson('/api/maintenance/status');
+    };
+
+    const unlockAdminAuth = async (password) => {
+        if (window.__CM_TEST_MODE__) {
+            setAdminAuthSession({
+                token: 'test-maintenance-token',
+                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
+            });
+            return { success: true, expiresAt: getAdminAuthUntil() };
+        }
+        const data = await requestMaintenanceJson('/api/maintenance/unlock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        setAdminAuthSession(data);
+        return data;
+    };
+
+    const setupAdminAuth = async (password) => {
+        if (window.__CM_TEST_MODE__) {
+            setAdminAuthSession({
+                token: 'test-maintenance-token',
+                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
+            });
+            return { success: true, expiresAt: getAdminAuthUntil() };
+        }
+        const data = await requestMaintenanceJson('/api/maintenance/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        setAdminAuthSession(data);
+        return data;
+    };
+
+    const changeAdminAuthPassword = async (currentPassword, newPassword) => {
+        if (window.__CM_TEST_MODE__) {
+            setAdminAuthSession({
+                token: 'test-maintenance-token',
+                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
+            });
+            return { success: true, expiresAt: getAdminAuthUntil() };
+        }
+        const data = await requestMaintenanceJson('/api/maintenance/change', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        setAdminAuthSession(data);
+        return data;
+    };
+
+    const requireAdminAuth = async (promptText = "请输入维护密码：") => {
         if (isAdminAuthed()) return true;
         const input = prompt(promptText);
-        if (input === adminPassword) {
-            setAdminAuthUntil(getNow().getTime() + ADMIN_AUTH_TTL_MS);
+        if (input === null) return false;
+        try {
+            await unlockAdminAuth(input.trim());
             return true;
+        } catch (error) {
+            if (error.code === 'MAINTENANCE_NOT_CONFIGURED') {
+                alert('维护密码尚未初始化，请先进入“维护”页面完成设置。');
+                return false;
+            }
+            if (error.code !== 'AUTH_REQUIRED') {
+                alert(error.message || '维护密码验证失败');
+            }
+            return false;
         }
-        alert("密码错误");
-        return false;
     };
 
     const verifyAdmin = () => requireAdminAuth();
@@ -1102,16 +1278,16 @@ const INITIAL_TREASURES = [
             getNow,
             getDateString,
             getTodayStr,
-            getStorageItem,
-            setStorageItem,
             getSystemConfig,
             getGroupsConfig,
             getDormsConfig,
             getScheduleConfig,
             isAdminAuthed,
             clearAdminAuth,
-            setAdminAuthUntil,
-            ADMIN_AUTH_TTL_MS,
+            unlockAdminAuth,
+            setupAdminAuth,
+            changeAdminAuthPassword,
+            fetchMaintenanceStatus,
             DEFAULT_SYSTEM_CONFIG,
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
@@ -1743,7 +1919,8 @@ const INITIAL_TREASURES = [
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...window.__getAuthHeaders__()
+                    ...window.__getAuthHeaders__(),
+                    ...getAdminAuthHeaders()
                 },
                 body: JSON.stringify(payload)
             })
@@ -1772,6 +1949,10 @@ const INITIAL_TREASURES = [
                             alert('检测到其他浏览器或标签页已更新服务器数据，且自动刷新失败，请手动刷新后再保存。');
                         }
                         throw new Error('DATA_CONFLICT');
+                    }
+                    if (res.status === 403 && data?.code === 'MAINTENANCE_AUTH_REQUIRED') {
+                        clearAdminAuth();
+                        throw new Error(data?.error || '当前操作需要重新验证维护密码');
                     }
                     if (!res.ok) {
                         throw new Error(data?.error || '保存失败');
@@ -2327,7 +2508,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory, onApplyFixedStudents: handleApplyFixedStudents }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onAttendanceRecordsChange: handleAttendanceRecordsChange, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onAttendanceRecordsChange: handleAttendanceRecordsChange, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
@@ -2335,7 +2516,7 @@ const INITIAL_TREASURES = [
                 ),
                 activeTab === 'tasks' && (
                     tasksModuleStatus === 'ready' && TasksView
-                        ? h(TasksView, { students: displayStudents, tasks, setTasks, onClaimTask: handleClaimTask, adminPassword: window.DEFAULT_ADMIN_PASSWORD })
+                        ? h(TasksView, { students: displayStudents, tasks, setTasks, onClaimTask: handleClaimTask })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" },
                                 tasksModuleStatus === 'error' ? "任务模块加载失败" : "任务模块加载中"
@@ -2366,7 +2547,7 @@ const INITIAL_TREASURES = [
                         )
                 ),
                 activeTab === 'treasure' && h(TreasureView, { 
-                    students: displayStudents, adminPassword: window.DEFAULT_ADMIN_PASSWORD,
+                    students: displayStudents,
                     treasures, storage, logs,
                     gachaConfig: treasureGachaConfig,
                     defaultGachaConfig: normalizeTreasureGachaConfig(DEFAULT_SYSTEM_CONFIG.treasureGacha),
@@ -2382,7 +2563,7 @@ const INITIAL_TREASURES = [
                 }),
                 activeTab === 'profile' && (
                     profileModuleStatus === 'ready' && ProfileView
-                        ? h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history, adminPassword: window.DEFAULT_ADMIN_PASSWORD })
+                        ? h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" },
                                 profileModuleStatus === 'error' ? "头像模块加载失败" : "头像模块加载中"

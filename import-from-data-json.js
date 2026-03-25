@@ -17,6 +17,14 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 const data = JSON.parse(fs.readFileSync(dataJsonPath, 'utf8'));
+const args = process.argv.slice(2);
+const targetUsernameArg = args.find(arg => arg.startsWith('--user='));
+const targetUsername = (targetUsernameArg ? targetUsernameArg.slice('--user='.length) : process.env.TARGET_USERNAME || '').trim();
+
+if (!targetUsername) {
+    console.error('❌ 错误: 请通过 --user=<用户名> 或 TARGET_USERNAME 指定导入目标用户');
+    process.exit(1);
+}
 
 console.log('data.json 数据统计:');
 console.log('  学生数:', data.students ? data.students.length : 0);
@@ -26,15 +34,15 @@ console.log('  考勤记录:', data.attendanceRecords ? data.attendanceRecords.l
 console.log('  藏宝阁:', data.treasures ? data.treasures.length : 0);
 console.log();
 
-const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+const targetUser = db.prepare('SELECT id, username, role FROM users WHERE username = ?').get(targetUsername);
 
-if (!adminUser) {
-    console.error('❌ 错误: 未找到 admin 用户');
+if (!targetUser) {
+    console.error(`❌ 错误: 未找到用户 ${targetUsername}`);
     console.log('请先运行 node database/init.js 初始化数据库');
     process.exit(1);
 }
 
-console.log('找到 admin 用户，ID:', adminUser.id);
+console.log(`找到目标用户 ${targetUser.username}，ID: ${targetUser.id}`);
 console.log();
 
 const insertOrUpdate = db.prepare(`
@@ -46,7 +54,7 @@ const insertOrUpdate = db.prepare(`
 
 const importData = (key, value) => {
     const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
-    insertOrUpdate.run(adminUser.id, key, jsonValue);
+    insertOrUpdate.run(targetUser.id, key, jsonValue);
     console.log('✅ 已导入:', key, typeof value === 'object' ? `(${Array.isArray(value) ? value.length : Object.keys(value).length} 条)` : '');
 };
 
@@ -128,7 +136,7 @@ if (data.logs) {
 
 console.log('\n验证导入结果...\n');
 
-const studentsRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(adminUser.id, 'students');
+const studentsRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(targetUser.id, 'students');
 if (studentsRow) {
     const students = JSON.parse(studentsRow.data_value);
     console.log('✅ 学生数:', students.length);
@@ -146,7 +154,7 @@ if (studentsRow) {
     });
 }
 
-const historyRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(adminUser.id, 'history');
+const historyRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(targetUser.id, 'history');
 if (historyRow) {
     const history = JSON.parse(historyRow.data_value);
     console.log('\n✅ 历史记录:', history.length, '条');
@@ -159,5 +167,5 @@ console.log('✅ 数据导入完成！');
 console.log('==========================================');
 console.log('\n下一步:');
 console.log('  1. 运行 ./start.sh 启动服务');
-console.log('  2. 使用 admin/admin123 登录');
+console.log(`  2. 使用 ${targetUser.username} 登录后确认数据`);
 console.log('  3. 验证数据是否正确\n');

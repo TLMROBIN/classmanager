@@ -31,6 +31,13 @@ if not exist "database\classmanager.db" (
     node database\init.js
 )
 
+if "%JWT_SECRET%"=="" (
+    echo ❌ 错误: 未设置 JWT_SECRET
+    echo    请先在环境变量中配置 JWT_SECRET 后再启动
+    pause
+    exit /b 1
+)
+
 :: 启动服务器
 echo 🚀 启动服务器...
 echo.
@@ -44,7 +51,7 @@ echo ✅ 服务器已在新窗口启动！
 echo.
 echo    访问地址: http://localhost:3002
 echo    管理后台: http://localhost:3002/admin.html
-echo    默认账户: admin / admin123
+echo    首个管理员请使用: npm run bootstrap-admin
 echo.
 echo    停止服务: 关闭服务器窗口 或 运行 stop.bat
 echo ==========================================

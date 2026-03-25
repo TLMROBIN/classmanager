@@ -6,17 +6,17 @@
             throw new Error('TasksView dependencies are missing');
         }
 
-        return function TasksView({ students, tasks, setTasks, onClaimTask, adminPassword }) {
+        return function TasksView({ students, tasks, setTasks, onClaimTask }) {
             const [currentUser, setCurrentUser] = useState("");
             const [isAdminMode, setIsAdminMode] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [newTask, setNewTask] = useState({ title: '', desc: '', points: 5, startTime: '', endTime: '' });
 
-            const toggleAdminMode = () => {
+            const toggleAdminMode = async () => {
                 if (isAdminMode) {
                     setIsAdminMode(false);
                 } else {
-                    if (requireAdminAuth("请输入管理员密码：", adminPassword)) setIsAdminMode(true);
+                    if (await requireAdminAuth("请输入维护密码：")) setIsAdminMode(true);
                 }
             };
 

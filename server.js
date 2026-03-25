@@ -3,14 +3,39 @@ const cors = require('cors');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { hashPassword, verifyPassword } = require('./utils/password');
-const { generateToken, authMiddleware, adminMiddleware } = require('./middleware/auth');
+const {
+    generateToken,
+    generateMaintenanceToken,
+    verifyMaintenanceToken,
+    authMiddleware,
+    adminMiddleware,
+    userMiddleware,
+    MAINTENANCE_TOKEN_TTL_MS
+} = require('./middleware/auth');
+const { dbPath, ensureSchema, countAdmins } = require('./database/schema');
+const { stripLegacyAdminPasswordFromConfig } = require('./utils/config-security');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-const dbPath = path.join(__dirname, 'database', 'classmanager.db');
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
+ensureSchema(db);
+
+const MAINTENANCE_TOKEN_HEADER = 'x-maintenance-token';
+const PROTECTED_DATA_KEYS = ['config', 'students', 'studentProfiles'];
+
+const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
+const selectMaintenanceCredential = db.prepare('SELECT user_id, password_hash, updated_at FROM maintenance_credentials WHERE user_id = ?');
+const insertMaintenanceCredential = db.prepare(`
+    INSERT INTO maintenance_credentials (user_id, password_hash, migrated_from_legacy, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+`);
+const updateMaintenanceCredential = db.prepare(`
+    UPDATE maintenance_credentials
+    SET password_hash = ?, migrated_from_legacy = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = ?
+`);
 
 const DEFAULT_ATTENDANCE_SCHEDULE = [
     { id: 'morning', name: '早读', start: '06:00', end: '07:20', lateTime: '07:00' },
@@ -179,7 +204,7 @@ const hasTreasureDomainData = (domain) => {
 };
 
 const readStoredJson = (userId, dataKey) => {
-    const row = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, dataKey);
+    const row = selectClassDataValue.get(userId, dataKey);
     if (!row) return null;
     try {
         return JSON.parse(row.data_value);
@@ -205,6 +230,48 @@ const getProtectedTreasureDomain = (userId, data, incomingMeta) => {
     console.warn(`[藏宝阁] 阻止用户 ${userId} 的整域空覆盖保存`);
     return existingDomain;
 };
+
+const getMaintenanceCredential = (userId) => selectMaintenanceCredential.get(userId);
+
+const getMaintenanceSession = (req) => {
+    const token = req.headers[MAINTENANCE_TOKEN_HEADER];
+    const normalizedToken = Array.isArray(token) ? token[0] : token;
+    if (!normalizedToken || !req.user) return null;
+    const decoded = verifyMaintenanceToken(normalizedToken);
+    if (!decoded || Number(decoded.userId) !== Number(req.user.id)) return null;
+    return decoded;
+};
+
+const hasMaintenanceAccess = (req) => Boolean(getMaintenanceSession(req));
+
+const sanitizePayloadConfig = (payload) => {
+    if (!isPlainObject(payload)) return payload;
+    if (!Object.prototype.hasOwnProperty.call(payload, 'config')) return payload;
+    return {
+        ...payload,
+        config: stripLegacyAdminPasswordFromConfig(payload.config)
+    };
+};
+
+const stringifyComparable = (value) => JSON.stringify(value ?? null);
+
+const hasProtectedDataMutation = (userId, payload) => {
+    return PROTECTED_DATA_KEYS.some((key) => {
+        if (!Object.prototype.hasOwnProperty.call(payload, key)) return false;
+        const incomingValue = key === 'config'
+            ? stripLegacyAdminPasswordFromConfig(payload[key])
+            : payload[key];
+        const existingValue = key === 'config'
+            ? stripLegacyAdminPasswordFromConfig(readStoredJson(userId, key))
+            : readStoredJson(userId, key);
+        return stringifyComparable(existingValue) !== stringifyComparable(incomingValue);
+    });
+};
+
+const buildMaintenanceResponse = (userId) => ({
+    success: true,
+    configured: Boolean(getMaintenanceCredential(userId))
+});
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -305,10 +372,105 @@ app.post('/api/auth/logout', (req, res) => {
     res.json({ success: true, message: '登出成功' });
 });
 
+// ==================== 维护权限 API ====================
+
+const validateMaintenancePassword = (password) => {
+    if (!password) return '维护密码不能为空';
+    if (password.length < 6) return '维护密码长度至少 6 个字符';
+    return null;
+};
+
+app.get('/api/maintenance/status', authMiddleware, userMiddleware, (req, res) => {
+    const session = getMaintenanceSession(req);
+    res.json({
+        ...buildMaintenanceResponse(req.user.id),
+        unlocked: Boolean(session),
+        expiresAt: session?.exp ? Number(session.exp) * 1000 : null
+    });
+});
+
+app.post('/api/maintenance/setup', authMiddleware, userMiddleware, (req, res) => {
+    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+    const validationError = validateMaintenancePassword(password);
+    if (validationError) {
+        return res.status(400).json({ error: validationError });
+    }
+
+    if (getMaintenanceCredential(req.user.id)) {
+        return res.status(400).json({ error: '维护密码已存在，请使用修改功能' });
+    }
+
+    try {
+        insertMaintenanceCredential.run(req.user.id, hashPassword(password), 0);
+        const token = generateMaintenanceToken(req.user.id);
+        res.json({
+            success: true,
+            token,
+            expiresAt: Date.now() + MAINTENANCE_TOKEN_TTL_MS
+        });
+    } catch (err) {
+        console.error('初始化维护密码失败:', err);
+        res.status(500).json({ error: '初始化维护密码失败' });
+    }
+});
+
+app.post('/api/maintenance/unlock', authMiddleware, userMiddleware, (req, res) => {
+    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+    const credential = getMaintenanceCredential(req.user.id);
+
+    if (!credential) {
+        return res.status(400).json({ error: '维护密码尚未初始化', code: 'MAINTENANCE_NOT_CONFIGURED' });
+    }
+    if (!password) {
+        return res.status(400).json({ error: '请输入维护密码' });
+    }
+    if (!verifyPassword(password, credential.password_hash)) {
+        return res.status(401).json({ error: '维护密码错误' });
+    }
+
+    const token = generateMaintenanceToken(req.user.id);
+    res.json({
+        success: true,
+        token,
+        expiresAt: Date.now() + MAINTENANCE_TOKEN_TTL_MS
+    });
+});
+
+app.post('/api/maintenance/change', authMiddleware, userMiddleware, (req, res) => {
+    const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+    const credential = getMaintenanceCredential(req.user.id);
+
+    if (!credential) {
+        return res.status(400).json({ error: '维护密码尚未初始化', code: 'MAINTENANCE_NOT_CONFIGURED' });
+    }
+
+    const validationError = validateMaintenancePassword(newPassword);
+    if (validationError) {
+        return res.status(400).json({ error: validationError });
+    }
+    if (!verifyPassword(currentPassword, credential.password_hash)) {
+        return res.status(401).json({ error: '当前维护密码错误' });
+    }
+
+    try {
+        updateMaintenanceCredential.run(hashPassword(newPassword), req.user.id);
+        const token = generateMaintenanceToken(req.user.id);
+        res.json({
+            success: true,
+            token,
+            expiresAt: Date.now() + MAINTENANCE_TOKEN_TTL_MS
+        });
+    } catch (err) {
+        console.error('修改维护密码失败:', err);
+        res.status(500).json({ error: '修改维护密码失败' });
+    }
+});
+
 // ==================== 数据 API ====================
 
 // 获取数据
-app.get('/api/data', authMiddleware, (req, res) => {
+app.get('/api/data', authMiddleware, userMiddleware, (req, res) => {
     const userId = req.user.id;
     
     try {
@@ -323,6 +485,7 @@ app.get('/api/data', authMiddleware, (req, res) => {
             }
         });
 
+        data.config = stripLegacyAdminPasswordFromConfig(data.config);
         data.attendanceRecords = buildAttendanceRecordsForResponse(data);
         
         res.json(data);
@@ -333,9 +496,13 @@ app.get('/api/data', authMiddleware, (req, res) => {
 });
 
 // 保存数据
-app.post('/api/data', authMiddleware, (req, res) => {
+app.post('/api/data', authMiddleware, userMiddleware, (req, res) => {
     const userId = req.user.id;
-    const data = req.body;
+    const data = sanitizePayloadConfig(req.body);
+
+    if (!isPlainObject(data)) {
+        return res.status(400).json({ error: '保存数据格式无效' });
+    }
     
     try {
         const incomingMeta = data?.__meta && typeof data.__meta === 'object' ? data.__meta : {};
@@ -355,6 +522,12 @@ app.post('/api/data', authMiddleware, (req, res) => {
                 error: '服务器数据已被其他会话更新，请先刷新后再保存',
                 code: 'DATA_CONFLICT',
                 serverUpdatedAt: existingUpdatedAt
+            });
+        }
+        if (hasProtectedDataMutation(userId, data) && !hasMaintenanceAccess(req)) {
+            return res.status(403).json({
+                error: '当前操作需要维护密码验证',
+                code: 'MAINTENANCE_AUTH_REQUIRED'
             });
         }
         const protectedTreasureDomain = getProtectedTreasureDomain(userId, data, incomingMeta);
@@ -389,6 +562,9 @@ app.post('/api/data', authMiddleware, (req, res) => {
                 if (key === 'attendanceRecords' || key === 'attendance_records') {
                     finalValue = stripDerivedAttendanceRecords(finalValue);
                 }
+                if (key === 'config') {
+                    finalValue = stripLegacyAdminPasswordFromConfig(finalValue);
+                }
                 upsert.run(userId, key, JSON.stringify(finalValue));
             }
         });
@@ -408,7 +584,7 @@ app.post('/api/data', authMiddleware, (req, res) => {
 });
 
 // 获取加扣分记录
-app.get('/api/adjustments', authMiddleware, (req, res) => {
+app.get('/api/adjustments', authMiddleware, userMiddleware, (req, res) => {
     const userId = req.user.id;
     
     try {
@@ -462,12 +638,18 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) =
     }
     
     try {
-        db.prepare('DELETE FROM class_data WHERE user_id = ?').run(userId);
-        const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-        
-        if (result.changes === 0) {
+        const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
+        if (!targetUser) {
             return res.status(404).json({ error: '用户不存在' });
         }
+        if (targetUser.role === 'admin' && countAdmins(db) <= 1) {
+            return res.status(400).json({ error: '系统至少需要保留一个管理员账户' });
+        }
+
+        db.prepare('DELETE FROM maintenance_credentials WHERE user_id = ?').run(userId);
+        db.prepare('DELETE FROM class_data WHERE user_id = ?').run(userId);
+        const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+        if (result.changes === 0) return res.status(404).json({ error: '用户不存在' });
         
         res.json({ success: true, message: '用户已删除' });
     } catch (err) {
@@ -486,11 +668,16 @@ app.put('/api/admin/users/:id/role', authMiddleware, adminMiddleware, (req, res)
     }
     
     try {
-        const result = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
-        
-        if (result.changes === 0) {
+        const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
+        if (!targetUser) {
             return res.status(404).json({ error: '用户不存在' });
         }
+        if (targetUser.role === 'admin' && role === 'user' && countAdmins(db) <= 1) {
+            return res.status(400).json({ error: '系统至少需要保留一个管理员账户' });
+        }
+
+        const result = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+        if (result.changes === 0) return res.status(404).json({ error: '用户不存在' });
         
         res.json({ success: true, message: '角色已更新' });
     } catch (err) {
@@ -519,50 +706,19 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
 });
 
 // ==================== 启动服务器 ====================
-
-const dbInitPath = path.join(__dirname, 'database', 'classmanager.db');
-const dbInit = new Database(dbInitPath);
-
-dbInit.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        email TEXT,
-        role TEXT DEFAULT 'user',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_login DATETIME
-    );
-
-    CREATE TABLE IF NOT EXISTS class_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        data_key TEXT NOT NULL,
-        data_value TEXT NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(user_id, data_key)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_class_data_user ON class_data(user_id);
-    CREATE INDEX IF NOT EXISTS idx_class_data_key ON class_data(user_id, data_key);
-`);
-
-const bcrypt = require('bcryptjs');
-const adminExists = dbInit.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-if (!adminExists) {
-    const passwordHash = bcrypt.hashSync('admin123', 10);
-    dbInit.prepare(`INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')`).run('admin', passwordHash);
-    console.log('✅ 默认管理员账户已创建 (admin / admin123)');
+if (countAdmins(db) === 0) {
+    console.error('❌ 未检测到管理员账户，服务拒绝启动');
+    console.error('ℹ️  请先执行以下命令创建首个管理员:');
+    console.error('   npm run bootstrap-admin');
+    db.close();
+    process.exit(1);
 }
-dbInit.close();
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('=====================================================');
     console.log(`✅ 班级管理系统（多用户版）已启动！`);
     console.log(`📂 本机访问: http://localhost:${PORT}`);
     console.log(`📡 局域网访问: 请使用本机 IP 地址 + :${PORT}`);
-    console.log(`👤 默认管理员: admin / admin123`);
     console.log(`🔧 管理员后台: http://localhost:${PORT}/admin.html`);
     console.log('=====================================================');
 });
