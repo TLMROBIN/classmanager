@@ -16,6 +16,96 @@
             throw new Error('Treasure IO helpers are missing');
         }
         const treasureIo = window.createTreasureIo({ getTodayStr });
+        const DEFAULT_GACHA_CONFIG = {
+            rates: {
+                SSR: 0.05,
+                SR: 4.95,
+                R: 25,
+                N: 70
+            },
+            costs: {
+                single: 15,
+                ten: 120
+            }
+        };
+        const roundRate = (value) => Math.round(Number(value) * 100) / 100;
+        const formatRate = (value) => {
+            const rate = roundRate(value);
+            return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, '');
+        };
+        const normalizeGachaConfig = (source, fallback = DEFAULT_GACHA_CONFIG) => {
+            const safeFallbackRates = fallback?.rates || DEFAULT_GACHA_CONFIG.rates;
+            const safeFallbackCosts = fallback?.costs || DEFAULT_GACHA_CONFIG.costs;
+            const safeSource = source && typeof source === 'object' ? source : {};
+            const sourceRates = safeSource.rates && typeof safeSource.rates === 'object' ? safeSource.rates : safeSource;
+            const sourceCosts = safeSource.costs && typeof safeSource.costs === 'object' ? safeSource.costs : safeSource;
+            return {
+                rates: {
+                    SSR: Number.isFinite(Number(sourceRates.SSR)) ? roundRate(sourceRates.SSR) : safeFallbackRates.SSR,
+                    SR: Number.isFinite(Number(sourceRates.SR)) ? roundRate(sourceRates.SR) : safeFallbackRates.SR,
+                    R: Number.isFinite(Number(sourceRates.R)) ? roundRate(sourceRates.R) : safeFallbackRates.R,
+                    N: Number.isFinite(Number(sourceRates.N)) ? roundRate(sourceRates.N) : safeFallbackRates.N
+                },
+                costs: {
+                    single: Number.isFinite(Number(sourceCosts.single)) && Number(sourceCosts.single) >= 0 ? roundRate(sourceCosts.single) : safeFallbackCosts.single,
+                    ten: Number.isFinite(Number(sourceCosts.ten)) && Number(sourceCosts.ten) >= 0 ? roundRate(sourceCosts.ten) : safeFallbackCosts.ten
+                }
+            };
+        };
+        const formatGachaPublicity = (config) => {
+            const rates = normalizeGachaConfig(config).rates;
+            return `SSR ${formatRate(rates.SSR)}% | SR ${formatRate(rates.SR)}% | R ${formatRate(rates.R)}% | N ${formatRate(rates.N)}%`;
+        };
+        const formatGachaPriceSummary = (config) => {
+            const costs = normalizeGachaConfig(config).costs;
+            return `单抽 ${formatRate(costs.single)} 积分 | 十连 ${formatRate(costs.ten)} 积分`;
+        };
+        const createGachaDraft = (config, fallback = DEFAULT_GACHA_CONFIG) => {
+            const normalized = normalizeGachaConfig(config, fallback);
+            const rates = normalized.rates;
+            const costs = normalized.costs;
+            return {
+                SSR: formatRate(rates.SSR),
+                SR: formatRate(rates.SR),
+                R: formatRate(rates.R),
+                N: formatRate(rates.N),
+                single: formatRate(costs.single),
+                ten: formatRate(costs.ten)
+            };
+        };
+        const parseDraftRate = (value) => {
+            if (value == null) return NaN;
+            const text = String(value).trim();
+            if (!text) return NaN;
+            const parsed = Number(text);
+            return Number.isFinite(parsed) ? roundRate(parsed) : NaN;
+        };
+        const buildGachaConfigFromDraft = (draft) => {
+            const rates = {};
+            for (const rarity of ['SSR', 'SR', 'R', 'N']) {
+                const parsed = parseDraftRate(draft?.[rarity]);
+                if (!Number.isFinite(parsed) || parsed < 0) {
+                    return { ok: false, message: `${rarity} 概率格式不正确` };
+                }
+                rates[rarity] = parsed;
+            }
+            const total = rates.SSR + rates.SR + rates.R + rates.N;
+            if (Math.abs(total - 100) > 0.01) {
+                return { ok: false, message: `概率总和需为 100%，当前为 ${formatRate(total)}%` };
+            }
+            const costs = {};
+            for (const key of ['single', 'ten']) {
+                const parsed = parseDraftRate(draft?.[key]);
+                if (!Number.isFinite(parsed) || parsed < 0) {
+                    return { ok: false, message: key === 'single' ? '单抽价格格式不正确' : '十连价格格式不正确' };
+                }
+                costs[key] = parsed;
+            }
+            return {
+                ok: true,
+                value: { rates, costs }
+            };
+        };
 
         const GachaCrystal = ({ className = "" }) => h("svg", {
             viewBox: "0 0 100 100", className: `w-full h-full ${className}`, style: { filter: "drop-shadow(0 0 15px rgba(124, 58, 237, 0.8))" }
@@ -36,12 +126,15 @@
             treasures,
             storage,
             logs,
+            gachaConfig,
+            defaultGachaConfig,
             redemptionHistory = {},
             dailyUsageCounts = {},
             onReturnItem,
             onRedeemTreasure,
             onUseItem,
             onPerformGacha,
+            onUpdateGachaConfig,
             onSaveItem,
             onDeleteItem,
             onImportTreasureData
@@ -59,10 +152,15 @@
             const [addModalOpen, setAddModalOpen] = useState(false);
             const [editMode, setEditMode] = useState(false);
             const [newItemData, setNewItemData] = useState(createEmptyItemData);
+            const resolvedDefaultGachaConfig = normalizeGachaConfig(defaultGachaConfig, DEFAULT_GACHA_CONFIG);
+            const resolvedGachaConfig = normalizeGachaConfig(gachaConfig, resolvedDefaultGachaConfig);
+            const [gachaDraft, setGachaDraft] = useState(() => createGachaDraft(resolvedGachaConfig, resolvedDefaultGachaConfig));
+            const [isSavingGachaConfig, setIsSavingGachaConfig] = useState(false);
 
             const handleTabChange = (t) => {
                 if (t === 'admin') {
                     if (!requireAdminAuth("请输入管理员密码以进入管理模式：", adminPassword)) return;
+                    setGachaDraft(createGachaDraft(resolvedGachaConfig, resolvedDefaultGachaConfig));
                 }
                 setTab(t);
             };
@@ -143,6 +241,31 @@
                 }, 2500);
             };
 
+            const handleSaveGachaConfig = () => {
+                const parsed = buildGachaConfigFromDraft(gachaDraft);
+                if (!parsed.ok) return alert(parsed.message);
+                if (typeof onUpdateGachaConfig !== 'function') return alert("祈愿设置保存功能不可用");
+
+                setIsSavingGachaConfig(true);
+                Promise.resolve(onUpdateGachaConfig(parsed.value))
+                    .then((result) => {
+                        if (!result?.ok) {
+                            if (result?.message) alert(result.message);
+                            return;
+                        }
+                        const savedConfig = normalizeGachaConfig(result.gachaConfig || parsed.value, resolvedDefaultGachaConfig);
+                        setGachaDraft(createGachaDraft(savedConfig, resolvedDefaultGachaConfig));
+                        alert("祈愿设置已保存");
+                    })
+                    .catch((err) => {
+                        console.error('保存祈愿设置失败:', err);
+                        alert(err?.message || "祈愿设置保存失败，请重试");
+                    })
+                    .finally(() => {
+                        setIsSavingGachaConfig(false);
+                    });
+            };
+
             const handleSaveItem = () => {
                 if (typeof onSaveItem !== 'function') return alert("保存功能不可用");
                 const result = onSaveItem(newItemData, editMode);
@@ -202,6 +325,16 @@
                 const rank = { SSR: 4, SR: 3, R: 2, N: 1 };
                 return rank[b.rarity] - rank[a.rarity];
             });
+            const draftTotal = ['SSR', 'SR', 'R', 'N'].reduce((sum, rarity) => {
+                const parsed = parseDraftRate(gachaDraft[rarity]);
+                return Number.isFinite(parsed) ? sum + parsed : sum;
+            }, 0);
+            const hasInvalidDraftRateValue = ['SSR', 'SR', 'R', 'N'].some((rarity) => !Number.isFinite(parseDraftRate(gachaDraft[rarity])) || parseDraftRate(gachaDraft[rarity]) < 0);
+            const hasInvalidDraftCostValue = ['single', 'ten'].some((key) => !Number.isFinite(parseDraftRate(gachaDraft[key])) || parseDraftRate(gachaDraft[key]) < 0);
+            const isDraftTotalValid = !hasInvalidDraftRateValue && Math.abs(draftTotal - 100) <= 0.01;
+            const isGachaDraftValid = isDraftTotalValid && !hasInvalidDraftCostValue;
+            const currentGachaPublicity = formatGachaPublicity(resolvedGachaConfig);
+            const currentGachaPriceSummary = formatGachaPriceSummary(resolvedGachaConfig);
 
             return h("div", { className: "bg-white rounded-xl shadow-lg border border-purple-100 overflow-hidden min-h-[600px] flex flex-col" },
                 h("div", { className: "bg-gradient-to-r from-purple-900 to-indigo-900 p-4 text-white flex justify-between items-center" },
@@ -265,18 +398,18 @@
                                     className: "group relative px-8 py-4 bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl backdrop-blur border border-blue-400 transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(59,130,246,0.5)]"
                                 },
                                     h("div", { className: "text-xl font-bold" }, "祈愿 1 次"),
-                                    h("div", { className: "text-sm text-blue-200" }, "15 积分")
+                                    h("div", { className: "text-sm text-blue-200" }, `${formatRate(resolvedGachaConfig.costs.single)} 积分`)
                                 ),
                                 h("button", {
                                     onClick: () => performGacha(10),
                                     className: "group relative px-8 py-4 bg-purple-600/80 hover:bg-purple-600 text-white rounded-xl backdrop-blur border border-purple-400 transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(147,51,234,0.5)]"
                                 },
                                     h("div", { className: "text-xl font-bold" }, "祈愿 10 次"),
-                                    h("div", { className: "text-sm text-purple-200" }, "120 积分 (优惠)")
+                                    h("div", { className: "text-sm text-purple-200" }, `${formatRate(resolvedGachaConfig.costs.ten)} 积分`)
                                 )
                             )
                         ),
-                        h("div", { className: "mt-12 text-gray-400 text-xs z-10" }, "概率公示: SSR 0.05% | SR 4.95% | R 25% | N 70%")
+                        h("div", { className: "mt-12 text-gray-400 text-xs z-10" }, `概率公示: ${currentGachaPublicity}`)
                     ),
                     isGachaAnimating && h("div", { className: "fixed inset-0 z-50 bg-space flex flex-col items-center justify-center overflow-hidden" },
                         Array.from({ length: 50 }).map((_, i) =>
@@ -314,8 +447,8 @@
                                 )
                             ),
                             h("div", { className: "mt-8 flex gap-4" },
-                                h("button", { onClick: () => { setGachaResult(null); performGacha(1); }, className: "px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg transition transform hover:-translate-y-1" }, "再抽一次 (15)"),
-                                h("button", { onClick: () => { setGachaResult(null); performGacha(10); }, className: "px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-bold shadow-lg transition transform hover:-translate-y-1" }, "再抽十次 (120)"),
+                                h("button", { onClick: () => { setGachaResult(null); performGacha(1); }, className: "px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg transition transform hover:-translate-y-1" }, `再抽一次 (${formatRate(resolvedGachaConfig.costs.single)})`),
+                                h("button", { onClick: () => { setGachaResult(null); performGacha(10); }, className: "px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-bold shadow-lg transition transform hover:-translate-y-1" }, `再抽十次 (${formatRate(resolvedGachaConfig.costs.ten)})`),
                                 h("button", { onClick: () => setGachaResult(null), className: "px-8 py-3 border-2 border-white text-white rounded-full font-bold hover:bg-white/10 transition" }, "返回藏宝阁")
                             )
                         )
@@ -421,6 +554,85 @@
                                             )
                                         )
                                     )))
+                                )
+                            )
+                        ),
+                        h("div", { className: "bg-white p-4 rounded shadow space-y-4" },
+                            h("div", { className: "flex flex-col gap-3 md:flex-row md:items-start md:justify-between" },
+                                h("div", null,
+                                    h("h4", { className: "font-bold text-gray-800" }, "祈愿设置"),
+                                    h("p", { className: "text-xs text-gray-500 mt-1" }, "在这里统一调整祈愿概率和价格。概率总和必须为 100%；若目标稀有度库存为空，仍会自动降档补抽。")
+                                ),
+                                h("div", { className: "text-xs text-gray-500 md:text-right space-y-1" },
+                                    h("div", null, `当前概率: ${currentGachaPublicity}`),
+                                    h("div", null, `当前价格: ${currentGachaPriceSummary}`)
+                                )
+                            ),
+                            h("div", { className: "space-y-2" },
+                                h("div", { className: "text-sm font-bold text-gray-700" }, "价格"),
+                                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                                    h("label", { className: "space-y-1 text-sm" },
+                                        h("div", { className: "font-bold text-gray-700" }, "单抽价格"),
+                                        h("div", { className: "flex items-center gap-2" },
+                                            h("input", {
+                                                type: "number",
+                                                step: "0.01",
+                                                min: "0",
+                                                className: "border w-full p-2 rounded",
+                                                value: gachaDraft.single,
+                                                onChange: (e) => setGachaDraft(prev => ({ ...prev, single: e.target.value }))
+                                            }),
+                                            h("span", { className: "text-gray-400 text-xs" }, "积分")
+                                        )
+                                    ),
+                                    h("label", { className: "space-y-1 text-sm" },
+                                        h("div", { className: "font-bold text-gray-700" }, "十连价格"),
+                                        h("div", { className: "flex items-center gap-2" },
+                                            h("input", {
+                                                type: "number",
+                                                step: "0.01",
+                                                min: "0",
+                                                className: "border w-full p-2 rounded",
+                                                value: gachaDraft.ten,
+                                                onChange: (e) => setGachaDraft(prev => ({ ...prev, ten: e.target.value }))
+                                            }),
+                                            h("span", { className: "text-gray-400 text-xs" }, "积分")
+                                        )
+                                    )
+                                )
+                            ),
+                            h("div", { className: "space-y-2" },
+                                h("div", { className: "text-sm font-bold text-gray-700" }, "概率"),
+                            h("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3" },
+                                ['SSR', 'SR', 'R', 'N'].map((rarity) => h("label", { key: rarity, className: "space-y-1 text-sm" },
+                                    h("div", { className: "font-bold text-gray-700" }, rarity),
+                                    h("div", { className: "flex items-center gap-2" },
+                                        h("input", {
+                                            type: "number",
+                                            step: "0.01",
+                                            min: "0",
+                                            className: "border w-full p-2 rounded",
+                                            value: gachaDraft[rarity],
+                                            onChange: (e) => setGachaDraft(prev => ({ ...prev, [rarity]: e.target.value }))
+                                        }),
+                                        h("span", { className: "text-gray-400 text-xs" }, "%")
+                                    )
+                                ))
+                            )),
+                            h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                h("div", { className: `text-sm font-medium ${isGachaDraftValid ? 'text-emerald-600' : 'text-rose-600'}` },
+                                    hasInvalidDraftCostValue ? "价格必须为不小于 0 的数字" : (hasInvalidDraftRateValue ? "存在无效概率值" : `当前概率总和: ${formatRate(draftTotal)}%`)
+                                ),
+                                h("div", { className: "flex flex-wrap gap-2" },
+                                    h("button", {
+                                        onClick: () => setGachaDraft(createGachaDraft(resolvedDefaultGachaConfig, resolvedDefaultGachaConfig)),
+                                        className: "px-3 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 text-sm"
+                                    }, "恢复默认值"),
+                                    h("button", {
+                                        onClick: handleSaveGachaConfig,
+                                        disabled: isSavingGachaConfig || !isGachaDraftValid,
+                                        className: "px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                    }, isSavingGachaConfig ? "保存中..." : "保存设置")
                                 )
                             )
                         ),

@@ -568,20 +568,6 @@
                     className: "text-sm text-red-500 hover:underline" 
                 }, "退出登录")
             ),
-            renderExamArchivesSection({
-                examArchivesModuleStatus,
-                showExamArchivesManager,
-                openExamArchivesManager,
-                setExamArchivesModuleStatus,
-                ensureExamArchivesModule,
-                ExamArchivesView,
-                students,
-                battle,
-                examArchives,
-                setBattle,
-                setExamArchives,
-                persistExamArchives: persistExamArchiveChanges
-            }),
             renderSystemConfigSection({
                 config,
                 systemConfig,
@@ -639,6 +625,20 @@
                 setReportEnd,
                 getReportRange,
                 handleGenerateBrief
+            }),
+            renderExamArchivesSection({
+                examArchivesModuleStatus,
+                showExamArchivesManager,
+                openExamArchivesManager,
+                setExamArchivesModuleStatus,
+                ensureExamArchivesModule,
+                ExamArchivesView,
+                students,
+                battle,
+                examArchives,
+                setBattle,
+                setExamArchives,
+                persistExamArchives: persistExamArchiveChanges
             })
         );
     };

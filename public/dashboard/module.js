@@ -221,25 +221,27 @@
                                 ))
                             )
                         ),
-                        hygieneDutyAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                            h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "users" }), "卫生督查公示"),
-                            h("div", { className: "space-y-2" },
-                                hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
-                                    h("div", { className: "text-xs text-gray-500 text-right" }, item.members.join("、"))
-                                ))
+                        (hygieneDutyAnnouncements.length > 0 || commissionerAnnouncements.length > 0) && h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
+                            hygieneDutyAnnouncements.length > 0 && h("div", { className: "bg-white p-3 rounded-xl shadow-sm" },
+                                h("h3", { className: "font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm" }, h(Icon, { name: "users" }), "卫生督查公示"),
+                                h("div", { className: "space-y-2" },
+                                    hygieneDutyAnnouncements.map(item => h("div", { key: item.id, className: "rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                        h("div", { className: "text-xs font-medium text-gray-800" }, item.name),
+                                        h("div", { className: "text-[11px] text-gray-500 mt-1 leading-5 break-words" }, item.members.join("、"))
+                                    ))
+                                ),
+                                h("div", { className: "text-[11px] text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 卫生督查”")
                             ),
-                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 卫生督查”")
-                        ),
-                        commissionerAnnouncements.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                            h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "star" }), "纪律专员公示"),
-                            h("div", { className: "space-y-2" },
-                                commissionerAnnouncements.map(item => h("div", { key: item.id, className: "flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
-                                    h("div", { className: "text-sm font-medium text-gray-800" }, item.name),
-                                    h("div", { className: "text-xs text-gray-500" }, item.studentName)
-                                ))
-                            ),
-                            h("div", { className: "text-xs text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 专员角色”")
+                            commissionerAnnouncements.length > 0 && h("div", { className: "bg-white p-3 rounded-xl shadow-sm" },
+                                h("h3", { className: "font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm" }, h(Icon, { name: "star" }), "纪律专员公示"),
+                                h("div", { className: "space-y-2" },
+                                    commissionerAnnouncements.map(item => h("div", { key: item.id, className: "rounded-lg border border-gray-100 bg-gray-50 px-3 py-2" },
+                                        h("div", { className: "text-xs font-medium text-gray-800" }, item.name),
+                                        h("div", { className: "text-[11px] text-gray-500 mt-1 break-words" }, item.studentName)
+                                    ))
+                                ),
+                                h("div", { className: "text-[11px] text-gray-400 mt-3" }, "编辑请到维护区的“自定义角色 > 专员角色”")
+                            )
                         )
                     ),
                     h("div", { className: "space-y-6" },

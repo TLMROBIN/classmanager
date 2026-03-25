@@ -22,7 +22,7 @@
                 persistExamArchives
             } = props || {};
 
-            return h("div", { className: "border-t pt-6 space-y-4" },
+            return h("div", { className: "border-t pt-6 space-y-4 min-w-0" },
                 h("div", { className: "border rounded-xl p-4 bg-indigo-50 border-indigo-100" },
                     h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                         h("div", null,

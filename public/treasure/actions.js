@@ -1,6 +1,44 @@
 (function() {
     const getTreasurePoints = () => window.TreasurePoints || {};
     const sameId = (left, right) => String(left) === String(right);
+    const DEFAULT_GACHA_RATES = Object.freeze({
+        SSR: 0.05,
+        SR: 4.95,
+        R: 25,
+        N: 70
+    });
+    const DEFAULT_GACHA_COSTS = Object.freeze({
+        single: 15,
+        ten: 120
+    });
+
+    const normalizeGachaRates = (gachaConfig) => {
+        const source = gachaConfig && typeof gachaConfig === 'object' ? gachaConfig : {};
+        const sourceRates = source.rates && typeof source.rates === 'object' ? source.rates : source;
+        const sourceCosts = source.costs && typeof source.costs === 'object' ? source.costs : source;
+        const rates = {
+            SSR: Number(sourceRates.SSR),
+            SR: Number(sourceRates.SR),
+            R: Number(sourceRates.R),
+            N: Number(sourceRates.N)
+        };
+        const isValid = ['SSR', 'SR', 'R', 'N'].every((rarity) => Number.isFinite(rates[rarity]) && rates[rarity] >= 0);
+        const total = rates.SSR + rates.SR + rates.R + rates.N;
+        const costs = {
+            single: Number.isFinite(Number(sourceCosts.single)) && Number(sourceCosts.single) >= 0 ? Number(sourceCosts.single) : DEFAULT_GACHA_COSTS.single,
+            ten: Number.isFinite(Number(sourceCosts.ten)) && Number(sourceCosts.ten) >= 0 ? Number(sourceCosts.ten) : DEFAULT_GACHA_COSTS.ten
+        };
+        if (!isValid || Math.abs(total - 100) > 0.01) {
+            return {
+                rates: { ...DEFAULT_GACHA_RATES },
+                costs
+            };
+        }
+        return {
+            rates,
+            costs
+        };
+    };
 
     const prependLog = ({ logs, ts, studentName, action, itemName, rarity, cost, note = "" }) => ([{
         id: ts + Math.random(),
@@ -92,17 +130,20 @@
         };
     };
 
-    const buildTreasureGachaAction = ({ studentId, times, students, treasures, storage, history, logs, getNow }) => {
+    const buildTreasureGachaAction = ({ studentId, times, students, treasures, storage, history, logs, gachaConfig, getNow }) => {
         const sourceStudents = Array.isArray(students) ? students : [];
         const sourceTreasures = Array.isArray(treasures) ? treasures : [];
         const sourceStorage = storage && typeof storage === 'object' ? storage : {};
         const sourceHistory = Array.isArray(history) ? history : [];
         const sourceLogs = Array.isArray(logs) ? logs : [];
+        const normalizedGachaConfig = normalizeGachaRates(gachaConfig);
+        const gachaRates = normalizedGachaConfig.rates;
+        const gachaCosts = normalizedGachaConfig.costs;
         const drawTimes = Number(times) === 10 ? 10 : 1;
         const student = sourceStudents.find(item => sameId(item.id, studentId));
         if (!student) return { ok: false, message: "未找到祈愿对象" };
 
-        const cost = drawTimes === 1 ? 15 : 120;
+        const cost = drawTimes === 1 ? gachaCosts.single : gachaCosts.ten;
         if (Number(student.balance) < cost) {
             return { ok: false, message: "积分不足" };
         }
@@ -117,9 +158,16 @@
         for (let i = 0; i < drawTimes; i += 1) {
             const roll = Math.random() * 100;
             let targetRarity = 'N';
-            if (roll < 0.05) targetRarity = 'SSR';
-            else if (roll < 5) targetRarity = 'SR';
-            else if (roll < 30) targetRarity = 'R';
+            let threshold = gachaRates.SSR;
+            if (roll < threshold) targetRarity = 'SSR';
+            else {
+                threshold += gachaRates.SR;
+                if (roll < threshold) targetRarity = 'SR';
+                else {
+                    threshold += gachaRates.R;
+                    if (roll < threshold) targetRarity = 'R';
+                }
+            }
 
             let pool = availableTreasures.filter(item => item.rarity === targetRarity && Number(item.stock) > 0);
             if (pool.length === 0 && targetRarity === 'SSR') {

@@ -23,6 +23,92 @@ window.DEFAULT_QUOTES = [
     "没有白走的路，每一步都算数。"
 ];
 
+const DEFAULT_TREASURE_GACHA_RATES = Object.freeze({
+    SSR: 0.05,
+    SR: 4.95,
+    R: 25,
+    N: 70
+});
+const DEFAULT_TREASURE_GACHA_COSTS = Object.freeze({
+    single: 15,
+    ten: 120
+});
+
+const roundTreasureGachaRate = (value) => Math.round(Number(value) * 100) / 100;
+const roundTreasureGachaCost = (value) => Math.round(Number(value) * 100) / 100;
+const normalizeTreasureGachaConfig = (input) => {
+    const source = input && typeof input === 'object' ? input : {};
+    const sourceRates = source.rates && typeof source.rates === 'object' ? source.rates : source;
+    const sourceCosts = source.costs && typeof source.costs === 'object' ? source.costs : source;
+    const rates = {};
+    let hasExplicitValue = false;
+    let invalid = false;
+
+    ['SSR', 'SR', 'R', 'N'].forEach((rarity) => {
+        const raw = sourceRates[rarity];
+        if (raw === undefined || raw === null || raw === '') {
+            rates[rarity] = DEFAULT_TREASURE_GACHA_RATES[rarity];
+            return;
+        }
+        hasExplicitValue = true;
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            invalid = true;
+            rates[rarity] = DEFAULT_TREASURE_GACHA_RATES[rarity];
+            return;
+        }
+        rates[rarity] = roundTreasureGachaRate(parsed);
+    });
+
+    if (!hasExplicitValue || invalid) {
+        return {
+            rates: { ...DEFAULT_TREASURE_GACHA_RATES },
+            costs: {
+                single: Number.isFinite(Number(sourceCosts.single)) && Number(sourceCosts.single) >= 0 ? roundTreasureGachaCost(sourceCosts.single) : DEFAULT_TREASURE_GACHA_COSTS.single,
+                ten: Number.isFinite(Number(sourceCosts.ten)) && Number(sourceCosts.ten) >= 0 ? roundTreasureGachaCost(sourceCosts.ten) : DEFAULT_TREASURE_GACHA_COSTS.ten
+            }
+        };
+    }
+
+    const total = rates.SSR + rates.SR + rates.R + rates.N;
+    if (Math.abs(total - 100) > 0.01) {
+        return {
+            rates: { ...DEFAULT_TREASURE_GACHA_RATES },
+            costs: {
+                single: Number.isFinite(Number(sourceCosts.single)) && Number(sourceCosts.single) >= 0 ? roundTreasureGachaCost(sourceCosts.single) : DEFAULT_TREASURE_GACHA_COSTS.single,
+                ten: Number.isFinite(Number(sourceCosts.ten)) && Number(sourceCosts.ten) >= 0 ? roundTreasureGachaCost(sourceCosts.ten) : DEFAULT_TREASURE_GACHA_COSTS.ten
+            }
+        };
+    }
+
+    return {
+        rates,
+        costs: {
+            single: Number.isFinite(Number(sourceCosts.single)) && Number(sourceCosts.single) >= 0 ? roundTreasureGachaCost(sourceCosts.single) : DEFAULT_TREASURE_GACHA_COSTS.single,
+            ten: Number.isFinite(Number(sourceCosts.ten)) && Number(sourceCosts.ten) >= 0 ? roundTreasureGachaCost(sourceCosts.ten) : DEFAULT_TREASURE_GACHA_COSTS.ten
+        }
+    };
+};
+
+const formatTreasureGachaRate = (value) => {
+    const rate = roundTreasureGachaRate(value);
+    return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/\.?0+$/, '');
+};
+const formatTreasureGachaCost = (value) => {
+    const cost = roundTreasureGachaCost(value);
+    return Number.isInteger(cost) ? String(cost) : cost.toFixed(2).replace(/\.?0+$/, '');
+};
+
+const formatTreasureGachaPublicity = (input) => {
+    const normalized = normalizeTreasureGachaConfig(input);
+    const rates = normalized.rates;
+    return `SSR ${formatTreasureGachaRate(rates.SSR)}% | SR ${formatTreasureGachaRate(rates.SR)}% | R ${formatTreasureGachaRate(rates.R)}% | N ${formatTreasureGachaRate(rates.N)}%`;
+};
+const formatTreasureGachaSettingsSummary = (input) => {
+    const normalized = normalizeTreasureGachaConfig(input);
+    return `概率 ${formatTreasureGachaPublicity(normalized)} | 价格 单抽 ${formatTreasureGachaCost(normalized.costs.single)} / 十连 ${formatTreasureGachaCost(normalized.costs.ten)}`;
+};
+
 // --- 默认系统配置（用于新班级初始化） ---
 const DEFAULT_SYSTEM_CONFIG = {
 // 基础配置
@@ -123,6 +209,10 @@ const DEFAULT_SYSTEM_CONFIG = {
         { id: 8, name: "棒棒糖", rarity: "N", price: 2, stock: 200, desc: "甜蜜一下", ladderPrices: [], dailyLimit: 0 },
         { id: 9, name: "测试宝物", rarity: "N", price: 0, stock: 1000, desc: "仅供测试使用", ladderPrices: [], dailyLimit: 0 }
     ],
+    treasureGacha: {
+        rates: { ...DEFAULT_TREASURE_GACHA_RATES },
+        costs: { ...DEFAULT_TREASURE_GACHA_COSTS }
+    },
     
     // 学科配置
     subjects: [
@@ -305,6 +395,9 @@ const getSystemConfig = (config) => {
     if (Array.isArray(userConfig.treasures)) {
         merged.treasures = userConfig.treasures;
     }
+    if (userConfig.treasureGacha) {
+        merged.treasureGacha = normalizeTreasureGachaConfig(userConfig.treasureGacha);
+    }
     
     return merged;
 };
@@ -342,6 +435,11 @@ const getCustomRoles = (config) => {
 const getTreasuresConfig = (config) => {
     const systemConfig = getSystemConfig(config);
     return systemConfig.treasures;
+};
+
+const getTreasureGachaConfig = (config) => {
+    const systemConfig = getSystemConfig(config);
+    return normalizeTreasureGachaConfig(systemConfig.treasureGacha);
 };
 
 const resolveTreasuresData = (treasures, config) => {
@@ -1204,6 +1302,7 @@ const INITIAL_TREASURES = [
             countdownEvents: []
         });
         const effectiveTreasures = resolveTreasuresData(treasures, config);
+        const treasureGachaConfig = getTreasureGachaConfig(config);
         const prevFrozenRef = useRef(!!(config && config.frozen));
             
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
@@ -2082,8 +2181,50 @@ const INITIAL_TREASURES = [
             storage,
             history,
             logs,
+            gachaConfig: treasureGachaConfig,
             getNow
         }));
+
+        const handleUpdateTreasureGachaConfig = (nextGachaConfig) => {
+            const normalizedGachaConfig = normalizeTreasureGachaConfig(nextGachaConfig);
+            const nextSystemConfig = {
+                ...getSystemConfig(config),
+                treasureGacha: normalizedGachaConfig
+            };
+            const nextConfig = sanitizeStoredConfig({
+                ...config,
+                systemConfig: stripSystemConfigTreasures(nextSystemConfig)
+            });
+            const ts = getNow().getTime();
+            const nextLogs = [{
+                id: ts + Math.random(),
+                ts,
+                studentName: '系统',
+                action: '祈愿设置调整',
+                itemName: '概率与价格',
+                rarity: 'MIX',
+                cost: '',
+                note: formatTreasureGachaSettingsSummary(normalizedGachaConfig)
+            }, ...(Array.isArray(logs) ? logs : [])];
+
+            return persistData(buildCurrentFullData({
+                config: nextConfig,
+                logs: nextLogs
+            })).then(() => {
+                setConfig(nextConfig);
+                setLogs(nextLogs);
+                return {
+                    ok: true,
+                    gachaConfig: normalizedGachaConfig
+                };
+            }).catch((err) => {
+                console.error('保存祈愿设置失败:', err);
+                return {
+                    ok: false,
+                    message: err?.message || '祈愿设置保存失败，请重试'
+                };
+            });
+        };
 
         const handleSaveTreasureItem = (draft, editMode) => commitTreasureAction(runTreasureAction('buildTreasureSaveItemAction', {
             draft,
@@ -2227,11 +2368,14 @@ const INITIAL_TREASURES = [
                 activeTab === 'treasure' && h(TreasureView, { 
                     students: displayStudents, adminPassword: window.DEFAULT_ADMIN_PASSWORD,
                     treasures, storage, logs,
+                    gachaConfig: treasureGachaConfig,
+                    defaultGachaConfig: normalizeTreasureGachaConfig(DEFAULT_SYSTEM_CONFIG.treasureGacha),
                     redemptionHistory, dailyUsageCounts,
                     onReturnItem: handleReturnItem,
                     onRedeemTreasure: handleRedeemTreasure,
                     onUseItem: handleUseItem,
                     onPerformGacha: handlePerformGacha,
+                    onUpdateGachaConfig: handleUpdateTreasureGachaConfig,
                     onSaveItem: handleSaveTreasureItem,
                     onDeleteItem: handleDeleteTreasureItem,
                     onImportTreasureData: handleImportTreasureData

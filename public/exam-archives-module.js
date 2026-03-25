@@ -260,7 +260,7 @@
                 });
             };
 
-            return h('div', { className: 'border rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 p-4 md:p-5 shadow-[0_0_30px_rgba(79,70,229,0.18)] space-y-4' },
+            return h('div', { className: 'w-full max-w-full border rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 p-4 md:p-5 shadow-[0_0_30px_rgba(79,70,229,0.18)] space-y-4 overflow-hidden' },
                 h('div', { className: 'flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between' },
                     h('div', null,
                         h('div', { className: 'text-lg font-bold tracking-wide flex items-center gap-2' }, h(Icon, { name: 'fileText', size: 18 }), '考试档案模块'),
@@ -283,7 +283,7 @@
                     )
                 ),
                 h('div', { className: 'grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4' },
-                    h('div', { className: 'bg-slate-950/40 border border-slate-800/60 rounded-2xl p-3 space-y-3' },
+                    h('div', { className: 'bg-slate-950/40 border border-slate-800/60 rounded-2xl p-3 space-y-3 min-w-0' },
                         h('div', { className: 'text-xs text-slate-400' }, '考试列表'),
                         h('div', { className: 'space-y-2 max-h-80 overflow-y-auto' },
                             exams.length === 0
@@ -302,7 +302,7 @@
                                 ))
                         )
                     ),
-                    h('div', { className: 'bg-slate-950/40 border border-slate-800/60 rounded-2xl p-3 space-y-3' },
+                    h('div', { className: 'bg-slate-950/40 border border-slate-800/60 rounded-2xl p-3 space-y-3 min-w-0 overflow-hidden' },
                         h('div', { className: 'flex flex-col gap-2 md:flex-row md:items-center md:justify-between' },
                             h('div', null,
                                 h('div', { className: 'font-bold text-slate-100' }, selectedExam ? selectedExam.name : '档案预览'),
@@ -312,8 +312,8 @@
                         ),
                         !selectedExam
                             ? h('div', { className: 'text-sm text-slate-500 py-10 text-center' }, '暂无可预览档案')
-                            : h('div', { className: 'max-h-[28rem] overflow-auto border border-slate-800/60 rounded-xl' },
-                                h('table', { className: 'min-w-max w-full text-xs text-left whitespace-nowrap' },
+                            : h('div', { className: 'w-full max-w-full max-h-[28rem] overflow-x-auto overflow-y-auto border border-slate-800/60 rounded-xl' },
+                                h('table', { className: 'min-w-max text-xs text-left whitespace-nowrap' },
                                     h('thead', { className: 'bg-slate-900/80 text-slate-400 sticky top-0 z-10' },
                                         h('tr', null,
                                             h('th', { className: 'p-2 sticky left-0 bg-slate-900/95 z-20' }, '姓名'),
