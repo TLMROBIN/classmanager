@@ -113,20 +113,6 @@
                 return () => clearInterval(timer);
             }, []);
 
-            useEffect(() => {
-                if (isFrozen || !students || students.length === 0) return;
-                const now = getNow();
-
-                setRecords(currentRecords => {
-                    const { newRecords, added } = settleAbsences(currentRecords, now);
-                    if (added) {
-                        syncAttendanceRecords(newRecords);
-                        return newRecords;
-                    }
-                    return currentRecords;
-                });
-            }, [currentTime.getHours(), currentTime.getMinutes(), students, isFrozen, onAttendanceRecordsChange]);
-
             const getRulesForDate = (dateObj) => {
                 const scheduleConfig = getScheduleConfig(config);
                 const weekendRules = getWeekendRules(config);
@@ -165,28 +151,17 @@
                 return now > new Date(periodEnd.getTime() + ABSENT_GRACE_MS);
             };
 
-            const settleAbsences = (recs, now) => {
-                const out = JSON.parse(JSON.stringify(recs));
-                let added = false;
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                for (let i = 0; i < 60; i++) {
-                    const d = new Date(today);
-                    d.setDate(today.getDate() - i);
-                    const dateStr = getDateString(d);
-                    const rules = getRulesForDate(d);
-                    for (const rule of rules) {
-                        if (!isPeriodEnded(d, rule, now)) continue;
-                        for (const student of students) {
-                            const existingRecord = out[dateStr]?.[student.name]?.[rule.id];
-                            if (existingRecord) continue;
-                            if (!out[dateStr]) out[dateStr] = {};
-                            if (!out[dateStr][student.name]) out[dateStr][student.name] = {};
-                            out[dateStr][student.name][rule.id] = { status: 'absent', checkTime: '缺勤', timestamp: getNow().getTime() };
-                            added = true;
-                        }
-                    }
-                }
-                return { newRecords: out, added };
+            const getDisplayRecord = (dateObj, studentName, rule, now, sourceRecords = records) => {
+                const dateStr = getDateString(dateObj);
+                const existingRecord = sourceRecords?.[dateStr]?.[studentName]?.[rule.id] || null;
+                if (existingRecord) return existingRecord;
+                if (isFrozen || !isPeriodEnded(dateObj, rule, now)) return null;
+                return {
+                    status: 'absent',
+                    checkTime: '缺勤',
+                    timestamp: 0,
+                    isDerived: true
+                };
             };
 
             const todayRules = useMemo(() => getRulesForDate(currentTime), [currentTime.getDate()]);
@@ -363,7 +338,7 @@
                     rules.forEach(rule => {
                         if (!isPeriodEnded(dateObj, rule, now)) return;
                         students.forEach(student => {
-                            const rec = records[dateStr]?.[student.name]?.[rule.id];
+                            const rec = getDisplayRecord(dateObj, student.name, rule, now);
                             if (rec) {
                                 if (rec.status === 'late') {
                                     stats[student.name].late++;
@@ -409,13 +384,20 @@
                         if (!isPeriodEnded(dateObj, rule, now)) return;
                         if (filterSession !== 'all' && rule.id !== filterSession) return;
                         students.forEach(student => {
-                            const rec = records[dateStr]?.[student.name]?.[rule.id];
+                            const rec = getDisplayRecord(dateObj, student.name, rule, now);
                             if (rec && rec.status === 'late') {
                                 if (filterType !== 'all' && filterType !== 'late') return;
                                 list.push({ id: `${dateStr}-${student.name}-${rule.id}`, date: dateStr, name: student.name, session: rule.name, type: 'late', desc: `迟到 ${rec.checkTime}` });
                             } else if (rec && rec.status === 'absent') {
                                 if (filterType !== 'all' && filterType !== 'absent') return;
-                                list.push({ id: `${dateStr}-${student.name}-${rule.id}`, date: dateStr, name: student.name, session: rule.name, type: 'absent', desc: '缺勤' });
+                                list.push({
+                                    id: `${dateStr}-${student.name}-${rule.id}`,
+                                    date: dateStr,
+                                    name: student.name,
+                                    session: rule.name,
+                                    type: 'absent',
+                                    desc: '缺勤'
+                                });
                             }
                         });
                     });
@@ -649,7 +631,7 @@
                                 const rules = getRulesForDate(dateObj);
                                 rules.forEach(rule => {
                                     if (!isPeriodEnded(dateObj, rule, now)) return;
-                                    const rec = records[dateStr]?.[student.name]?.[rule.id];
+                                    const rec = getDisplayRecord(dateObj, student.name, rule, now);
                                     studentRecords.push({
                                         date: dateStr,
                                         session: rule.name,
@@ -674,8 +656,20 @@
                                             studentRecords.length === 0
                                                 ? h("tr", null, h("td", { colSpan: 4, className: "p-4 text-center text-gray-400" }, "暂无记录"))
                                                 : studentRecords.map((rec, idx) => {
-                                                    const statusText = rec.status === 'ok' ? '正常' : rec.status === 'late' ? '迟到' : rec.status === 'absent' ? '缺勤' : '无记录';
-                                                    const statusClass = rec.status === 'ok' ? 'text-green-600' : rec.status === 'late' ? 'text-red-600' : rec.status === 'absent' ? 'text-gray-600' : 'text-gray-400';
+                                                    const statusText = rec.status === 'ok'
+                                                        ? '正常'
+                                                        : rec.status === 'late'
+                                                            ? '迟到'
+                                                            : rec.status === 'absent'
+                                                                ? '缺勤'
+                                                                    : '无记录';
+                                                    const statusClass = rec.status === 'ok'
+                                                        ? 'text-green-600'
+                                                        : rec.status === 'late'
+                                                            ? 'text-red-600'
+                                                            : rec.status === 'absent'
+                                                                ? 'text-gray-600'
+                                                                : 'text-gray-400';
                                                     return h("tr", { key: idx, className: "border-b hover:bg-gray-50" },
                                                         h("td", { className: "p-2" }, rec.date),
                                                         h("td", { className: "p-2" }, rec.session),

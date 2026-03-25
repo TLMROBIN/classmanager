@@ -12,6 +12,153 @@ const dbPath = path.join(__dirname, 'database', 'classmanager.db');
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
+const DEFAULT_ATTENDANCE_SCHEDULE = [
+    { id: 'morning', name: '早读', start: '06:00', end: '07:20', lateTime: '07:00' },
+    { id: 'noon', name: '午练', start: '14:00', end: '14:40', lateTime: '14:20' },
+    { id: 'evening', name: '晚自习', start: '18:00', end: '19:00', lateTime: '18:30' }
+];
+const DEFAULT_WEEKEND_RULES = {
+    monday: [0, 1, 2],
+    tuesday: [0, 1, 2],
+    wednesday: [0, 1, 2],
+    thursday: [0, 1, 2],
+    friday: [0, 1],
+    saturday: [],
+    sunday: [2]
+};
+const DEFAULT_SUNDAY_SPECIAL_LATE_TIME = { evening: '19:00' };
+const ATTENDANCE_LOOKBACK_DAYS = 60;
+const ABSENT_GRACE_MS = 2 * 60 * 1000;
+
+const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+
+const getDateKey = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const stripDerivedAttendanceRecords = (records) => {
+    if (!isPlainObject(records)) return {};
+    const cleaned = {};
+    Object.entries(records).forEach(([dateKey, studentMap]) => {
+        if (!isPlainObject(studentMap)) return;
+        const nextStudentMap = {};
+        Object.entries(studentMap).forEach(([studentName, sessionMap]) => {
+            if (!isPlainObject(sessionMap)) return;
+            const nextSessionMap = {};
+            Object.entries(sessionMap).forEach(([sessionId, record]) => {
+                if (!isPlainObject(record)) return;
+                if (record.isDerived === true) return;
+                nextSessionMap[sessionId] = { ...record };
+            });
+            if (Object.keys(nextSessionMap).length > 0) {
+                nextStudentMap[studentName] = nextSessionMap;
+            }
+        });
+        if (Object.keys(nextStudentMap).length > 0) {
+            cleaned[dateKey] = nextStudentMap;
+        }
+    });
+    return cleaned;
+};
+
+const getAttendanceConfig = (config) => {
+    const attendance = isPlainObject(config?.systemConfig?.attendance) ? config.systemConfig.attendance : {};
+    const schedule = Array.isArray(attendance.schedule) && attendance.schedule.length > 0
+        ? attendance.schedule
+            .filter(item => isPlainObject(item) && item.id)
+            .map(item => ({ ...item }))
+        : DEFAULT_ATTENDANCE_SCHEDULE.map(item => ({ ...item }));
+    const weekendRules = {
+        ...DEFAULT_WEEKEND_RULES,
+        ...(isPlainObject(attendance.weekendRules) ? attendance.weekendRules : {})
+    };
+    const sundaySpecialLateTime = {
+        ...DEFAULT_SUNDAY_SPECIAL_LATE_TIME,
+        ...(isPlainObject(attendance.sundaySpecialLateTime) ? attendance.sundaySpecialLateTime : {})
+    };
+    return { schedule, weekendRules, sundaySpecialLateTime };
+};
+
+const getRulesForDate = (config, dateObj) => {
+    const { schedule, weekendRules, sundaySpecialLateTime } = getAttendanceConfig(config);
+    const day = dateObj.getDay();
+    let periodIndices = [];
+    if (day === 1) periodIndices = weekendRules.monday || [];
+    else if (day === 2) periodIndices = weekendRules.tuesday || [];
+    else if (day === 3) periodIndices = weekendRules.wednesday || [];
+    else if (day === 4) periodIndices = weekendRules.thursday || [];
+    else if (day === 5) periodIndices = weekendRules.friday || [];
+    else if (day === 6) periodIndices = weekendRules.saturday || [];
+    else if (day === 0) periodIndices = weekendRules.sunday || [];
+
+    return periodIndices.map(idx => {
+        if (idx < 0 || idx >= schedule.length) return null;
+        const period = { ...schedule[idx] };
+        if (day === 0 && sundaySpecialLateTime[period.id]) {
+            period.lateTime = sundaySpecialLateTime[period.id];
+        }
+        return period;
+    }).filter(Boolean);
+};
+
+const isPeriodEnded = (dateObj, rule, now) => {
+    const parts = String(rule?.end || '').split(':');
+    const hour = parseInt(parts[0], 10);
+    const minute = parseInt(parts[1], 10) || 0;
+    if (!Number.isFinite(hour)) return false;
+    const periodEnd = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), hour, minute, 0, 0);
+    return now > new Date(periodEnd.getTime() + ABSENT_GRACE_MS);
+};
+
+const buildAttendanceRecordsForResponse = (data, now = new Date()) => {
+    const rawRecords = stripDerivedAttendanceRecords(data?.attendanceRecords || data?.attendance_records || {});
+    const students = Array.isArray(data?.students) ? data.students : [];
+    if (students.length === 0 || data?.config?.frozen) return rawRecords;
+
+    const derived = {};
+    Object.entries(rawRecords).forEach(([dateKey, studentMap]) => {
+        derived[dateKey] = {};
+        Object.entries(studentMap || {}).forEach(([studentName, sessionMap]) => {
+            derived[dateKey][studentName] = {};
+            Object.entries(sessionMap || {}).forEach(([sessionId, record]) => {
+                derived[dateKey][studentName][sessionId] = { ...record };
+            });
+        });
+    });
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    for (let i = 0; i < ATTENDANCE_LOOKBACK_DAYS; i += 1) {
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() - i);
+        const rules = getRulesForDate(data?.config, targetDate);
+        if (rules.length === 0) continue;
+        const dateKey = getDateKey(targetDate);
+        rules.forEach(rule => {
+            if (!isPeriodEnded(targetDate, rule, now)) return;
+            students.forEach(student => {
+                const studentName = typeof student?.name === 'string' ? student.name : '';
+                if (!studentName) return;
+                const existingRecord = derived[dateKey]?.[studentName]?.[rule.id];
+                if (existingRecord) return;
+                if (!derived[dateKey]) derived[dateKey] = {};
+                if (!derived[dateKey][studentName]) derived[dateKey][studentName] = {};
+                derived[dateKey][studentName][rule.id] = {
+                    status: 'absent',
+                    checkTime: '缺勤',
+                    timestamp: 0,
+                    isDerived: true,
+                    source: 'server'
+                };
+            });
+        });
+    }
+
+    return derived;
+};
+
 const normalizeTreasureDomain = (domain) => {
     const safe = domain || {};
     const storage = safe.storage && typeof safe.storage === 'object' && !Array.isArray(safe.storage)
@@ -175,6 +322,8 @@ app.get('/api/data', authMiddleware, (req, res) => {
                 data[row.data_key] = row.data_value;
             }
         });
+
+        data.attendanceRecords = buildAttendanceRecordsForResponse(data);
         
         res.json(data);
     } catch (err) {
@@ -236,6 +385,9 @@ app.post('/api/data', authMiddleware, (req, res) => {
                             } catch (_) {}
                         }
                     }
+                }
+                if (key === 'attendanceRecords' || key === 'attendance_records') {
+                    finalValue = stripDerivedAttendanceRecords(finalValue);
                 }
                 upsert.run(userId, key, JSON.stringify(finalValue));
             }
