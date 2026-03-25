@@ -1092,6 +1092,7 @@ const INITIAL_TREASURES = [
             useState,
             useMemo,
             Icon,
+            requireAdminAuth,
             getNow,
             getDateString,
             getStartOfDay,

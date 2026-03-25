@@ -23,7 +23,9 @@ db.pragma('journal_mode = WAL');
 ensureSchema(db);
 
 const MAINTENANCE_TOKEN_HEADER = 'x-maintenance-token';
-const PROTECTED_DATA_KEYS = ['config', 'students', 'studentProfiles'];
+const DIRECT_MAINTENANCE_KEYS = ['studentProfiles', 'examArchives'];
+const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿']);
+const PUBLIC_ATTENDANCE_STATUSES = new Set(['ok', 'late']);
 
 const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
 const selectMaintenanceCredential = db.prepare('SELECT user_id, password_hash, updated_at FROM maintenance_credentials WHERE user_id = ?');
@@ -255,17 +257,270 @@ const sanitizePayloadConfig = (payload) => {
 
 const stringifyComparable = (value) => JSON.stringify(value ?? null);
 
-const hasProtectedDataMutation = (userId, payload) => {
-    return PROTECTED_DATA_KEYS.some((key) => {
-        if (!Object.prototype.hasOwnProperty.call(payload, key)) return false;
-        const incomingValue = key === 'config'
-            ? stripLegacyAdminPasswordFromConfig(payload[key])
-            : payload[key];
-        const existingValue = key === 'config'
-            ? stripLegacyAdminPasswordFromConfig(readStoredJson(userId, key))
-            : readStoredJson(userId, key);
-        return stringifyComparable(existingValue) !== stringifyComparable(incomingValue);
+const getComparableConfigForMaintenance = (config) => {
+    const safe = stripLegacyAdminPasswordFromConfig(isPlainObject(config) ? config : {});
+    const comparable = { ...safe };
+    delete comparable.lastWageDate;
+    delete comparable.scheduleNotes;
+    return comparable;
+};
+
+const getComparableStudentRoster = (students) => {
+    return (Array.isArray(students) ? students : []).map(student => ({
+        id: String(student?.id ?? ''),
+        name: String(student?.name ?? ''),
+        gender: String(student?.gender ?? ''),
+        group: String(student?.group ?? ''),
+        role: String(student?.role ?? ''),
+        dorm: String(student?.dorm ?? '')
+    }));
+};
+
+const getComparableTaskMeta = (task) => ({
+    id: String(task?.id ?? ''),
+    title: String(task?.title ?? ''),
+    desc: String(task?.desc ?? ''),
+    points: Number(task?.points) || 0,
+    startTime: String(task?.startTime ?? ''),
+    endTime: String(task?.endTime ?? '')
+});
+
+const getComparableTaskClaims = (task) => {
+    return (Array.isArray(task?.claimedBy) ? task.claimedBy : []).map(claimedId => String(claimedId));
+};
+
+const normalizeAttendanceRecordComparable = (record) => {
+    if (!isPlainObject(record)) return null;
+    return {
+        status: String(record.status ?? ''),
+        checkTime: String(record.checkTime ?? ''),
+        timestamp: Number(record.timestamp) || 0
+    };
+};
+
+const isPublicAttendanceCheckTime = (value) => /^\d{2}:\d{2}$/.test(String(value ?? '').trim());
+
+const iterateAttendanceRecords = (records, visitor) => {
+    Object.entries(stripDerivedAttendanceRecords(records || {})).forEach(([dateKey, studentMap]) => {
+        Object.entries(studentMap || {}).forEach(([studentName, sessionMap]) => {
+            Object.entries(sessionMap || {}).forEach(([sessionId, record]) => {
+                visitor({
+                    dateKey,
+                    studentName,
+                    sessionId,
+                    record: normalizeAttendanceRecordComparable(record)
+                });
+            });
+        });
     });
+};
+
+const getComparableTreasureMeta = (item) => ({
+    id: String(item?.id ?? ''),
+    name: String(item?.name ?? ''),
+    rarity: String(item?.rarity ?? ''),
+    price: Number(item?.price) || 0,
+    desc: String(item?.desc ?? ''),
+    ladderPrices: (Array.isArray(item?.ladderPrices) ? item.ladderPrices : []).map(price => Number(price) || 0),
+    dailyLimit: Number(item?.dailyLimit) || 0
+});
+
+const getTreasureStock = (item) => Number(item?.stock) || 0;
+
+const hasNonDecreasingNestedCounts = (existingValue, incomingValue) => {
+    const existing = isPlainObject(existingValue) ? existingValue : {};
+    const incoming = isPlainObject(incomingValue) ? incomingValue : {};
+
+    return Object.entries(existing).every(([outerKey, existingInner]) => {
+        if (!isPlainObject(existingInner)) return true;
+        const incomingInner = isPlainObject(incoming[outerKey]) ? incoming[outerKey] : null;
+        if (!incomingInner) return false;
+        return Object.entries(existingInner).every(([innerKey, existingCount]) => {
+            const incomingCount = Number(incomingInner[innerKey]);
+            return Number.isFinite(incomingCount) && incomingCount >= Number(existingCount || 0);
+        });
+    });
+};
+
+const getTreasureLogAppendAction = (existingLogs, incomingLogs) => {
+    const existing = Array.isArray(existingLogs) ? existingLogs : [];
+    const incoming = Array.isArray(incomingLogs) ? incomingLogs : [];
+    if (incoming.length < existing.length) return null;
+    const added = incoming.length - existing.length;
+    if (added > 1) return null;
+    if (stringifyComparable(incoming.slice(added)) !== stringifyComparable(existing)) return null;
+    if (added === 0) return '';
+    const nextAction = String(incoming[0]?.action ?? '');
+    return PUBLIC_TREASURE_LOG_ACTIONS.has(nextAction) ? nextAction : null;
+};
+
+const hasConfigMaintenanceMutation = (userId, payload) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'config')) return false;
+    const incomingValue = getComparableConfigForMaintenance(payload.config);
+    const existingValue = getComparableConfigForMaintenance(readStoredJson(userId, 'config'));
+    return stringifyComparable(existingValue) !== stringifyComparable(incomingValue);
+};
+
+const hasStudentRosterMaintenanceMutation = (userId, payload) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'students')) return false;
+    const incomingValue = getComparableStudentRoster(payload.students);
+    const existingValue = getComparableStudentRoster(readStoredJson(userId, 'students'));
+    return stringifyComparable(existingValue) !== stringifyComparable(incomingValue);
+};
+
+const hasDirectMaintenanceKeyMutation = (userId, payload) => {
+    return DIRECT_MAINTENANCE_KEYS.some((key) => {
+        if (!Object.prototype.hasOwnProperty.call(payload, key)) return false;
+        return stringifyComparable(readStoredJson(userId, key)) !== stringifyComparable(payload[key]);
+    });
+};
+
+const hasHistoryMaintenanceMutation = (userId, payload) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'history')) return false;
+    const existingHistory = Array.isArray(readStoredJson(userId, 'history')) ? readStoredJson(userId, 'history') : [];
+    const incomingHistory = Array.isArray(payload.history) ? payload.history : [];
+    if (incomingHistory.length < existingHistory.length) return true;
+    const prependedCount = incomingHistory.length - existingHistory.length;
+    return stringifyComparable(incomingHistory.slice(prependedCount)) !== stringifyComparable(existingHistory);
+};
+
+const hasTaskMaintenanceMutation = (userId, payload) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'tasks')) return false;
+    const existingTasks = Array.isArray(readStoredJson(userId, 'tasks')) ? readStoredJson(userId, 'tasks') : [];
+    const incomingTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+    if (existingTasks.length !== incomingTasks.length) return true;
+
+    for (let i = 0; i < existingTasks.length; i += 1) {
+        const existingTask = existingTasks[i];
+        const incomingTask = incomingTasks[i];
+        if (stringifyComparable(getComparableTaskMeta(existingTask)) !== stringifyComparable(getComparableTaskMeta(incomingTask))) {
+            return true;
+        }
+
+        const existingClaims = getComparableTaskClaims(existingTask);
+        const incomingClaims = getComparableTaskClaims(incomingTask);
+        if (stringifyComparable(existingClaims) === stringifyComparable(incomingClaims)) continue;
+        if (existingClaims.length === 0 && incomingClaims.length === 1) continue;
+        return true;
+    }
+
+    return false;
+};
+
+const hasAttendanceMaintenanceMutation = (userId, payload) => {
+    const hasAttendanceKey = Object.prototype.hasOwnProperty.call(payload, 'attendanceRecords')
+        || Object.prototype.hasOwnProperty.call(payload, 'attendance_records');
+    if (!hasAttendanceKey) return false;
+
+    const existingRecords = stripDerivedAttendanceRecords(
+        readStoredJson(userId, 'attendanceRecords') || readStoredJson(userId, 'attendance_records') || {}
+    );
+    const incomingRecords = stripDerivedAttendanceRecords(payload.attendanceRecords || payload.attendance_records || {});
+    let requiresMaintenance = false;
+
+    iterateAttendanceRecords(existingRecords, ({ dateKey, studentName, sessionId, record }) => {
+        if (requiresMaintenance) return;
+        const incomingRecord = normalizeAttendanceRecordComparable(incomingRecords?.[dateKey]?.[studentName]?.[sessionId]);
+        if (!incomingRecord || stringifyComparable(incomingRecord) !== stringifyComparable(record)) {
+            requiresMaintenance = true;
+        }
+    });
+
+    if (requiresMaintenance) return true;
+
+    iterateAttendanceRecords(incomingRecords, ({ dateKey, studentName, sessionId, record }) => {
+        if (requiresMaintenance) return;
+        const existingRecord = normalizeAttendanceRecordComparable(existingRecords?.[dateKey]?.[studentName]?.[sessionId]);
+        if (existingRecord) return;
+        if (!record || !PUBLIC_ATTENDANCE_STATUSES.has(record.status)) {
+            requiresMaintenance = true;
+            return;
+        }
+        if (record.timestamp <= 0 || !isPublicAttendanceCheckTime(record.checkTime)) {
+            requiresMaintenance = true;
+        }
+    });
+
+    return requiresMaintenance;
+};
+
+const hasTreasureMaintenanceMutation = (userId, payload) => {
+    const relevantKeys = ['treasures', 'storage', 'logs', 'redemptionHistory', 'dailyRedemptionCounts', 'dailyUsageCounts'];
+    if (!relevantKeys.some((key) => Object.prototype.hasOwnProperty.call(payload, key))) return false;
+
+    const existingTreasures = Array.isArray(readStoredJson(userId, 'treasures')) ? readStoredJson(userId, 'treasures') : [];
+    const incomingTreasures = Array.isArray(payload.treasures) ? payload.treasures : existingTreasures;
+    const existingStorage = isPlainObject(readStoredJson(userId, 'storage')) ? readStoredJson(userId, 'storage') : {};
+    const incomingStorage = isPlainObject(payload.storage) ? payload.storage : existingStorage;
+    const existingLogs = Array.isArray(readStoredJson(userId, 'logs')) ? readStoredJson(userId, 'logs') : [];
+    const incomingLogs = Array.isArray(payload.logs) ? payload.logs : existingLogs;
+    const existingRedemptionHistory = isPlainObject(readStoredJson(userId, 'redemptionHistory')) ? readStoredJson(userId, 'redemptionHistory') : {};
+    const incomingRedemptionHistory = isPlainObject(payload.redemptionHistory) ? payload.redemptionHistory : existingRedemptionHistory;
+    const existingDailyRedemptionCounts = isPlainObject(readStoredJson(userId, 'dailyRedemptionCounts')) ? readStoredJson(userId, 'dailyRedemptionCounts') : {};
+    const incomingDailyRedemptionCounts = isPlainObject(payload.dailyRedemptionCounts) ? payload.dailyRedemptionCounts : existingDailyRedemptionCounts;
+    const existingDailyUsageCounts = isPlainObject(readStoredJson(userId, 'dailyUsageCounts')) ? readStoredJson(userId, 'dailyUsageCounts') : {};
+    const incomingDailyUsageCounts = isPlainObject(payload.dailyUsageCounts) ? payload.dailyUsageCounts : existingDailyUsageCounts;
+
+    const treasuresChanged = stringifyComparable(existingTreasures) !== stringifyComparable(incomingTreasures);
+    const storageChanged = stringifyComparable(existingStorage) !== stringifyComparable(incomingStorage);
+    const logsChanged = stringifyComparable(existingLogs) !== stringifyComparable(incomingLogs);
+    const redemptionChanged = stringifyComparable(existingRedemptionHistory) !== stringifyComparable(incomingRedemptionHistory);
+    const dailyRedemptionChanged = stringifyComparable(existingDailyRedemptionCounts) !== stringifyComparable(incomingDailyRedemptionCounts);
+    const dailyUsageChanged = stringifyComparable(existingDailyUsageCounts) !== stringifyComparable(incomingDailyUsageCounts);
+
+    if (!treasuresChanged && !storageChanged && !logsChanged && !redemptionChanged && !dailyRedemptionChanged && !dailyUsageChanged) {
+        return false;
+    }
+
+    if (existingTreasures.length !== incomingTreasures.length) return true;
+
+    let hasStockDecrease = false;
+    for (let i = 0; i < existingTreasures.length; i += 1) {
+        const existingItem = existingTreasures[i];
+        const incomingItem = incomingTreasures[i];
+        if (stringifyComparable(getComparableTreasureMeta(existingItem)) !== stringifyComparable(getComparableTreasureMeta(incomingItem))) {
+            return true;
+        }
+        const existingStock = getTreasureStock(existingItem);
+        const incomingStock = getTreasureStock(incomingItem);
+        if (incomingStock > existingStock) return true;
+        if (incomingStock < existingStock) hasStockDecrease = true;
+    }
+
+    if (!hasNonDecreasingNestedCounts(existingRedemptionHistory, incomingRedemptionHistory)) return true;
+    if (!hasNonDecreasingNestedCounts(existingDailyRedemptionCounts, incomingDailyRedemptionCounts)) return true;
+    if (!hasNonDecreasingNestedCounts(existingDailyUsageCounts, incomingDailyUsageCounts)) return true;
+
+    const logAppendAction = getTreasureLogAppendAction(existingLogs, incomingLogs);
+    if (logAppendAction === null) return true;
+
+    if (!storageChanged) {
+        return hasStockDecrease || redemptionChanged || dailyRedemptionChanged || dailyUsageChanged || Boolean(logAppendAction);
+    }
+
+    if (!logAppendAction) return true;
+
+    if (logAppendAction === '使用') {
+        return hasStockDecrease || redemptionChanged || dailyRedemptionChanged || !dailyUsageChanged;
+    }
+    if (logAppendAction === '兑换') {
+        return !hasStockDecrease || !redemptionChanged || dailyUsageChanged;
+    }
+    if (logAppendAction === '祈愿') {
+        return !hasStockDecrease || redemptionChanged || dailyUsageChanged;
+    }
+
+    return true;
+};
+
+const hasMaintenanceProtectedMutation = (userId, payload) => {
+    return hasConfigMaintenanceMutation(userId, payload)
+        || hasStudentRosterMaintenanceMutation(userId, payload)
+        || hasDirectMaintenanceKeyMutation(userId, payload)
+        || hasHistoryMaintenanceMutation(userId, payload)
+        || hasTaskMaintenanceMutation(userId, payload)
+        || hasAttendanceMaintenanceMutation(userId, payload)
+        || hasTreasureMaintenanceMutation(userId, payload);
 };
 
 const buildMaintenanceResponse = (userId) => ({
@@ -524,7 +779,7 @@ app.post('/api/data', authMiddleware, userMiddleware, (req, res) => {
                 serverUpdatedAt: existingUpdatedAt
             });
         }
-        if (hasProtectedDataMutation(userId, data) && !hasMaintenanceAccess(req)) {
+        if (hasMaintenanceProtectedMutation(userId, data) && !hasMaintenanceAccess(req)) {
             return res.status(403).json({
                 error: '当前操作需要维护密码验证',
                 code: 'MAINTENANCE_AUTH_REQUIRED'

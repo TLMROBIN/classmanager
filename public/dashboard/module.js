@@ -5,6 +5,7 @@
             useState,
             useMemo,
             Icon,
+            requireAdminAuth,
             getNow,
             getDateString,
             getStartOfDay,
@@ -19,7 +20,7 @@
             getProfileAvatarUI
         } = deps || {};
 
-        if (!h || !useState || !useMemo || !Icon || !getNow || !getDateString || !getStartOfDay || !diffDays || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
+        if (!h || !useState || !useMemo || !Icon || !requireAdminAuth || !getNow || !getDateString || !getStartOfDay || !diffDays || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
             throw new Error('DashboardView dependencies are missing');
         }
 
@@ -78,6 +79,10 @@
             const aggregatedHistory = [];
             const wageMap = {};
             const wageGroupNameMap = new Map(((getSystemConfig(config).organization?.groups) || []).map(group => [group.id, group.name || group.id]));
+            const handleProtectedUndo = async (recordId) => {
+                if (!await requireAdminAuth("撤销积分记录需要维护密码，请输入：")) return;
+                handleUndo(recordId);
+            };
             const wageGroupLabels = (() => {
                 const groupIds = Array.isArray(getSystemConfig(config).points?.dailyWageGroups)
                     ? getSystemConfig(config).points.dailyWageGroups
@@ -382,7 +387,7 @@
                                     ),
                                     h("div", { className: "flex items-center gap-2" },
                                         h("span", { className: item.val > 0 ? "text-green-600" : "text-red-600" }, item.val > 0 ? `+${item.val}` : item.val),
-                                        !item.isAggregated && !item.isUndoLog && h("button", { onClick: () => handleUndo(item.id), className: "text-gray-300 hover:text-blue-500", title: "撤销" }, h(Icon, { name: "undo", size: 12 }))
+                                        !item.isAggregated && !item.isUndoLog && h("button", { onClick: () => handleProtectedUndo(item.id), className: "text-gray-300 hover:text-blue-500", title: "撤销" }, h(Icon, { name: "undo", size: 12 }))
                                     )
                                 ))
                             )
