@@ -19,10 +19,8 @@
             setAdminAuthUntil,
             ADMIN_AUTH_TTL_MS,
             DEFAULT_SYSTEM_CONFIG,
-            stripTreasureConfig,
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
-            getLegacyTreasureList,
             normalizeCommissionerRoles,
             normalizeCustomRoles,
             getCustomRoles,
@@ -33,9 +31,12 @@
             restoreStudentProfilesFromData,
             battleNormalize,
             normalizeExamArchives,
-            normalizeBattleSnapshots,
             loadScriptOnce,
-            getExamArchivesView
+            getExamArchivesView,
+            createSettingsExamArchivesSection,
+            createSettingsStudentRosterSection,
+            createSettingsSystemConfigSection,
+            createSettingsToolsSection
         } = deps || {};
 
         if (
@@ -57,10 +58,8 @@
             !setAdminAuthUntil ||
             !ADMIN_AUTH_TTL_MS ||
             !DEFAULT_SYSTEM_CONFIG ||
-            !stripTreasureConfig ||
             !stripSystemConfigTreasures ||
             !sanitizeStoredConfig ||
-            !getLegacyTreasureList ||
             !normalizeCommissionerRoles ||
             !normalizeCustomRoles ||
             !getCustomRoles ||
@@ -71,14 +70,22 @@
             !restoreStudentProfilesFromData ||
             !battleNormalize ||
             !normalizeExamArchives ||
-            !normalizeBattleSnapshots ||
             !loadScriptOnce ||
-            !getExamArchivesView
+            !getExamArchivesView ||
+            !createSettingsExamArchivesSection ||
+            !createSettingsStudentRosterSection ||
+            !createSettingsSystemConfigSection ||
+            !createSettingsToolsSection
         ) {
             throw new Error('SettingsView dependencies are missing');
         }
 
-    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+        const renderExamArchivesSection = createSettingsExamArchivesSection({ h, Icon });
+        const StudentRosterSection = createSettingsStudentRosterSection({ h });
+        const renderSystemConfigSection = createSettingsSystemConfigSection({ h, Icon });
+        const renderToolsSection = createSettingsToolsSection({ h });
+
+    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const getReportRange = (days) => {
@@ -470,303 +477,6 @@
             );
         }
 
-        // 验证通过后的功能逻辑
-        const handleExportScoreExcel = () => {
-            const data = students.map(s => ({
-                "姓名": s.name, 
-                "小组": (() => {
-                    const groupsConfig = getGroupsConfig(config);
-                    return groupsConfig[s.group]?.name || s.group;
-                })(), 
-                "职位": s.role === 'leader' ? '组长' : '组员',
-                "宿舍": (() => {
-                    const dormsConfig = getDormsConfig(config);
-                    return dormsConfig[s.dorm] || s.dorm;
-                })(), 
-                "自在值": s.zizai, "余额": s.balance, "不自在值": s.penalty
-            }));
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "积分表");
-            XLSX.writeFile(wb, `积分表_${getTodayStr()}.xlsx`);
-        };
-
-        const handleImportScoreExcel = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                if (confirm(`解析到 ${json.length} 条数据，确定更新积分吗？`)) {
-                    const newStudents = [...students];
-                    json.forEach(row => {
-                        const t = newStudents.find(s => s.name === row["姓名"]);
-                        if (t) {
-                            if (row["自在值"] !== undefined) t.zizai = Number(row["自在值"]);
-                            if (row["余额"] !== undefined) t.balance = Number(row["余额"]);
-                            if (row["不自在值"] !== undefined) t.penalty = Number(row["不自在值"]);
-                        }
-                    });
-                    setStudents(newStudents);
-                    alert("积分更新成功");
-                }
-            };
-            reader.readAsArrayBuffer(file);
-            e.target.value = '';
-        };
-
-        const handleRecoverFromHistory = () => {
-            const name = prompt("输入要恢复积分的学生姓名（如：陈正岳）：");
-            if (!name || !name.trim()) return;
-            const s = students.find(st => st.name.trim() === name.trim());
-            if (!s) {
-                alert("未找到该学生");
-                return;
-            }
-            const myHistory = (history || []).filter(h => h.studentId === s.id && h.snapshot);
-            if (myHistory.length === 0) {
-                alert(`未找到 ${s.name} 的历史记录，无法恢复。`);
-                return;
-            }
-            let best = { zizai: 0, balance: 0, penalty: 0 };
-            let bestRecord = null;
-            myHistory.forEach(h => {
-                if (!h.snapshot) return;
-                const z = Number(h.snapshot.zizai);
-                if (isNaN(z)) return;
-                if (z > (best.zizai ?? 0)) {
-                    best = { zizai: h.snapshot.zizai, balance: h.snapshot.balance, penalty: h.snapshot.penalty };
-                    bestRecord = h;
-                }
-            });
-            const snap = bestRecord;
-            const when = snap ? new Date(snap.ts).toLocaleString() : "";
-            if (!confirm(`将 ${s.name} 的积分恢复为：\n自在值 ${best.zizai}，余额 ${best.balance}，不自在值 ${best.penalty}\n（来自历史记录${when ? " " + when : ""}）\n\n确定恢复？`)) return;
-            const newStudents = students.map(st => {
-                if (st.id !== s.id) return st;
-                return {
-                    ...st,
-                    zizai: best.zizai != null ? Number(best.zizai) : st.zizai,
-                    balance: best.balance != null ? Number(best.balance) : st.balance,
-                    penalty: best.penalty != null ? Number(best.penalty) : st.penalty
-                };
-            });
-            setStudents(newStudents);
-
-            const fullData = {
-                students: newStudents,
-                studentProfiles,
-                history,
-                config,
-                attendanceRecords: attendanceRecords || {},
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle,
-                battleSnapshots
-            };
-            if (typeof persistData === 'function') persistData(fullData);
-
-            alert("已恢复");
-        };
-
-        const handleFixScore = () => {
-            const name = prompt("输入要修正积分的学生姓名（如：陈正岳）：");
-            if (!name || !name.trim()) return;
-            const s = students.find(st => st.name.trim() === name.trim());
-            if (!s) {
-                alert("未找到该学生");
-                return;
-            }
-            const zizaiStr = prompt("自在值（直接回车则不修改）", String(s.zizai ?? 0));
-            const balanceStr = prompt("余额（直接回车则不修改）", String(s.balance ?? 0));
-            const penaltyStr = prompt("不自在值（直接回车则不修改）", String(s.penalty ?? 0));
-            const newZizai = zizaiStr === "" || zizaiStr === null ? s.zizai : Number(zizaiStr);
-            const newBalance = balanceStr === "" || balanceStr === null ? s.balance : Number(balanceStr);
-            const newPenalty = penaltyStr === "" || penaltyStr === null ? s.penalty : Number(penaltyStr);
-            if (isNaN(newZizai) || isNaN(newBalance) || isNaN(newPenalty)) {
-                alert("请输入有效数字");
-                return;
-            }
-            const newStudents = students.map(st => {
-                if (st.id !== s.id) return st;
-                return { ...st, zizai: newZizai, balance: newBalance, penalty: newPenalty };
-            });
-            setStudents(newStudents);
-
-            const fullData = {
-                students: newStudents,
-                studentProfiles,
-                history,
-                config,
-                attendanceRecords: attendanceRecords || {},
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle,
-                battleSnapshots
-            };
-            if (typeof persistData === 'function') persistData(fullData);
-
-            alert("已修正");
-        };
-
-        const handleExportTreasureExcel = () => {
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(treasures), "宝物库存");
-            const storageRows = [];
-            Object.keys(storage).forEach(sid => {
-                const sName = students.find(s => s.id == sid)?.name || sid;
-                Object.keys(storage[sid]).forEach(tid => {
-                    const tName = treasures.find(t => t.id == tid)?.name || tid;
-                    storageRows.push({ "学生": sName, "物品": tName, "数量": storage[sid][tid] });
-                });
-            });
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(storageRows), "学生储物箱");
-            XLSX.writeFile(wb, `藏宝阁数据_${getTodayStr()}.xlsx`);
-        };
-
-        const handleImportTreasureExcel = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const wb = XLSX.read(evt.target.result, { type: 'array' });
-                let msg = "";
-                if (wb.SheetNames.includes("宝物库存")) {
-                    const data = XLSX.utils.sheet_to_json(wb.Sheets["宝物库存"]);
-                    const formatted = data.map((item, idx) => ({
-                        ...item, id: item.id || (Date.now()+idx), stock: item.stock || item['库存'], price: item.price||item['价格'], name: item.name||item['名称'], rarity: item.rarity||item['稀有度']
-                    }));
-                    setTreasures(formatted);
-                    msg += "库存已更新 ";
-                }
-                if (wb.SheetNames.includes("学生储物箱")) {
-                    const raw = XLSX.utils.sheet_to_json(wb.Sheets["学生储物箱"]);
-                    const newStorage = {};
-                    raw.forEach(r => {
-                        const s = students.find(x => x.name === r["学生"]);
-                        const t = treasures.find(x => x.name === r["物品"]); 
-                        if (s && t) {
-                            if (!newStorage[s.id]) newStorage[s.id] = {};
-                            newStorage[s.id][t.id] = r["数量"];
-                        }
-                    });
-                    setStorage(newStorage);
-                    msg += "储物箱已更新";
-                }
-                alert(msg || "未识别有效Sheet");
-            };
-            reader.readAsArrayBuffer(file);
-            e.target.value = '';
-        };
-
-        const handleExportAttendanceExcel = () => {
-            const rows = [];
-            Object.keys(attendanceRecords).forEach(date => {
-                Object.keys(attendanceRecords[date]).forEach(name => {
-                    const sessions = attendanceRecords[date][name];
-                    const row = { "日期": date, "姓名": name };
-                    const scheduleConfig = getScheduleConfig(config);
-                    scheduleConfig.forEach(s => {
-                        const sid = s.id;
-                        const sessName = s.name;
-                        const rec = sessions[sid];
-                        row[sessName] = rec ? `${rec.status === 'ok' ? '✅' : '❌'}${rec.status==='late'?'(迟)':''} ${rec.checkTime}` : '-';
-                    });
-                    rows.push(row);
-                });
-            });
-            const ws = XLSX.utils.json_to_sheet(rows);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "考勤记录");
-            XLSX.writeFile(wb, `考勤记录_${getTodayStr()}.xlsx`);
-        };
-
-        const handleImportAttendanceExcel = (e) => {
-             const file = e.target.files[0];
-             if (!file) return;
-             const reader = new FileReader();
-             reader.onload = (evt) => {
-                 const wb = XLSX.read(evt.target.result, { type: 'array' });
-                 const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                 if(confirm(`解析到 ${json.length} 条考勤记录，确定要【合并】到现有记录吗？`)) {
-                     const newRecs = { ...attendanceRecords };
-                     json.forEach(row => {
-                         const date = row["日期"];
-                         const name = row["姓名"];
-                         if (!newRecs[date]) newRecs[date] = {};
-                         if (!newRecs[date][name]) newRecs[date][name] = {};
-                        const scheduleConfig = getScheduleConfig(config);
-                        scheduleConfig.forEach(s => {
-                            const cName = s.name;
-                            const cell = row[cName];
-                            if (cell && cell !== '-') {
-                                const sid = s.id;
-                                 let status = 'ok';
-                                 if (cell.includes('❌') || cell.includes('迟')) status = 'late';
-                                 newRecs[date][name][sid] = {
-                                     status: status,
-                                     checkTime: cell.replace(/[✅❌(迟)]/g, '').trim() || '导入记录',
-                                     timestamp: Date.now()
-                                 };
-                             }
-                         });
-                     });
-                     setAttendanceRecords(newRecs);
-                     alert("考勤记录已合并导入");
-                 }
-             };
-             reader.readAsArrayBuffer(file);
-             e.target.value = '';
-        };
-
-        const handleExportSystemConfig = () => {
-            const { treasures, ...exportSystemConfig } = systemConfig;
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportSystemConfig));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "system_config_" + getTodayStr() + ".json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-        };
-
-        const handleImportSystemConfig = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                try {
-                    const data = JSON.parse(evt.target.result);
-                    const merged = getSystemConfig({ systemConfig: data || {} });
-                    const importedTreasures = getLegacyTreasureList({ systemConfig: data || {} });
-                    applySystemConfig(merged);
-                    if (Array.isArray(importedTreasures)) setTreasures(importedTreasures);
-                    alert("系统配置已导入");
-                } catch (err) {
-                    alert("配置文件格式错误");
-                }
-            };
-            reader.readAsText(file);
-            e.target.value = '';
-        };
-
         const handleResetSystemConfig = () => {
             if (!confirm("确定要将系统配置恢复为默认值吗？")) return;
             applySystemConfig(JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG)));
@@ -803,76 +513,6 @@
             newDuty[day] = row;
             setConfigSafe({ ...config, duty: newDuty });
         };
-        const renderStudentRosterManager = () => h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
-                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                    h("div", null,
-                        h("div", { className: "text-sm font-medium text-gray-700" }, "学生名单维护"),
-                        h("p", { className: "text-xs text-gray-500 mt-1" }, "导入、导出、增量更新和手动编辑学生名单都收在这里。")
-                    ),
-                    h("button", {
-                        onClick: () => setShowStudentRosterManager(prev => !prev),
-                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
-                    }, showStudentRosterManager ? "收起学生名单维护" : "打开学生名单维护")
-                ),
-                showStudentRosterManager && h("div", { className: "border-t pt-4" },
-                    h("div", { className: "flex flex-wrap gap-2 mb-4" },
-                        h("button", { onClick: handleExportStudentsExcel, className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm" }, "导出学生名单"),
-                        h("button", { onClick: handleDownloadStudentTemplate, className: "px-3 py-2 border border-sky-500 text-sky-600 rounded hover:bg-sky-50 text-sm" }, "下载导入模板"),
-                        h("label", { className: "px-3 py-2 border border-emerald-500 text-emerald-600 rounded hover:bg-emerald-50 text-sm cursor-pointer" },
-                            "增量导入",
-                            h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'merge'), style: { display: 'none' } })
-                        ),
-                        h("label", { className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm cursor-pointer" },
-                            "覆盖导入",
-                            h("input", { type: "file", accept: ".xlsx,.xls", onChange: e => handleImportStudentsExcel(e, 'overwrite'), style: { display: 'none' } })
-                        ),
-                        h("button", { onClick: addStudent, className: "px-3 py-2 border border-green-500 text-green-600 rounded hover:bg-green-50 text-sm" }, "新增学生")
-                    ),
-                    h("p", { className: "text-xs text-gray-500 mb-4" }, "导入学生名单前，请先在“系统配置 -> 组织架构”中维护小组和宿舍，再使用系统模板填写。表头错误或小组/宿舍名称不匹配时，将整批拒绝导入。"),
-                    h("div", { className: "max-h-96 overflow-y-auto border rounded" },
-                        h("table", { className: "w-full text-sm text-left" },
-                            h("thead", null,
-                                h("tr", { className: "bg-gray-50" },
-                                    h("th", { className: "p-2" }, "姓名"),
-                                    h("th", { className: "p-2" }, "性别"),
-                                    h("th", { className: "p-2" }, "小组"),
-                                    h("th", { className: "p-2" }, "职位"),
-                                    h("th", { className: "p-2" }, "宿舍"),
-                                    h("th", { className: "p-2" }, "操作")
-                                )
-                            ),
-                            h("tbody", null,
-                                (Array.isArray(students) ? students : []).map(s => h("tr", { key: s.id, className: "border-t" },
-                                    h("td", { className: "p-2" }, h("input", { className: "w-full border rounded p-1", value: s.name || "", onChange: e => updateStudent(s.id, { name: e.target.value }) })),
-                                    h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.gender || "", onChange: e => updateStudent(s.id, { gender: e.target.value }) }, h("option", { value: "" }, "-"), h("option", { value: "M" }, "男"), h("option", { value: "F" }, "女"))),
-                                    h("td", { className: "p-2" }, (() => {
-                                        const groups = systemConfig.organization.groups || [];
-                                        return h("select", { className: "w-full border rounded p-1", value: s.group || "", onChange: e => updateStudent(s.id, { group: e.target.value }) },
-                                            h("option", { value: "" }, "-"),
-                                            groups.map(g => h("option", { key: g.id, value: g.id }, g.name))
-                                        );
-                                    })()),
-                                    h("td", { className: "p-2" }, h("select", { className: "w-full border rounded p-1", value: s.role || "member", onChange: e => updateStudent(s.id, { role: e.target.value }) }, h("option", { value: "leader" }, "组长"), h("option", { value: "member" }, "组员"))),
-                                    h("td", { className: "p-2" }, (() => {
-                                        const dorms = systemConfig.organization.dorms || [];
-                                        return h("select", { className: "w-full border rounded p-1", value: s.dorm || "", onChange: e => updateStudent(s.id, { dorm: e.target.value }) },
-                                            h("option", { value: "" }, "-"),
-                                            dorms.map(d => h("option", { key: d.id, value: d.id }, d.name))
-                                        );
-                                    })()),
-                                    h("td", { className: "p-2" }, h("button", { onClick: () => removeStudent(s.id), className: "px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除"))
-                                ))
-                            )
-                        )
-                    )
-                )
-        );
-        const renderToolCard = (title, description, content) => h("div", { className: "bg-white border rounded-lg p-4 space-y-3 h-full" },
-            h("div", { className: "text-sm font-medium text-gray-700" }, title),
-            description ? h("p", { className: "text-xs text-gray-500" }, description) : null,
-            content
-        );
-
         const persistExamArchiveChanges = ({ battle: nextBattle, examArchives: nextExamArchives, successMessage, failureMessage }) => {
             if (isDirtyRef) isDirtyRef.current = true;
             if (typeof persistDataPatch !== 'function') {
@@ -893,6 +533,28 @@
             });
         };
 
+        const handleSaveConfigChanges = () => {
+            const fullData = {
+                students,
+                history,
+                config,
+                attendanceRecords,
+                treasures,
+                storage,
+                logs,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks,
+                battle
+            };
+            if (typeof persistData === 'function') persistData(fullData);
+            alert("配置已保存！");
+        };
+
         return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto flex flex-col gap-8" },
             h("div", { className: "border-b pb-4 flex justify-between items-center", style: { order: -2 } },
                 h("div", null,
@@ -904,507 +566,79 @@
                     className: "text-sm text-red-500 hover:underline" 
                 }, "退出登录")
             ),
-            h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
-                h("div", { className: "border rounded-xl p-4 bg-blue-50 border-blue-100" }, h("h3", { className: "font-bold text-blue-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "star" }), "积分数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportScoreExcel, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportScoreExcel })), h("button", { onClick: handleRecoverFromHistory, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "从历史恢复"), h("button", { onClick: handleFixScore, className: "w-full py-2 bg-white border border-blue-200 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium" }, "手动修正积分"))),
-                h("div", { className: "border rounded-xl p-4 bg-green-50 border-green-100" }, h("h3", { className: "font-bold text-green-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "clock" }), "考勤数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportAttendanceExcel, className: "w-full py-2 bg-white border border-green-200 text-green-600 rounded hover:bg-green-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportAttendanceExcel })))),
-                h("div", { className: "border rounded-xl p-4 bg-purple-50 border-purple-100" }, h("h3", { className: "font-bold text-purple-800 mb-3 flex items-center gap-2" }, h(Icon, { name: "gift" }), "藏宝阁数据"), h("div", { className: "space-y-2" }, h("button", { onClick: handleExportTreasureExcel, className: "w-full py-2 bg-white border border-purple-200 text-purple-600 rounded hover:bg-purple-100 text-sm font-medium" }, "导出 Excel"), h("div", { className: "relative w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium text-center cursor-pointer" }, "导入 Excel", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".xlsx", onChange: handleImportTreasureExcel }))))
-            ),
-            h("div", { className: "border-t pt-6 space-y-4" },
-                h("div", { className: "border rounded-xl p-4 bg-indigo-50 border-indigo-100" },
-                    h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                        h("div", null,
-                            h("h3", { className: "font-bold text-indigo-800 mb-1 flex items-center gap-2" }, h(Icon, { name: "fileText" }), "考试档案"),
-                            h("p", { className: "text-sm text-indigo-700/80" }, "考试导入、删除和档案查看已从双子星移到这里。模块默认不加载，点开后才按需加载。")
-                        ),
-                        h("button", {
-                            onClick: openExamArchivesManager,
-                            className: "px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm font-medium"
-                        }, showExamArchivesManager ? "收起考试档案" : "打开考试档案")
-                    )
-                ),
-                showExamArchivesManager && (
-                    examArchivesModuleStatus === 'ready' && ExamArchivesView
-                        ? h(ExamArchivesView, {
-                            students,
-                            battle,
-                            examArchives,
-                            setBattle,
-                            setExamArchives,
-                            persistExamArchives: persistExamArchiveChanges,
-                            adminPassword: window.DEFAULT_ADMIN_PASSWORD
-                        })
-                        : h("div", { className: "border rounded-xl p-6 bg-gray-50 text-center space-y-2" },
-                            h("div", { className: "font-bold text-gray-800" }, examArchivesModuleStatus === 'error' ? "考试档案模块加载失败" : "考试档案模块加载中"),
-                            h("div", { className: "text-sm text-gray-500" }, examArchivesModuleStatus === 'error' ? "请重试加载考试档案模块。" : "首次打开维护页中的考试档案时会按需加载。"),
-                            examArchivesModuleStatus === 'error' && h("button", {
-                                onClick: () => {
-                                    setExamArchivesModuleStatus('idle');
-                                    setTimeout(ensureExamArchivesModule, 0);
-                                },
-                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                            }, "重试")
-                        )
-                )
-            ),
-            h("div", { className: "border-t pt-6", style: { order: -1 } },
-                h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "settings" }), "⚙️ 系统配置"),
-                h("div", { className: "bg-gray-50 border rounded-lg p-6 space-y-8" },
-                    h("div", { className: "flex flex-wrap gap-2" },
-                        h("button", { onClick: handleExportSystemConfig, className: "px-3 py-2 bg-white border rounded hover:bg-gray-100 text-sm" }, "导出配置 JSON"),
-                        h("div", { className: "relative px-3 py-2 bg-white border rounded hover:bg-gray-100 text-sm cursor-pointer" }, "导入配置 JSON", h("input", { type: "file", className: "absolute inset-0 opacity-0 cursor-pointer", accept: ".json", onChange: handleImportSystemConfig })),
-                        h("button", { onClick: handleResetSystemConfig, className: "px-3 py-2 bg-red-50 border border-red-200 text-red-600 rounded hover:bg-red-100 text-sm" }, "恢复默认配置")
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "基础设置"),
-                        h("div", { className: "space-y-4" },
-                            h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "班级名称"),
-                                h("input", {
-                                    type: "text",
-                                    className: "w-full border rounded-lg p-2 text-sm",
-                                    value: systemConfig.className || "",
-                                    onChange: (e) => updateSystemConfig(sc => ({ ...sc, className: e.target.value })),
-                                    placeholder: "请输入班级名称"
-                                })
-                            ),
-                            h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "管理员密码"),
-                                h("div", { className: "flex gap-2" },
-                                    h("button", {
-                                        onClick: () => {
-                                            const oldPassInput = prompt("请输入旧密码以验证：");
-                                            if (oldPassInput === null) return;
-                                            
-                                            const currentPass = systemConfig.adminPassword || DEFAULT_SYSTEM_CONFIG.adminPassword;
-                                            if (oldPassInput !== currentPass) {
-                                                return alert("旧密码验证失败！");
-                                            }
-                                            
-                                            const newPassInput = prompt("验证成功！请输入新密码：");
-                                            if (newPassInput === null) return;
-                                            if (!newPassInput.trim()) return alert("新密码不能为空！");
-                                            
-                                            updateSystemConfig(sc => ({ ...sc, adminPassword: newPassInput.trim() }));
-                                            alert("密码修改成功，请牢记新密码。");
-                                        },
-                                        className: "px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium shadow-sm"
-                                    }, "🔐 修改管理员密码"),
-                                    h("button", {
-                                         onClick: () => {
-                                             if (confirm(`确定要重置为默认密码吗？（默认密码：${DEFAULT_SYSTEM_CONFIG.adminPassword}）`)) {
-                                                 updateSystemConfig(sc => ({ ...sc, adminPassword: DEFAULT_SYSTEM_CONFIG.adminPassword }));
-                                                 alert(`已重置为默认密码：${DEFAULT_SYSTEM_CONFIG.adminPassword}`);
-                                             }
-                                         },
-                                         className: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium"
-                                     }, "重置默认")
-                                ),
-                                h("p", { className: "text-xs text-gray-500 mt-2" }, "修改密码后，所有受限操作（如修改设置、修正积分等）将使用新密码验证。")
-                            ),
-                            h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-2" }, "功能开关"),
-                                h("div", { className: "space-y-2 bg-gray-50 p-3 rounded-lg" },
-                                    h("label", { className: "flex items-center gap-3 cursor-pointer" },
-                                        h("input", {
-                                            type: "checkbox",
-                                            checked: systemConfig.enabledFeatures?.battle ?? true,
-                                            onChange: (e) => updateSystemConfig(sc => ({
-                                                ...sc,
-                                                enabledFeatures: {
-                                                    ...(sc.enabledFeatures || {}),
-                                                    battle: e.target.checked
-                                                }
-                                            })),
-                                            className: "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                        }),
-                                        h("span", { className: "text-sm text-gray-700" }, "启用双子星对战系统"),
-                                        h("span", { className: "text-xs text-gray-500" }, "（关闭后导航栏将隐藏此功能）")
-                                    )
-                                )
-                            ),
-                        )
-                    ),
-                    h("div", null,
-                        h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "组织与角色"),
-                        h("div", { className: "space-y-4" },
-                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
-                                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                                    h("div", null,
-                                        h("div", { className: "text-sm font-medium text-gray-700" }, "组织架构"),
-                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "小组管理、宿舍管理和工资设置统一收在这里。")
-                                    ),
-                                    h("button", {
-                                        onClick: () => setShowOrganizationManager(prev => !prev),
-                                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
-                                    }, showOrganizationManager ? "收起组织架构" : "打开组织架构")
-                                ),
-                                showOrganizationManager && h("div", { className: "border-t pt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start max-w-5xl" },
-                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                        h("div", { className: "flex justify-between items-center" },
-                                            h("span", { className: "text-sm font-medium text-gray-700" }, "小组管理"),
-                                            h("button", { onClick: () => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.groups || [])];
-                                                list.push({ id: `group_${Date.now()}`, name: "新小组", color: "bg-gray-100 text-gray-700 border-gray-200" });
-                                                return { ...sc, organization: { ...sc.organization, groups: list } };
-                                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增小组")
-                                        ),
-                                        (systemConfig.organization.groups || []).length === 0
-                                            ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无小组")
-                                            : h("div", { className: "space-y-2" },
-                                                (systemConfig.organization.groups || []).map((g, idx) => h("div", { key: g.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                    h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: g.name || "", onChange: e => updateSystemConfig(sc => {
-                                                        const list = [...sc.organization.groups];
-                                                        list[idx] = { ...list[idx], name: e.target.value };
-                                                        return { ...sc, organization: { ...sc.organization, groups: list } };
-                                                    }), placeholder: "小组名称" }),
-                                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                                        const list = [...sc.organization.groups];
-                                                        list.splice(idx, 1);
-                                                        return { ...sc, organization: { ...sc.organization, groups: list } };
-                                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                ))
-                                            )
-                                    ),
-                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-3" },
-                                        h("div", { className: "flex justify-between items-center" },
-                                            h("span", { className: "text-sm font-medium text-gray-700" }, "宿舍管理"),
-                                            h("button", { onClick: () => updateSystemConfig(sc => {
-                                                const list = [...(sc.organization.dorms || [])];
-                                                list.push({ id: `dorm_${Date.now()}`, name: "新宿舍" });
-                                                return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                            }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增宿舍")
-                                        ),
-                                        (systemConfig.organization.dorms || []).length === 0
-                                            ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无宿舍")
-                                            : h("div", { className: "space-y-2" },
-                                                (systemConfig.organization.dorms || []).map((d, idx) => h("div", { key: d.id || idx, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border" },
-                                                    h("input", { className: "w-32 sm:w-36 max-w-full border rounded p-2 text-sm bg-white", value: d.name || "", onChange: e => updateSystemConfig(sc => {
-                                                        const list = [...sc.organization.dorms];
-                                                        list[idx] = { ...list[idx], name: e.target.value };
-                                                        return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                                    }), placeholder: "宿舍名称" }),
-                                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                                        const list = [...sc.organization.dorms];
-                                                        list.splice(idx, 1);
-                                                        return { ...sc, organization: { ...sc.organization, dorms: list } };
-                                                    }), className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                ))
-                                            )
-                                    ),
-                                    h("div", { className: "w-full max-w-xs sm:max-w-sm bg-white border rounded-lg p-4 space-y-4" },
-                                        h("div", { className: "text-sm font-medium text-gray-700" }, "工资设置"),
-                                        h("div", { className: "space-y-4" },
-                                            h("div", null,
-                                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "每日工资基础分"),
-                                                h("input", {
-                                                    type: "number",
-                                                    className: "w-full border rounded-lg p-2 text-sm",
-                                                    value: systemConfig.points.dailyWageAmount ?? 5,
-                                                    onChange: e => updateSystemConfig(sc => ({
-                                                        ...sc,
-                                                        points: {
-                                                            ...sc.points,
-                                                            dailyWageAmount: Number(e.target.value)
-                                                        }
-                                                    }))
-                                                }),
-                                                h("p", { className: "text-xs text-gray-500 mt-1" }, "普通成员按此分值发放，组长固定额外 +1 分。")
-                                            ),
-                                            h("div", null,
-                                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "发放工资的小组"),
-                                                h("div", { className: "space-y-2 border rounded-lg p-3 bg-gray-50" },
-                                                    (systemConfig.organization.groups || []).map(group => {
-                                                        const selectedGroups = Array.isArray(systemConfig.points.dailyWageGroups) ? systemConfig.points.dailyWageGroups : [];
-                                                        const checked = selectedGroups.includes(group.id);
-                                                        return h("label", { key: group.id, className: "flex items-center gap-2 text-sm text-gray-700" },
-                                                            h("input", {
-                                                                type: "checkbox",
-                                                                checked,
-                                                                onChange: e => updateSystemConfig(sc => {
-                                                                    const current = Array.isArray(sc.points.dailyWageGroups) ? sc.points.dailyWageGroups : [];
-                                                                    const next = e.target.checked
-                                                                        ? [...new Set([...current, group.id])]
-                                                                        : current.filter(id => id !== group.id);
-                                                                    return {
-                                                                        ...sc,
-                                                                        points: {
-                                                                            ...sc.points,
-                                                                            dailyWageGroups: next
-                                                                        }
-                                                                    };
-                                                                })
-                                                            }),
-                                                            h("span", null, group.name || group.id)
-                                                        );
-                                                    })
-                                                ),
-                                                h("p", { className: "text-xs text-gray-500 mt-1" }, "“一键工资”只会给这里勾选的小组成员发放工资。")
-                                            )
-                                        )
-                                    )
-                                )
-                            ),
-                            renderStudentRosterManager(),
-                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
-                                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
-                                    h("div", null,
-                                        h("div", { className: "text-sm font-medium text-gray-700" }, "自定义角色"),
-                                        h("p", { className: "text-xs text-gray-500 mt-1" }, "专员角色、卫生督查和班级自定义角色统一收在这里。")
-                                    ),
-                                    h("button", {
-                                        onClick: () => setShowCustomRolesManager(prev => !prev),
-                                        className: "px-4 py-2 bg-white border rounded hover:bg-gray-100 text-sm font-medium"
-                                    }, showCustomRolesManager ? "收起自定义角色" : "打开自定义角色")
-                                ),
-                                showCustomRolesManager && h("div", { className: "border-t pt-4 space-y-4" },
-                                    h("div", { className: "grid grid-cols-1 xl:grid-cols-2 gap-4 items-start max-w-4xl" },
-                                        h("div", { className: "w-full max-w-sm" },
-                                            h("div", { className: "bg-white border rounded-lg p-4 space-y-3" },
-                                                h("div", { className: "flex justify-between items-center" },
-                                                    h("span", { className: "text-sm font-medium text-gray-700" }, "专员角色"),
-                                                    h("button", { onClick: () => updateSystemConfig(sc => {
-                                                        const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
-                                                        list.push({ id: `role_${Date.now()}`, name: "新角色", studentId: null });
-                                                        return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                    }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增角色")
-                                                ),
-                                                h("p", { className: "text-xs text-gray-500" }, "一般用于纪律组内分工，不另外发工资，只用于首页公示提醒，不设置则不显示"),
-                                                (systemConfig.organization.commissionerRoles || []).length === 0
-                                                    ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无专员角色")
-                                                : h("div", { className: "space-y-2" },
-                                                        getCommissionerRoles(config).map((r, idx) => h("div", { key: r.id || idx, className: "bg-gray-50 p-2 rounded border" },
-                                                            h("div", { className: "flex flex-wrap sm:flex-nowrap items-center gap-2" },
-                                                                h("input", { className: "w-24 sm:w-28 border rounded p-2 text-sm bg-white shrink-0", value: r.name || "", onChange: e => updateSystemConfig(sc => {
-                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
-                                                                    list[idx] = { ...list[idx], name: e.target.value };
-                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                                }), placeholder: "角色名称" }),
-                                                                h("select", { className: "w-16 sm:w-20 border rounded p-2 text-sm bg-white shrink-0", value: r.studentId || "", onChange: e => updateSystemConfig(sc => {
-                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
-                                                                    list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
-                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                                }) },
-                                                                    h("option", { value: "" }, "未设置"),
-                                                                    Array.from(new Map(
-                                                                        (students || [])
-                                                                            .filter(student => student.group === 'discipline' || student.id === r.studentId)
-                                                                            .map(student => [student.id, student])
-                                                                    ).values()).map(student => h("option", { key: student.id, value: student.id }, student.name))
-                                                                ),
-                                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                                    const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
-                                                                    list.splice(idx, 1);
-                                                                    return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
-                                                                }), className: "px-2 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                            )
-                                                        ))
-                                                    )
-                                            ),
-                                        ),
-                                        h("div", { className: "w-full max-w-xl bg-white border rounded-lg p-4 space-y-3" },
-                                            h("div", { className: "flex justify-between items-center" },
-                                                h("span", { className: "text-sm font-medium text-gray-700" }, "班级自定义角色"),
-                                                h("button", { onClick: () => updateSystemConfig(sc => {
-                                                    const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                    list.push({ id: `custom_role_${Date.now()}`, name: "新职务", dailyWage: 2, studentId: null });
-                                                    return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                }), className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs" }, "新增职务")
-                                            ),
-                                            h("p", { className: "text-xs text-gray-500" }, "只维护职务名称、每日工资和任职学生，内部编号继续保留但不在这里编辑。"),
-                                            getCustomRoles(config).length === 0
-                                                ? h("div", { className: "text-sm text-gray-400 py-2" }, "暂无班级自定义角色")
-                                                : h("div", { className: "space-y-2" },
-                                                    getCustomRoles(config).map((role, idx) => h("div", { key: role.id || idx, className: "bg-gray-50 p-2 rounded border" },
-                                                        h("div", { className: "flex flex-wrap sm:flex-nowrap items-center gap-2" },
-                                                            h("input", { className: "w-24 sm:w-28 shrink-0 border rounded p-2 text-sm bg-white", value: role.name || "", onChange: e => updateSystemConfig(sc => {
-                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                                list[idx] = { ...list[idx], name: e.target.value };
-                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                            }), placeholder: "职务名称" }),
-                                                            h("input", { type: "number", className: "w-14 sm:w-16 shrink-0 border rounded p-2 text-sm bg-white", value: role.dailyWage ?? 0, onChange: e => updateSystemConfig(sc => {
-                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                                list[idx] = { ...list[idx], dailyWage: Number(e.target.value) };
-                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                            }), placeholder: "工资" }),
-                                                            h("select", { className: "w-16 sm:w-20 shrink-0 border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
-                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                                list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
-                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                            }) },
-                                                                h("option", { value: "" }, "未设置"),
-                                                                (students || []).map(student => h("option", { key: student.id, value: student.id }, student.name))
-                                                            ),
-                                                            h("button", { onClick: () => updateSystemConfig(sc => {
-                                                                const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                                list.splice(idx, 1);
-                                                                return { ...sc, organization: { ...sc.organization, customRoles: list } };
-                                                            }), className: "px-2 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs shrink-0" }, "删除")
-                                                        )
-                                                    ))
-                                                )
-                                        )
-                                    ),
-                                    h("div", { className: "w-full bg-white border rounded-lg p-4 space-y-3" },
-                                        h("div", null,
-                                            h("div", { className: "text-sm font-medium text-gray-700" }, "卫生督查"),
-                                            h("p", { className: "text-xs text-gray-500 mt-1" }, "一般用于卫生组内分工，不另外发工资，只用于首页公示提醒，不设置则不显示")
-                                        ),
-                                        h("div", { className: "grid grid-cols-5 gap-3 text-sm" },
-                                            ['mon', 'tue', 'wed', 'thu', 'fri'].map(day => h("div", { key: `label_${day}`, className: "text-center text-sm font-medium text-gray-700" }, { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" }[day])),
-                                            ['mon', 'tue', 'wed', 'thu', 'fri'].map(day => h("div", { key: day, className: "bg-gray-50 border rounded-lg p-2 space-y-2" },
-                                                (config.duty?.[day] || []).map((val, idx) => h("select", {
-                                                    key: idx,
-                                                    value: val,
-                                                    onChange: e => handleDutyChange(day, idx, e.target.value),
-                                                    className: "w-full border rounded p-2 text-sm bg-white"
-                                                },
-                                                    h("option", { value: "" }, "未设置"),
-                                                    students.filter(s => s.group === 'hygiene').map(s => h("option", { key: s.id, value: s.name }, s.name))
-                                                ))
-                                            ))
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                    ),
-                    h("div", { className: "border-t pt-4" },
-                        h("button", {
-                            onClick: () => {
-                                const fullData = {
-                                    students,
-                                    history,
-                                    config,
-                                    attendanceRecords,
-                                    treasures,
-                                    storage,
-                                    logs,
-                                    quotes,
-                                    messages,
-                                    teacherMessages,
-                                    redemptionHistory,
-                                    dailyRedemptionCounts,
-                                    dailyUsageCounts,
-                                    tasks,
-                                    battle
-                                };
-                                if (typeof persistData === 'function') persistData(fullData);
-                                alert("配置已保存！");
-                            },
-                            className: "w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
-                        }, "💾 保存配置")
-                    )
-                )
-            ),
-            h("div", { className: "border-t pt-6" },
-                h("h3", { className: "font-bold text-gray-700 mb-4" }, "🧰 工具区"),
-                h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start" },
-                    renderToolCard(
-                        "❄️ 假期封存",
-                        "开启后暂停缺勤记录、迟到扣分、缺勤结算、全勤奖等所有自动机制，适用于假期。",
-                        h("div", { className: "space-y-3" },
-                            h("button", {
-                                onClick: () => {
-                                    const newFrozen = !config.frozen;
-                                    setConfigSafe(c => ({ ...c, frozen: newFrozen }));
-
-                                    if (!newFrozen) {
-                                        const now = Date.now();
-                                        const newStudents = students.map(s => ({
-                                            ...s,
-                                            lastPenaltyAt: now
-                                        }));
-                                        setStudents(newStudents);
-                                        alert("系统已解封，所有学生的未扣分天数已重置为0天");
-                                    }
-                                },
-                                className: `w-full py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${config.frozen ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`
-                            }, config.frozen ? "✓ 已封存（点击解除）" : "未封存（点击开启）")
-                        )
-                    ),
-                    renderToolCard(
-                        "🧪 测试模式",
-                        "进入后所有操作仅在测试隔离环境中生效，退出后自动还原。",
-                        h("div", { className: "space-y-3" },
-                            h("div", { className: "flex flex-wrap gap-3 items-center" },
-                                h("button", {
-                                    onClick: () => testMode ? exitTestMode() : enterTestMode(),
-                                    className: `px-4 py-2 rounded-lg font-bold text-sm ${testMode ? "bg-red-500 text-white hover:bg-red-600" : "bg-blue-600 text-white hover:bg-blue-700"}`
-                                }, testMode ? "退出测试模式" : "进入测试模式"),
-                                h("span", { className: `text-xs font-medium ${testMode ? "text-green-600" : "text-gray-400"}` }, testMode ? "已启用" : "未启用")
-                            ),
-                            testMode && h("div", { className: "bg-gray-50 border rounded-lg p-3 space-y-3" },
-                                h("div", { className: "text-sm text-gray-700" }, `当前模拟时间：${new Date(simTime).toLocaleString()}`),
-                                h("div", { className: "space-y-3" },
-                                    h("div", null,
-                                        h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "设置模拟时间"),
-                                        h("input", {
-                                            type: "datetime-local",
-                                            className: "w-full border rounded-lg p-2 text-sm bg-white",
-                                            value: formatDateTimeLocal(simTime),
-                                            onChange: (e) => {
-                                                const v = e.target.value;
-                                                if (!v) return;
-                                                const t = new Date(v);
-                                                if (!isNaN(t.getTime())) setSimTime(t.getTime());
-                                            }
-                                        })
-                                    ),
-                                    h("div", null,
-                                        h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "时间流速"),
-                                        h("div", { className: "flex gap-2 flex-wrap" },
-                                            [1, 2, 5, 10, 30, 60].map(s => h("button", {
-                                                key: s,
-                                                onClick: () => setTimeSpeed(s),
-                                                className: `px-3 py-2 rounded-lg text-xs font-bold ${timeSpeed === s ? "bg-blue-600 text-white" : "bg-white border text-gray-700 hover:bg-gray-100"}`
-                                            }, `${s}x`))
-                                        )
-                                    )
-                                ),
-                                h("div", { className: "flex flex-wrap gap-2" },
-                                    h("button", { onClick: () => setSimTime(t => t - 60 * 60 * 1000), className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "后退1小时"),
-                                    h("button", { onClick: () => setSimTime(t => t + 60 * 60 * 1000), className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "前进1小时"),
-                                    h("button", { onClick: () => setSimTime(t => t - 24 * 60 * 60 * 1000), className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "后退1天"),
-                                    h("button", { onClick: () => setSimTime(t => t + 24 * 60 * 60 * 1000), className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "前进1天"),
-                                    h("button", { onClick: () => setSimTime(getNow().getTime()), className: "px-3 py-2 bg-gray-200 rounded text-xs hover:bg-gray-300" }, "重置当前")
-                                )
-                            )
-                        )
-                    ),
-                    renderToolCard(
-                        "📅 倒数日",
-                        "新增和维护首页倒数日显示内容。",
-                        h("div", { className: "space-y-3" },
-                            h("div", { className: "flex flex-col gap-2" },
-                                h("input", { className: "border rounded p-2 text-sm bg-white", value: countdownName, onChange: e => setCountdownName(e.target.value), placeholder: "事件名称" }),
-                                h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: countdownDate, onChange: e => setCountdownDate(e.target.value) }),
-                                h("button", { onClick: addCountdownEvent, className: "px-3 py-2 bg-blue-600 text-white rounded text-sm" }, "新增")
-                            ),
-                            h("div", { className: "space-y-2" },
-                                (Array.isArray(config.countdownEvents) ? config.countdownEvents : []).map(e => h("div", { key: e.id || `${e.name}-${e.date}`, className: "flex items-center gap-2 bg-gray-50 p-2 rounded border text-sm" },
-                                    h("div", { className: "flex-1 min-w-0" }, `${e.name} · ${e.date}`),
-                                    h("button", { onClick: () => removeCountdownEvent(e.id), className: "px-2 py-1 text-xs bg-red-50 text-red-600 rounded shrink-0" }, "删除")
-                                ))
-                            )
-                        )
-                    ),
-                    renderToolCard(
-                        "📝 简报",
-                        "按日期范围导出简报文本。",
-                        h("div", { className: "space-y-3" },
-                            h("div", { className: "flex flex-wrap gap-2" },
-                                h("button", { onClick: () => { const r = getReportRange(7); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-white border text-gray-700 rounded" }, "近7天"),
-                                h("button", { onClick: () => { const r = getReportRange(30); setReportStart(r.start); setReportEnd(r.end); }, className: "px-3 py-1 text-xs bg-white border text-gray-700 rounded" }, "近30天")
-                            ),
-                            h("div", { className: "flex flex-col gap-2" },
-                                h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: reportStart, onChange: e => setReportStart(e.target.value) }),
-                                h("input", { type: "date", className: "border rounded p-2 text-sm bg-white", value: reportEnd, onChange: e => setReportEnd(e.target.value) }),
-                                h("button", { onClick: handleGenerateBrief, className: "px-3 py-2 bg-emerald-600 text-white rounded text-sm" }, "生成简报")
-                            )
-                        )
-                    )
-                )
-            )
+            renderExamArchivesSection({
+                examArchivesModuleStatus,
+                showExamArchivesManager,
+                openExamArchivesManager,
+                setExamArchivesModuleStatus,
+                ensureExamArchivesModule,
+                ExamArchivesView,
+                students,
+                battle,
+                examArchives,
+                setBattle,
+                setExamArchives,
+                persistExamArchives: persistExamArchiveChanges,
+                adminPassword: window.DEFAULT_ADMIN_PASSWORD
+            }),
+            renderSystemConfigSection({
+                config,
+                systemConfig,
+                students,
+                DEFAULT_SYSTEM_CONFIG,
+                handleResetSystemConfig,
+                updateSystemConfig,
+                showOrganizationManager,
+                onToggleOrganizationManager: () => setShowOrganizationManager(prev => !prev),
+                showCustomRolesManager,
+                onToggleCustomRolesManager: () => setShowCustomRolesManager(prev => !prev),
+                normalizeCommissionerRoles,
+                normalizeCustomRoles,
+                getCommissionerRoles,
+                getCustomRoles,
+                handleDutyChange,
+                StudentRosterSection,
+                studentRosterProps: {
+                    showStudentRosterManager,
+                    onToggleOpen: () => setShowStudentRosterManager(prev => !prev),
+                    handleExportStudentsExcel,
+                    handleDownloadStudentTemplate,
+                    handleImportStudentsExcel,
+                    addStudent,
+                    students,
+                    systemConfig,
+                    updateStudent,
+                    removeStudent
+                },
+                onSaveConfig: handleSaveConfigChanges
+            }),
+            renderToolsSection({
+                config,
+                setConfigSafe,
+                students,
+                setStudents,
+                testMode,
+                enterTestMode,
+                exitTestMode,
+                simTime,
+                setSimTime,
+                timeSpeed,
+                setTimeSpeed,
+                getNow,
+                formatDateTimeLocal,
+                countdownName,
+                setCountdownName,
+                countdownDate,
+                setCountdownDate,
+                addCountdownEvent,
+                removeCountdownEvent,
+                reportStart,
+                setReportStart,
+                reportEnd,
+                setReportEnd,
+                getReportRange,
+                handleGenerateBrief
+            })
         );
     };
 

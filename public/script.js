@@ -177,13 +177,6 @@ const normalizeExamArchives = (examArchives, fallbackBattle = null) => {
         defaultBattleSettleExamId: source.defaultBattleSettleExamId || ''
     };
 };
-const normalizeBattleSnapshots = (battleSnapshots) => {
-    const transfer = window.BattleTransfer || {};
-    if (typeof transfer.normalizeBattleSnapshots === 'function') {
-        return transfer.normalizeBattleSnapshots(battleSnapshots);
-    }
-    return Array.isArray(battleSnapshots) ? battleSnapshots : [];
-};
 const profileUtils = window.ProfileUtils || {};
 const {
     normalizeStudentProfiles,
@@ -849,6 +842,7 @@ const INITIAL_TREASURES = [
             Icon,
             requireAdminAuth,
             getNow,
+            getTodayStr,
             getDateString,
             getSystemConfig,
             getGroupsConfig,
@@ -925,7 +919,6 @@ const INITIAL_TREASURES = [
             h,
             useState,
             useEffect,
-            useMemo,
             Modal,
             Icon,
             requireAdminAuth,
@@ -935,7 +928,6 @@ const INITIAL_TREASURES = [
             battleSimulator: simulatorFactory,
             battleNormalize,
             normalizeExamArchives,
-            normalizeBattleSnapshots,
             battleBuildSettlementPointUpdates,
             BATTLE_INITIAL_POINTS,
             BATTLE_MAX_STAKE
@@ -996,7 +988,13 @@ const INITIAL_TREASURES = [
 
     const getSettingsView = () => {
         if (window.__SettingsViewComponent__) return window.__SettingsViewComponent__;
-        if (typeof window.createSettingsView !== 'function') return null;
+        if (
+            typeof window.createSettingsView !== 'function' ||
+            typeof window.createSettingsExamArchivesSection !== 'function' ||
+            typeof window.createSettingsStudentRosterSection !== 'function' ||
+            typeof window.createSettingsSystemConfigSection !== 'function' ||
+            typeof window.createSettingsToolsSection !== 'function'
+        ) return null;
         window.__SettingsViewComponent__ = window.createSettingsView({
             h,
             useState,
@@ -1016,10 +1014,8 @@ const INITIAL_TREASURES = [
             setAdminAuthUntil,
             ADMIN_AUTH_TTL_MS,
             DEFAULT_SYSTEM_CONFIG,
-            stripTreasureConfig,
             stripSystemConfigTreasures,
             sanitizeStoredConfig,
-            getLegacyTreasureList,
             normalizeCommissionerRoles,
             normalizeCustomRoles,
             getCustomRoles,
@@ -1030,9 +1026,12 @@ const INITIAL_TREASURES = [
             restoreStudentProfilesFromData,
             battleNormalize,
             normalizeExamArchives,
-            normalizeBattleSnapshots,
             loadScriptOnce,
-            getExamArchivesView
+            getExamArchivesView,
+            createSettingsExamArchivesSection: window.createSettingsExamArchivesSection,
+            createSettingsStudentRosterSection: window.createSettingsStudentRosterSection,
+            createSettingsSystemConfigSection: window.createSettingsSystemConfigSection,
+            createSettingsToolsSection: window.createSettingsToolsSection
         });
         return window.__SettingsViewComponent__;
     };
@@ -1162,7 +1161,6 @@ const INITIAL_TREASURES = [
         const [logs, setLogs] = useState([]);
         const [battle, setBattle] = useState({ version: 1, teams: [], squads: [], battles: [], logs: [], history: [], settlements: [], season: 1, rules: {}, teamBaseExamId: '', settleExamId: '' });
         const [examArchives, setExamArchives] = useState(() => normalizeExamArchives());
-        const [battleSnapshots, setBattleSnapshots] = useState(() => normalizeBattleSnapshots());
         // NEW: Quotes state
         const [quotes, setQuotes] = useState(() => window.DEFAULT_QUOTES);
         const [messages, setMessages] = useState([]); // Add messages state
@@ -1176,6 +1174,15 @@ const INITIAL_TREASURES = [
         const [profileModuleStatus, setProfileModuleStatus] = useState(typeof window.createProfileView === 'function' ? 'ready' : 'idle');
         const [tasksModuleStatus, setTasksModuleStatus] = useState(typeof window.createTasksView === 'function' ? 'ready' : 'idle');
         const [battleModuleStatus, setBattleModuleStatus] = useState(typeof window.createBattleView === 'function' ? 'ready' : 'idle');
+        const [settingsModuleStatus, setSettingsModuleStatus] = useState(
+            typeof window.createSettingsView === 'function' &&
+            typeof window.createSettingsExamArchivesSection === 'function' &&
+            typeof window.createSettingsStudentRosterSection === 'function' &&
+            typeof window.createSettingsSystemConfigSection === 'function' &&
+            typeof window.createSettingsToolsSection === 'function'
+                ? 'ready'
+                : 'idle'
+        );
 
         const displayStudents = (Array.isArray(students) && students.length > 0) ? students : GUEST_ROSTER;
 
@@ -1204,7 +1211,7 @@ const INITIAL_TREASURES = [
         const OperationView = getOperationView();
         const AttendanceView = getAttendanceView();
         const TreasureView = getTreasureView();
-        const SettingsView = getSettingsView();
+        const SettingsView = settingsModuleStatus === 'ready' ? getSettingsView() : null;
         const ProfileView = profileModuleStatus === 'ready' ? getProfileView() : null;
         const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
         const BattleView = battleModuleStatus === 'ready' ? getBattleView() : null;
@@ -1266,6 +1273,34 @@ const INITIAL_TREASURES = [
                     setBattleModuleStatus('error');
                 });
         }, [activeTab, battleModuleStatus]);
+
+        useEffect(() => {
+            if (activeTab !== 'settings' || settingsModuleStatus === 'ready' || settingsModuleStatus === 'loading') return;
+            setSettingsModuleStatus('loading');
+            loadScriptOnce('settings/exam-archives-section.js')
+                .then(() => loadScriptOnce('settings/student-roster-section.js'))
+                .then(() => loadScriptOnce('settings/system-config-section.js'))
+                .then(() => loadScriptOnce('settings/tools-section.js'))
+                .then(() => loadScriptOnce('settings/module.js'))
+                .then(() => {
+                    if (
+                        typeof window.createSettingsView === 'function' &&
+                        typeof window.createSettingsExamArchivesSection === 'function' &&
+                        typeof window.createSettingsStudentRosterSection === 'function' &&
+                        typeof window.createSettingsSystemConfigSection === 'function' &&
+                        typeof window.createSettingsToolsSection === 'function'
+                    ) {
+                        getSettingsView();
+                        setSettingsModuleStatus('ready');
+                    } else {
+                        setSettingsModuleStatus('error');
+                    }
+                })
+                .catch(err => {
+                    console.error('加载维护中心模块失败:', err);
+                    setSettingsModuleStatus('error');
+                });
+        }, [activeTab, settingsModuleStatus]);
 
         useEffect(() => {
             if (testMode) {
@@ -1338,7 +1373,6 @@ const INITIAL_TREASURES = [
                 tasks: safe.tasks,
                 battle: safe.battle,
                 examArchives: normalizeExamArchives(safe.examArchives, safe.battle),
-                battleSnapshots: normalizeBattleSnapshots(safe.battleSnapshots),
                 __meta: safe.__meta || {},
                 flags: {
                     students: Object.prototype.hasOwnProperty.call(safe, 'students'),
@@ -1357,8 +1391,7 @@ const INITIAL_TREASURES = [
                     dailyUsageCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyUsageCounts'),
                     tasks: Object.prototype.hasOwnProperty.call(safe, 'tasks'),
                     battle: Object.prototype.hasOwnProperty.call(safe, 'battle'),
-                    examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams)),
-                    battleSnapshots: Object.prototype.hasOwnProperty.call(safe, 'battleSnapshots')
+                    examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams))
                 }
             };
         };
@@ -1401,7 +1434,6 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.tasks)) setTasks(normalized.tasks || []);
             if (use(normalized.flags.battle)) setBattle(battleNormalize(normalized.battle || {}));
             if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
-            if (use(normalized.flags.battleSnapshots)) setBattleSnapshots(normalizeBattleSnapshots(normalized.battleSnapshots));
         };
 
         const enterTestMode = useCallback(() => {
@@ -1424,7 +1456,6 @@ const INITIAL_TREASURES = [
                 tasks: deepClone(tasks),
                 battle: deepClone(battle),
                 examArchives: deepClone(examArchives),
-                battleSnapshots: deepClone(battleSnapshots),
                 activeTab
             };
             window.__CM_TEST_STORAGE__ = snapshotStorage();
@@ -1432,7 +1463,7 @@ const INITIAL_TREASURES = [
             setSimTime(getNow().getTime());
             setTimeSpeed(1);
             setSyncStatus('saved');
-        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots, activeTab]);
+        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, activeTab]);
 
         const exitTestMode = useCallback(() => {
             if (!testMode) return;
@@ -1455,7 +1486,6 @@ const INITIAL_TREASURES = [
                 setTasks(snap.tasks || []);
                 setBattle(battleNormalize(snap.battle || {}));
                 setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
-                setBattleSnapshots(normalizeBattleSnapshots(snap.battleSnapshots));
                 if (snap.activeTab) setActiveTab(snap.activeTab);
             }
             window.__CM_TEST_STORAGE__ = null;
@@ -1491,14 +1521,13 @@ const INITIAL_TREASURES = [
                 tasks,
                 battle,
                 examArchives,
-                battleSnapshots,
                 ...overrides,
                 config: nextConfig,
                 treasures: Array.isArray(nextTreasures) ? nextTreasures : effectiveTreasures,
                 students: nextStudents,
                 studentProfiles: nextStudentProfiles
             };
-        }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, battleSnapshots]);
+        }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
 
         const savePayloadToServer = useCallback((payload, nowTs) => {
             if (window.__CM_TEST_MODE__) {
@@ -1567,7 +1596,6 @@ const INITIAL_TREASURES = [
                 Array.isArray(currentExamArchives.exams) &&
                 currentExamArchives.exams.length > 0
             ) ? currentExamArchives : incomingExamArchives;
-            const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
                 config: sanitizeStoredConfig(fullData?.config),
@@ -1577,7 +1605,6 @@ const INITIAL_TREASURES = [
                 studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
-                battleSnapshots: nextBattleSnapshots,
                 __meta: {
                     updatedAt: nowTs,
                     baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
@@ -1598,7 +1625,7 @@ const INITIAL_TREASURES = [
                 payload.logs = safeTreasureDomain.logs;
             }
             return savePayloadToServer(payload, nowTs);
-        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, protectTreasureDomainForPersistence]);
+        }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
         /** 统一持久化：将当前完整数据写入服务器。 */
         const persistData = useCallback((fullData) => {
@@ -1619,7 +1646,6 @@ const INITIAL_TREASURES = [
                 Array.isArray(currentExamArchives.exams) &&
                 currentExamArchives.exams.length > 0
             ) ? currentExamArchives : incomingExamArchives;
-            const nextBattleSnapshots = normalizeBattleSnapshots(fullData?.battleSnapshots || battleSnapshots);
             const fullDataWithMeta = {
                 ...fullData,
                 config: sanitizeStoredConfig(fullData?.config),
@@ -1629,7 +1655,6 @@ const INITIAL_TREASURES = [
                 studentProfiles: nextStudentProfiles,
                 battle: normalizedInput.battle,
                 examArchives: protectedExamArchives,
-                battleSnapshots: nextBattleSnapshots,
                 __meta: {
                     updatedAt: nowTs,
                     baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
@@ -1637,7 +1662,7 @@ const INITIAL_TREASURES = [
                 }
             };
             return savePayloadToServer(fullDataWithMeta, nowTs);
-        }, [students, studentProfiles, battle, examArchives, battleSnapshots, savePayloadToServer, protectTreasureDomainForPersistence]);
+        }, [students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
         const fetchFromServer = useCallback((isAuto = false) => {
             if (window.__CM_TEST_MODE__) {
@@ -1708,6 +1733,7 @@ const INITIAL_TREASURES = [
             try {
                 localStorage.removeItem('class_manager_snapshots');
                 localStorage.removeItem('class_manager_snapshot_last_date');
+                localStorage.removeItem('cm_battle_snapshots_v1');
             } catch (_) {}
             setLocalHydrationDone(true);
             fetchFromServer(true); // Initial server fetch (silent)
@@ -1730,15 +1756,6 @@ const INITIAL_TREASURES = [
                 document.removeEventListener('visibilitychange', onFocus);
             };
         }, [fetchFromServer]);
-
-        useEffect(() => {
-            if (battleSnapshots.length > 0) return;
-            const transfer = window.BattleTransfer || {};
-            if (typeof transfer.readLegacySnapshots !== 'function') return;
-            const legacy = normalizeBattleSnapshots(transfer.readLegacySnapshots());
-            if (legacy.length === 0) return;
-            setBattleSnapshots(legacy);
-        }, [battleSnapshots.length]);
 
         // 动态更新页面标题
         useEffect(() => {
@@ -1830,8 +1847,7 @@ const INITIAL_TREASURES = [
             const saveBattleDomain = () => {
                 persistDataPatch({
                     battle,
-                    examArchives,
-                    battleSnapshots
+                    examArchives
                 }).then(() => {
                     isDirtyRef.current = false;
                 }).catch(() => {
@@ -1841,7 +1857,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveBattleDomain, 1200);
             return () => clearTimeout(timer);
-        }, [localHydrationDone, battle, examArchives, battleSnapshots, persistDataPatch]);
+        }, [localHydrationDone, battle, examArchives, persistDataPatch]);
 
 
         // NEW Batch Update Function
@@ -1997,6 +2013,40 @@ const INITIAL_TREASURES = [
             getNow
         }));
 
+        const handleApplyFixedStudents = (nextStudents) => {
+            setStudents(nextStudents);
+            persistData(buildCurrentFullData({ students: nextStudents }));
+        };
+
+        const handleImportTreasureData = (nextDomain) => {
+            const nextTreasures = Array.isArray(nextDomain?.treasures) ? nextDomain.treasures : [];
+            if (nextTreasures.length === 0) {
+                return { ok: false, message: "未解析到有效的宝物数据" };
+            }
+
+            const safeDomain = protectTreasureDomain({
+                treasures: nextTreasures,
+                storage: nextDomain?.storage,
+                logs
+            }, () => ({ treasures, storage, logs }), { allowEmptyOverwrite: true });
+
+            setTreasures(safeDomain.treasures || []);
+            setStorage(safeDomain.storage || {});
+            setRedemptionHistory({});
+            setDailyRedemptionCounts({});
+            setDailyUsageCounts({});
+            persistData(buildCurrentFullData({
+                treasures: safeDomain.treasures,
+                storage: safeDomain.storage,
+                logs: safeDomain.logs,
+                redemptionHistory: {},
+                dailyRedemptionCounts: {},
+                dailyUsageCounts: {}
+            }));
+
+            return { ok: true };
+        };
+
         const handleClaimTask = (taskId, studentId) => {
             const tasksPoints = window.TasksPoints || {};
             if (typeof tasksPoints.buildTaskClaimState !== 'function') return false;
@@ -2043,7 +2093,7 @@ const INITIAL_TREASURES = [
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
             h("main", { className: "max-w-6xl mx-auto p-4 mt-4" },
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
-                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory }),
+                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory, onApplyFixedStudents: handleApplyFixedStudents }),
                 activeTab === 'attendance' && (
                     AttendanceView
                         ? h(AttendanceView, { students: displayStudents, updatePoints, config, adminPassword: window.DEFAULT_ADMIN_PASSWORD, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onAttendanceRecordsChange: handleAttendanceRecordsChange, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
@@ -2070,7 +2120,7 @@ const INITIAL_TREASURES = [
                 ),
                 activeTab === 'battle' && (
                     battleModuleStatus === 'ready' && BattleView
-                        ? h(BattleView, { students: displayStudents, battle, examArchives, battleSnapshots, setBattleSnapshots, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords, onPersistBattleSnapshots: (nextSnapshots) => persistDataPatch({ battleSnapshots: nextSnapshots }), isDirtyRef })
+                        ? h(BattleView, { students: displayStudents, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints: applyBattleSettlementToMainRecords })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" },
                                 battleModuleStatus === 'error' ? "双子星模块加载失败" : "双子星模块加载中"
@@ -2093,7 +2143,8 @@ const INITIAL_TREASURES = [
                     onUseItem: handleUseItem,
                     onPerformGacha: handlePerformGacha,
                     onSaveItem: handleSaveTreasureItem,
-                    onDeleteItem: handleDeleteTreasureItem
+                    onDeleteItem: handleDeleteTreasureItem,
+                    onImportTreasureData: handleImportTreasureData
                 }),
                 activeTab === 'profile' && (
                     profileModuleStatus === 'ready' && ProfileView
@@ -2111,20 +2162,35 @@ const INITIAL_TREASURES = [
                             }, "重试")
                         )
                 ),
-                activeTab === 'settings' && h(SettingsView, { 
-                    students: displayStudents, studentProfiles, history, config,
-                    attendanceRecords, treasures, storage, logs,
-                    setStudents, setStudentProfiles, setHistory, setConfig,
-                    setAttendanceRecords, setTreasures, setStorage, setLogs,
-                    quotes, setQuotes,
-                    persistData,
-                    persistDataPatch,
-                    tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
-                    redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
-                    battle, setBattle, examArchives, setExamArchives, battleSnapshots, setBattleSnapshots, isDirtyRef,
-                    testMode, enterTestMode, exitTestMode,
-                    simTime, setSimTime, timeSpeed, setTimeSpeed
-                })
+                activeTab === 'settings' && (
+                    settingsModuleStatus === 'ready' && SettingsView
+                        ? h(SettingsView, { 
+                            students: displayStudents, studentProfiles, history, config,
+                            attendanceRecords, treasures, storage, logs,
+                            setStudents, setStudentProfiles, setHistory, setConfig,
+                            setAttendanceRecords, setTreasures, setStorage, setLogs,
+                            quotes, setQuotes,
+                            persistData,
+                            persistDataPatch,
+                            tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
+                            redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
+                            battle, setBattle, examArchives, setExamArchives, isDirtyRef,
+                            testMode, enterTestMode, exitTestMode,
+                            simTime, setSimTime, timeSpeed, setTimeSpeed
+                        })
+                        : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
+                            h("div", { className: "text-lg font-bold text-gray-800" },
+                                settingsModuleStatus === 'error' ? "维护中心模块加载失败" : "维护中心模块加载中"
+                            ),
+                            h("div", { className: "text-sm text-gray-500" },
+                                settingsModuleStatus === 'error' ? "请重试加载维护中心模块。" : "首次打开维护中心时会按需加载模块。"
+                            ),
+                            settingsModuleStatus === 'error' && h("button", {
+                                onClick: () => setSettingsModuleStatus('idle'),
+                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            }, "重试")
+                        )
+                )
             ),
             h(Modal, { isOpen: modal.open, title: modal.title, onClose: () => setModal({ ...modal, open: false }), onConfirm: modal.onConfirm, type: modal.type }, modal.content)
         );

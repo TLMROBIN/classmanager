@@ -12,6 +12,10 @@
         if (!h || !useState || !Modal || !Icon || !requireAdminAuth || !getTodayStr) {
             throw new Error('TreasureView dependencies are missing');
         }
+        if (typeof window.createTreasureIo !== 'function') {
+            throw new Error('Treasure IO helpers are missing');
+        }
+        const treasureIo = window.createTreasureIo({ getTodayStr });
 
         const GachaCrystal = ({ className = "" }) => h("svg", {
             viewBox: "0 0 100 100", className: `w-full h-full ${className}`, style: { filter: "drop-shadow(0 0 15px rgba(124, 58, 237, 0.8))" }
@@ -39,7 +43,8 @@
             onUseItem,
             onPerformGacha,
             onSaveItem,
-            onDeleteItem
+            onDeleteItem,
+            onImportTreasureData
         }) {
             const treasurePoints = window.TreasurePoints || {};
             const {
@@ -171,6 +176,18 @@
                     setNewItemData(createEmptyItemData());
                 }
             };
+
+            const handleExportTreasureExcel = () => treasureIo.exportTreasureExcel({
+                treasures,
+                storage,
+                students
+            });
+
+            const handleImportTreasureExcel = (e) => treasureIo.importTreasureExcel({
+                event: e,
+                students,
+                onImportTreasureData
+            });
 
             const rarityColor = (r) => {
                 switch (r) {
@@ -360,6 +377,31 @@
                         )
                     ),
                     tab === 'admin' && h("div", { className: "space-y-6" },
+                        h("div", { className: "bg-white p-4 rounded shadow" },
+                            h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                h("div", null,
+                                    h("h4", { className: "font-bold text-gray-800" }, "数据导入导出"),
+                                    h("p", { className: "text-xs text-gray-500 mt-1" }, "导出或导入宝物库存与学生储物箱，包含基础价格、阶梯价格、库存、日限额和稳定 ID。")
+                                ),
+                                h("div", { className: "flex flex-wrap gap-2" },
+                                    h("button", {
+                                        onClick: handleExportTreasureExcel,
+                                        className: "px-3 py-2 border border-purple-500 text-purple-600 rounded hover:bg-purple-50 text-sm font-medium"
+                                    }, "导出 Excel"),
+                                    h("label", {
+                                        className: "px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium cursor-pointer"
+                                    },
+                                        "导入 Excel",
+                                        h("input", {
+                                            type: "file",
+                                            accept: ".xlsx,.xls",
+                                            onChange: handleImportTreasureExcel,
+                                            style: { display: "none" }
+                                        })
+                                    )
+                                )
+                            )
+                        ),
                         h("div", { className: "bg-white p-4 rounded shadow" },
                             h("h4", { className: "font-bold mb-4" }, "库存管理 (仅管理员)"),
                             h("div", { className: "flex gap-2 mb-4" },

@@ -8,6 +8,7 @@
             Icon,
             requireAdminAuth,
             getNow,
+            getTodayStr,
             getDateString,
             getSystemConfig,
             getGroupsConfig,
@@ -50,6 +51,7 @@
         const createOperationHandlers = window.createOperationHandlers;
         const createOperationViews = window.createOperationViews;
         const createOperationSettingsSections = window.createOperationSettingsSections;
+        const createOperationAdminTools = window.createOperationAdminTools;
 
         if (
             !h ||
@@ -59,6 +61,7 @@
             !Icon ||
             !requireAdminAuth ||
             !getNow ||
+            !getTodayStr ||
             !getDateString ||
             !getSystemConfig ||
             !getGroupsConfig ||
@@ -90,7 +93,8 @@
             !buildHomeworkConfirmMessage ||
             !createOperationHandlers ||
             !createOperationViews ||
-            !createOperationSettingsSections
+            !createOperationSettingsSections ||
+            !createOperationAdminTools
         ) {
             throw new Error('OperationView dependencies are missing');
         }
@@ -131,6 +135,7 @@
             DEFAULT_POINT_SCENE,
             DEFAULT_POINT_CATEGORY
         });
+        const operationAdminTools = createOperationAdminTools({ getTodayStr });
 
         return function OperationView({
             students,
@@ -140,13 +145,15 @@
             batchUpdatePoints,
             config,
             setConfig,
-            setHistory
+            setHistory,
+            onApplyFixedStudents
         }) {
             const initialUiState = readUiState();
             const [selectedIdsState, setSelectedIdsState] = useState(() => new Set(initialUiState.selectedIds));
             const [filterGroupState, setFilterGroupState] = useState(() => initialUiState.filterGroup);
             const [filterDormState, setFilterDormState] = useState(() => initialUiState.filterDorm);
             const [opTabState, setOpTabState] = useState(() => initialUiState.opTab);
+            const [settingsOpen, setSettingsOpen] = useState(false);
             const [batchAdjustModal, setBatchAdjustModal] = useState({
                 open: false,
                 reason: null,
@@ -207,12 +214,27 @@
 
             const groupsConfig = getGroupsConfig(config);
             const dormsConfig = getDormsConfig(config);
+            const systemConfig = getSystemConfig(config);
             const reasons = getReasonsByType(getReasonsPreset(config), opTabState);
             const subjectsConfig = getSubjectsConfig(config);
             const homeworkSubjects = getHomeworkSubjects(subjectsConfig);
             const studentMap = buildStudentMap(students);
             const historyList = Array.isArray(history) ? history : [];
             const homeworkDates = getHomeworkDates({ getNow, getDateString });
+
+            const toggleSettingsPanel = () => {
+                if (settingsOpen) {
+                    setSettingsOpen(false);
+                    return;
+                }
+                if (!requireAdminAuth("请输入管理员密码以打开积分操作区设置：", systemConfig.adminPassword)) return;
+                setSettingsOpen(true);
+            };
+            const handleExportScoreExcel = () => operationAdminTools.exportScoreExcel({
+                students,
+                groupsConfig,
+                dormsConfig
+            });
 
             useEffect(() => {
                 setSelectedIds(prev => {
@@ -306,10 +328,60 @@
                     onReasonClick: handleReasonClick,
                     onCustomReason: handleCustomReason
                 }),
-                h(ReasonsConfigSection, {
-                    config,
-                    setConfig
-                }),
+                h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
+                    h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                        h("div", { className: "space-y-1" },
+                            h("div", { className: "flex items-center gap-2 text-gray-800" },
+                                h(Icon, { name: "settings", size: 18 }),
+                                h("h3", { className: "font-bold text-sm" }, "积分操作区设置")
+                            ),
+                            h("p", { className: "text-xs text-gray-500" }, "统一管理积分导出、手动修正、积分理由、课代表和记录属性维护。")
+                        ),
+                        h("button", {
+                            onClick: toggleSettingsPanel,
+                            className: `px-3 py-2 rounded-lg text-sm font-medium ${settingsOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        }, settingsOpen ? "收起设置" : "打开设置")
+                    ),
+                    h("div", { className: settingsOpen ? "space-y-4 border-t pt-4" : "hidden" },
+                        h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-3" },
+                            h("div", null,
+                                h("div", { className: "font-bold text-sm text-gray-800" }, "积分导出与修正"),
+                                h("p", { className: "text-xs text-gray-500 mt-1" }, "这里只保留积分导出和手动修正；积分导入与从历史恢复已移除。")
+                            ),
+                            h("div", { className: "flex flex-wrap gap-2" },
+                                h("button", {
+                                    onClick: handleExportScoreExcel,
+                                    className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm"
+                                }, "导出积分 Excel"),
+                                h("button", {
+                                    onClick: () => operationAdminTools.fixScore({
+                                        students,
+                                        applyStudents: onApplyFixedStudents
+                                    }),
+                                    className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm"
+                                }, "手动修正积分")
+                            )
+                        ),
+                        h(ReasonsConfigSection, {
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
+                        h(SubjectConfigSection, {
+                            students,
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
+                        h(RecordAttributesSection, {
+                            history,
+                            setHistory,
+                            config,
+                            setConfig,
+                            embedded: true
+                        })
+                    )
+                ),
                 h(HomeworkPanel, {
                     students: Array.isArray(students) ? students : [],
                     homeworkSubjects,
@@ -323,20 +395,9 @@
                     onToggleHomeworkSelection: toggleHomeworkSelection,
                     onSubmit: handleHomeworkSubmit
                 }),
-                h(SubjectConfigSection, {
-                    students,
-                    config,
-                    setConfig
-                }),
                 h(RecentHistoryPanel, {
                     recentHistory,
                     onUndo: handleUndo
-                }),
-                h(RecordAttributesSection, {
-                    history,
-                    setHistory,
-                    config,
-                    setConfig
                 }),
                 h(BatchAdjustModalView, {
                     batchAdjustModal,

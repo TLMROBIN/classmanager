@@ -49,12 +49,13 @@
             setIsOpen(true);
         };
 
-        const SubjectConfigSection = ({ students, config, setConfig }) => {
+        const SubjectConfigSection = ({ students, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const systemConfig = getSystemConfig(config);
             const studentList = Array.isArray(students) ? students : [];
             const subjects = Array.isArray(systemConfig.subjects) ? systemConfig.subjects : [];
             const adminPassword = systemConfig.adminPassword;
+            const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
@@ -66,16 +67,22 @@
                         h("p", { className: "text-xs text-gray-500" }, "配置作业登记使用的学科，以及每个学科的 1 到 2 名课代表。")
                     ),
                     h("button", {
-                        onClick: () => toggleManagedSection({
-                            isOpen,
-                            setIsOpen,
-                            promptText: "请输入管理员密码以打开课代表设置：",
-                            adminPassword
-                        }),
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入管理员密码以打开课代表设置：",
+                                adminPassword
+                            });
+                        },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起课代表设置" : "打开课代表设置")
                 ),
-                isOpen && h("div", { className: "space-y-3 border-t pt-4" },
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
                     h("div", { className: "flex justify-between items-center" },
                         h("span", { className: "text-sm font-medium text-gray-700" }, "学科列表"),
                         h("button", {
@@ -160,11 +167,12 @@
             );
         };
 
-        const ReasonsConfigSection = ({ config, setConfig }) => {
+        const ReasonsConfigSection = ({ config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const systemConfig = getSystemConfig(config);
             const reasons = (((systemConfig || {}).points || {}).reasons) || [];
             const adminPassword = systemConfig.adminPassword;
+            const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
@@ -176,16 +184,22 @@
                         h("p", { className: "text-xs text-gray-500" }, "维护奖励、扣分及其他积分理由预设，直接影响本页快捷操作按钮。")
                     ),
                     h("button", {
-                        onClick: () => toggleManagedSection({
-                            isOpen,
-                            setIsOpen,
-                            promptText: "请输入管理员密码以打开积分理由设置：",
-                            adminPassword
-                        }),
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入管理员密码以打开积分理由设置：",
+                                adminPassword
+                            });
+                        },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起积分理由设置" : "打开积分理由设置")
                 ),
-                isOpen && h("div", { className: "space-y-3 border-t pt-4" },
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
                     h("div", { className: "flex justify-between items-center" },
                         h("span", { className: "text-sm font-medium text-gray-700" }, "积分理由预设"),
                         h("button", {
@@ -325,7 +339,7 @@
             );
         };
 
-        const RecordAttributesSection = ({ history, setHistory, config, setConfig }) => {
+        const RecordAttributesSection = ({ history, setHistory, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const [recordSearch, setRecordSearch] = useState("");
             const [recordSelection, setRecordSelection] = useState(new Set());
@@ -336,6 +350,7 @@
             const systemConfig = getSystemConfig(config);
             const adminPassword = systemConfig.adminPassword;
             const historyList = Array.isArray(history) ? history : [];
+            const isVisible = isOpen;
 
             useEffect(() => {
                 if (historyList.length === 0) return;
@@ -402,16 +417,22 @@
                         h("p", { className: "text-xs text-gray-500" }, "批量修正积分记录的场景、类别，或删除错误记录。")
                     ),
                     h("button", {
-                        onClick: () => toggleManagedSection({
-                            isOpen,
-                            setIsOpen,
-                            promptText: "请输入管理员密码以打开积分记录属性维护：",
-                            adminPassword
-                        }),
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入管理员密码以打开积分记录属性维护：",
+                                adminPassword
+                            });
+                        },
                         className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起记录属性维护" : "打开记录属性维护")
                 ),
-                isOpen && h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-3 border-t pt-4" },
+                isVisible && h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-3 border-t pt-4" },
                     h("div", { className: "flex flex-wrap items-center justify-between gap-3" },
                         h("div", null,
                             h("div", { className: "font-bold text-gray-700 text-sm" }, "积分记录属性维护"),

@@ -4,7 +4,6 @@
             h,
             useState,
             useEffect,
-            useMemo,
             Modal,
             Icon,
             requireAdminAuth,
@@ -14,13 +13,12 @@
             battleSimulator,
             battleNormalize,
             normalizeExamArchives,
-            normalizeBattleSnapshots,
             battleBuildSettlementPointUpdates,
             BATTLE_INITIAL_POINTS,
             BATTLE_MAX_STAKE
         } = deps;
 
-        return function BattleView({ students, battle, examArchives, battleSnapshots, setBattleSnapshots, setExamArchives, setBattle, onApplySettlementPoints, onPersistBattleSnapshots, isDirtyRef }) {
+        return function BattleView({ students, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints }) {
             const [results, setResults] = useState(null);
             const [examUnlocked, setExamUnlocked] = useState(false);
             const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -42,7 +40,6 @@
             const totalStudents = Math.max(Array.isArray(students) ? students.length : 0, 1);
             const [selectedSettlementId, setSelectedSettlementId] = useState('');
             const [selectedTeamId, setSelectedTeamId] = useState('');
-            const snapshotList = useMemo(() => normalizeBattleSnapshots(battleSnapshots), [battleSnapshots]);
             const state = battleState || {};
             const simulator = battleSimulator || {};
 
@@ -52,25 +49,6 @@
                         ? state.applyBattlePatch(prev, patch)
                         : { ...battleNormalize(prev), ...(patch || {}) }
                 ));
-            };
-
-            const createBattleSnapshotEntry = (reason) => {
-                if (typeof battleTransfer.buildBattleSnapshotEntry !== 'function' || typeof setBattleSnapshots !== 'function') return null;
-                const snap = battleTransfer.buildBattleSnapshotEntry({
-                    reason,
-                    battle: data,
-                    examArchives: archiveData,
-                    students,
-                    now: Date.now()
-                });
-                const nextSnapshots = normalizeBattleSnapshots([snap, ...(Array.isArray(battleSnapshots) ? battleSnapshots : [])]);
-                setBattleSnapshots(nextSnapshots);
-                if (typeof onPersistBattleSnapshots === 'function') {
-                    onPersistBattleSnapshots(nextSnapshots).catch(err => {
-                        console.error('双子星快照保存失败:', err);
-                    });
-                }
-                return snap;
             };
 
             const applyBattleTransferPatch = (parsed, successMessage) => {
@@ -260,7 +238,6 @@
                             missingStudents: parsed.missingStudents || [],
                             confirmText: "确认导入",
                             onConfirm: () => {
-                                createBattleSnapshotEntry('导入对战备份前');
                                 applyBattleTransferPatch(parsed, "对战数据已导入");
                                 setTransferPreview({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
                             }
@@ -271,55 +248,6 @@
                 };
                 reader.readAsText(file);
                 e.target.value = '';
-            };
-
-            const handleCreateManualSnapshot = () => {
-                createBattleSnapshotEntry('手动快照');
-                setMoreMenuOpen(false);
-                alert('已生成双子星快照');
-            };
-
-            const handleRestoreBattleSnapshot = (snapshotId) => {
-                if (!snapshotId) return;
-                const snap = snapshotList.find(item => item.id === snapshotId);
-                if (!snap?.payload) return alert("未找到该快照");
-                try {
-                    const parsed = battleTransfer.parseBattleBackupText({
-                        text: JSON.stringify(snap.payload),
-                        students
-                    });
-                    setTransferPreview({
-                        open: true,
-                        title: `恢复战况快照：${snap.reason || ''}`,
-                        summary: parsed.summary,
-                        missingStudents: parsed.missingStudents || [],
-                        confirmText: "确认恢复",
-                        onConfirm: () => {
-                            createBattleSnapshotEntry(`恢复快照前-${snap.reason || '未命名'}`);
-                            applyBattleTransferPatch(parsed, "双子星快照已恢复");
-                            setTransferPreview({ open: false, title: '', summary: null, missingStudents: [], onConfirm: null, confirmText: '确认' });
-                        }
-                    });
-                } catch (err) {
-                    alert("快照恢复失败：" + err.message);
-                }
-            };
-
-            const handleDeleteBattleSnapshot = (snapshotId) => {
-                if (!snapshotId) return;
-                const target = snapshotList.find(item => item.id === snapshotId);
-                if (!target) return alert("未找到该快照");
-                if (!requireAdminAuth("删除双子星快照需要管理员密码：")) return;
-                if (!confirm(`确定删除快照「${target.reason || '未命名快照'}」吗？`)) return;
-                const nextSnapshots = snapshotList.filter(item => item.id !== snapshotId);
-                setBattleSnapshots(nextSnapshots);
-                if (typeof onPersistBattleSnapshots === 'function') {
-                    onPersistBattleSnapshots(nextSnapshots).catch(err => {
-                        console.error('删除双子星快照失败:', err);
-                        setBattleSnapshots(snapshotList);
-                        alert("删除失败，请刷新后重试");
-                    });
-                }
             };
 
             const handleAddChallenge = () => {
@@ -387,7 +315,6 @@
             const confirmSettlement = () => {
                 if (!results) return alert("请先进行结算模拟");
                 if (!confirm("确定生效？")) return;
-                createBattleSnapshotEntry('确认结算前');
                 const settlementTs = Date.now();
                 const newTeams = teams.map(t => {
                     const r = results.tRes.find(x => x.id === t.id);
@@ -443,7 +370,6 @@
             const startNewSeason = () => {
                 if (!results) return alert("请先进行结算模拟");
                 if (!confirm("确定归档并开启新赛季吗？")) return;
-                createBattleSnapshotEntry('开启新赛季前');
                 const seasonRecord = {
                     id: history.length + 1,
                     date: new Date().toLocaleDateString(),
@@ -480,35 +406,11 @@
                                 h("label", {
                                     className: "w-full px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs cursor-pointer flex items-center gap-2"
                                 }, h(Icon, { name: "upload", size: 14 }), "导入对战备份", h("input", { type: "file", className: "hidden", accept: ".json", onChange: handleImport })),
-                                h("button", {
-                                    onClick: handleCreateManualSnapshot,
-                                    className: "w-full px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs text-left"
-                                }, "保存战况快照")
                             )
                         ),
                         !examUnlocked && h("button", { onClick: () => { if (requireAdminAuth("请输入管理员密码：")) setExamUnlocked(true); }, className: "px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs" }, "解锁排名"),
                         examUnlocked && h("button", { onClick: () => setExamUnlocked(false), className: "px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700/60 text-xs" }, "锁定排名")
                     )
-                ),
-                h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
-                    h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
-                        h("div", { className: "font-bold text-slate-100" }, "战况快照"),
-                        h("div", { className: "text-xs text-slate-400" }, "自动记录导入备份、确认结算、开启新赛季前的双子星状态")
-                    ),
-                    snapshotList.length === 0
-                        ? h("div", { className: "text-xs text-slate-500" }, "暂无双子星快照")
-                        : h("div", { className: "space-y-2 max-h-44 overflow-y-auto" },
-                            snapshotList.slice(0, 8).map(item => h("div", { key: item.id, className: "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/60 bg-slate-950/40 px-3 py-2 text-xs" },
-                                h("div", null,
-                                    h("div", { className: "text-slate-100 font-medium" }, item.reason || '未命名快照'),
-                                    h("div", { className: "text-slate-400 mt-1" }, new Date(item.ts || Date.now()).toLocaleString('zh-CN', { hour12: false }))
-                                ),
-                                h("div", { className: "flex items-center gap-2" },
-                                    h("button", { onClick: () => handleRestoreBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-cyan-500/20 border border-cyan-400/40 text-cyan-100" }, "预览恢复"),
-                                    h("button", { onClick: () => handleDeleteBattleSnapshot(item.id), className: "px-3 py-1 rounded bg-rose-500/20 border border-rose-400/40 text-rose-100" }, "删除")
-                                )
-                            ))
-                        )
                 ),
                 h("div", { className: "bg-slate-900/70 border border-slate-700/60 rounded-2xl p-4 space-y-3" },
                     h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
@@ -762,7 +664,7 @@
                                 h("div", { className: "font-bold mb-1" }, "以下学生未能映射到当前名单"),
                                 h("div", null, transferPreview.missingStudents.join('、'))
                             )
-                            : h("div", { className: "rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700" }, "学生映射检查通过，可安全导入或恢复。")
+                            : h("div", { className: "rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700" }, "学生映射检查通过，可安全导入。")
                     )
                 )
             );

@@ -25,6 +25,7 @@
             settleAbsentItems,
             awardPerfectAttendance
         } = attendancePoints || {};
+        const createAttendanceAdminTools = window.createAttendanceAdminTools;
 
         if (
             !h ||
@@ -44,10 +45,13 @@
             !applyLatePenalty ||
             !correctSelectedIssues ||
             !settleAbsentItems ||
-            !awardPerfectAttendance
+            !awardPerfectAttendance ||
+            !createAttendanceAdminTools
         ) {
             throw new Error('AttendanceView dependencies are missing');
         }
+
+        const attendanceAdminTools = createAttendanceAdminTools({ getTodayStr });
 
         return function AttendanceView({
             students,
@@ -388,6 +392,11 @@
                 if (requireAdminAuth("请输入管理员密码：", systemConfig.adminPassword)) setView('revoke');
             };
 
+            const handleExportAttendanceExcel = () => attendanceAdminTools.exportAttendanceExcel({
+                records,
+                scheduleConfig: getScheduleConfig(config)
+            });
+
             const abnormalRecords = useMemo(() => {
                 if (view !== 'revoke') return [];
                 const list = [];
@@ -720,6 +729,7 @@
                                 )
                             ),
                             h("div", { className: "flex gap-2" },
+                                h("button", { onClick: handleExportAttendanceExcel, className: "bg-white border text-gray-700 text-xs px-3 py-1 rounded hover:bg-gray-50" }, "导出 Excel"),
                                 h("button", { onClick: handleBatchCorrect, disabled: selectedIssues.length === 0, className: "bg-green-600 text-white text-xs px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50" }, `修正/补卡`),
                                 (() => {
                                     const penaltyRules = getPenaltyRules(config);

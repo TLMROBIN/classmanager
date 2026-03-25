@@ -259,16 +259,11 @@ app.get('/api/adjustments', authMiddleware, (req, res) => {
     const userId = req.user.id;
     
     try {
-        const dataRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, 'data');
+        const meta = readStoredJson(userId, '__meta');
+        const history = readStoredJson(userId, 'history');
+        const historyList = Array.isArray(history) ? history : [];
         
-        if (!dataRow) {
-            return res.json({ updatedAt: null, adjustments: [] });
-        }
-        
-        const data = JSON.parse(dataRow.data_value);
-        const history = Array.isArray(data?.history) ? data.history : [];
-        
-        const adjustments = history.filter(item => {
+        const adjustments = historyList.filter(item => {
             if (!item) return false;
             const val = Number(item.val);
             if (!Number.isFinite(val) || val === 0) return false;
@@ -277,7 +272,7 @@ app.get('/api/adjustments', authMiddleware, (req, res) => {
         });
         
         res.json({ 
-            updatedAt: data?.__meta?.updatedAt ?? null, 
+            updatedAt: Number(meta?.updatedAt) || null,
             adjustments 
         });
     } catch (err) {
