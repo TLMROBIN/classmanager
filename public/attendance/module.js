@@ -254,7 +254,13 @@
                 }
 
                 const streak = calculateStreak(studentName, result.newRecords, currentTime);
-                setCheckInEffect({ show: true, student: studentName, streak, usedMorningLateCard: result.status === 'late' && result.usedLateCardYesterday });
+                setCheckInEffect({
+                    show: true,
+                    student: studentName,
+                    streak,
+                    status: result.status,
+                    usedMorningLateCard: result.status === 'late' && result.usedLateCardYesterday
+                });
                 setTimeout(() => setCheckInEffect(null), 3000);
             };
 
@@ -295,31 +301,45 @@
                 setStudentMessages(updated);
             };
 
+            const getStreakDayStatus = (name, data, dateObj, now) => {
+                const rules = getRulesForDate(dateObj);
+                if (rules.length === 0) return 'skip';
+
+                const dateStr = getDateString(dateObj);
+                const dayRecords = data?.[dateStr]?.[name] || {};
+                const isToday = getDateString(dateObj) === getDateString(now);
+                let hasPendingSession = false;
+
+                for (const rule of rules) {
+                    const record = dayRecords?.[rule.id] || null;
+                    if (record) {
+                        if (record.status !== 'ok') return 'break';
+                        continue;
+                    }
+
+                    if (isToday && !isPeriodEnded(dateObj, rule, now)) {
+                        hasPendingSession = true;
+                        continue;
+                    }
+
+                    return 'break';
+                }
+
+                if (isToday && hasPendingSession) return 'pending';
+                return 'perfect';
+            };
+
             const calculateStreak = (name, data, endDate) => {
                 let streak = 0;
                 let d = new Date(endDate);
-                d.setDate(d.getDate() - 1);
                 for (let i = 0; i < 365; i++) {
-                    const dateStr = getDateString(d);
-                    const rules = getRulesForDate(d);
-                    if (rules.length === 0) {
+                    const dayStatus = getStreakDayStatus(name, data, d, endDate);
+                    if (dayStatus === 'skip') {
                         d.setDate(d.getDate() - 1);
                         continue;
                     }
-                    let perfect = true;
-                    const dayRec = data[dateStr]?.[name];
-                    if (!dayRec) {
-                        perfect = false;
-                    } else {
-                        for (const rule of rules) {
-                            if (!dayRec[rule.id] || dayRec[rule.id].status !== 'ok') {
-                                perfect = false;
-                                break;
-                            }
-                        }
-                    }
-                    if (perfect) streak++;
-                    else break;
+                    if (dayStatus === 'perfect') streak++;
+                    else if (dayStatus === 'break') break;
                     d.setDate(d.getDate() - 1);
                 }
                 return streak;
@@ -332,7 +352,7 @@
                 for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) list.push(new Date(d));
                 const stats = {};
                 students.forEach(student => {
-                    stats[student.name] = { late: 0, absent: 0, perfect: true, streak: calculateStreak(student.name, records, getNow()) };
+                    stats[student.name] = { late: 0, absent: 0, perfect: true, streak: calculateStreak(student.name, records, currentTime) };
                 });
                 const now = getNow();
                 list.forEach(dateObj => {
@@ -509,7 +529,15 @@
                         h("div", { className: "text-orange-500 animate-firework rounded-full mb-4" }, h(Icon, { name: "flame", size: 64 })),
                         h("h2", { className: "text-2xl font-bold text-gray-800 mb-2" }, "🎉 打卡成功！"),
                         h("div", { className: "text-lg text-gray-600 mb-4" }, checkInEffect.student),
-                        checkInEffect.usedMorningLateCard ? h("div", { className: "bg-amber-100 text-amber-800 px-4 py-2 rounded-full font-bold" }, "早读迟到卡已抵扣，记录迟到但不扣分") : checkInEffect.streak > 0 ? h("div", { className: "bg-orange-100 text-orange-700 px-4 py-2 rounded-full font-bold animate-pulse" }, `🔥 已连续全勤 ${checkInEffect.streak} 天！`) : h("div", { className: "text-blue-600 font-medium" }, "好的开始，继续保持！")
+                        checkInEffect.status === 'late'
+                            ? (
+                                checkInEffect.usedMorningLateCard
+                                    ? h("div", { className: "bg-amber-100 text-amber-800 px-4 py-2 rounded-full font-bold text-center" }, "早读迟到卡已抵扣，不扣分；但迟到仍会中断连胜")
+                                    : h("div", { className: "bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold" }, "本次迟到，连胜已中断")
+                            )
+                            : checkInEffect.streak > 0
+                                ? h("div", { className: "bg-orange-100 text-orange-700 px-4 py-2 rounded-full font-bold animate-pulse" }, `🔥 已连续全勤 ${checkInEffect.streak} 天！`)
+                                : h("div", { className: "text-blue-600 font-medium" }, "好的开始，继续保持！")
                     )
                 ),
                 h("div", { className: "bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white flex justify-between items-center" },
