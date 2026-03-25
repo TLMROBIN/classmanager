@@ -200,6 +200,7 @@ app.post('/api/data', authMiddleware, (req, res) => {
         const existingUpdatedAt = Number(existingMeta.updatedAt) || 0;
         const baseUpdatedAt = Number(incomingMeta.baseUpdatedAt) || 0;
         const allowServerOverwrite = incomingMeta.allowServerOverwrite === true;
+        const allowEmptyExamArchives = incomingMeta.allowEmptyExamArchives === true;
         if (existingUpdatedAt > 0 && !allowServerOverwrite && baseUpdatedAt !== existingUpdatedAt) {
             return res.status(409).json({
                 error: '服务器数据已被其他会话更新，请先刷新后再保存',
@@ -223,7 +224,7 @@ app.post('/api/data', authMiddleware, (req, res) => {
                     : value;
                 if (key === 'examArchives') {
                     const incomingExams = Array.isArray(value?.exams) ? value.exams : [];
-                    if (incomingExams.length === 0) {
+                    if (incomingExams.length === 0 && !allowEmptyExamArchives) {
                         const existingRow = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?').get(userId, 'examArchives');
                         if (existingRow) {
                             try {

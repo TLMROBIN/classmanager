@@ -201,14 +201,17 @@ const getLatestExamArchiveRank = (examArchives, studentId) => {
     const latestExamId = archives.latestExamId || archives.exams[0]?.id || '';
     if (!latestExamId) return null;
     const exam = archives.exams.find(item => item.id === latestExamId) || archives.exams[0];
-    if (!exam || !exam.ranks) return null;
-    const rank = exam.ranks[studentId];
-    if (!rank) return null;
-    const c = Number(rank.c);
-    const g = Number(rank.g);
+    if (!exam) return null;
+    const record = exam.records?.[studentId] || exam.records?.[String(studentId)] || null;
+    const rank = exam.ranks?.[studentId] || exam.ranks?.[String(studentId)] || null;
+    const rawC = record?.totalClassRank != null ? record.totalClassRank : rank?.c;
+    const rawG = record?.totalGradeRank != null ? record.totalGradeRank : rank?.g;
+    const c = Number.isFinite(Number(rawC)) ? Number(rawC) : null;
+    const g = Number.isFinite(Number(rawG)) ? Number(rawG) : null;
+    if (c == null && g == null) return null;
     return {
-        c: Number.isFinite(c) ? c : null,
-        g: Number.isFinite(g) ? g : null
+        c,
+        g
     };
 };
 
@@ -887,10 +890,8 @@ const INITIAL_TREASURES = [
             useState,
             useEffect,
             Icon,
-            requireAdminAuth,
             getTodayStr,
             getNow,
-            battleParseRank,
             battleNormalize,
             normalizeExamArchives
         });
@@ -1329,6 +1330,8 @@ const INITIAL_TREASURES = [
         const retryTimerRef = useRef(null);
         const serverMetaRef = useRef({ updatedAt: 0 });
         const initialServerSyncDoneRef = useRef(!getApiUrl());
+        const skipMainAutosaveRef = useRef(false);
+        const skipBattleAutosaveRef = useRef(false);
         const RETRY_CONNECT_MS = 10 * 60 * 1000;
 
         const getDeviceId = () => {
@@ -1529,6 +1532,102 @@ const INITIAL_TREASURES = [
             };
         }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
 
+        const fetchFromServerCore = useCallback((options = {}) => {
+            const normalizedOptions = typeof options === 'boolean' ? { isAuto: options } : (options || {});
+            const {
+                isAuto = false,
+                allowDirtyOverride = false,
+                successAlert,
+                emptyAlert,
+                errorAlert
+            } = normalizedOptions;
+
+            if (window.__CM_TEST_MODE__) {
+                if (!isAuto && errorAlert !== false) {
+                    alert(typeof errorAlert === 'string' ? errorAlert : "测试模式中已禁止同步。");
+                }
+                return Promise.resolve({ skipped: true, reason: 'test-mode' });
+            }
+            const apiUrl = getApiUrl();
+            if (!apiUrl) {
+                if (!isAuto && errorAlert !== false) {
+                    console.warn("Manual refresh ignored: unsupported runtime environment.");
+                    alert(typeof errorAlert === 'string' ? errorAlert : "当前环境无法连接服务器。");
+                }
+                return Promise.resolve({ skipped: true, reason: 'unsupported-runtime' });
+            }
+            if (!allowDirtyOverride && isAuto && (isSavingRef.current || isDirtyRef.current)) {
+                console.log('[自动刷新] 跳过：存在未保存更改或正在保存');
+                return Promise.resolve({ skipped: true, reason: 'dirty' });
+            }
+            if (!allowDirtyOverride && !isAuto && (isSavingRef.current || isDirtyRef.current)) {
+                alert("当前存在未保存更改，已阻止同步覆盖，请稍后再刷新。");
+                return Promise.resolve({ skipped: true, reason: 'dirty' });
+            }
+            if (allowDirtyOverride && (isSavingRef.current || isDirtyRef.current)) {
+                console.warn('[冲突恢复] 将使用服务器最新数据覆盖本地未保存更改');
+            }
+
+            if (!isAuto) setSyncStatus('unsaved');
+
+            return fetch(apiUrl, {
+                headers: window.__getAuthHeaders__()
+            })
+                .then(res => {
+                    if (window.__handleAuthError__(res)) return null;
+                    return res.json();
+                })
+                .then(data => {
+                    if (!data) return { skipped: true, reason: 'auth' };
+                    if (data && Object.keys(data).length > 0) {
+                        const normalized = normalizeFullData(data);
+                        const remoteTs = Number(normalized.__meta.updatedAt) || 0;
+                        markServerMeta(remoteTs);
+                        skipMainAutosaveRef.current = true;
+                        skipBattleAutosaveRef.current = true;
+                        applyFullData(data, {
+                            mergeAttendance: true,
+                            force: allowDirtyOverride
+                        });
+                        setSyncStatus('success');
+                        if (typeof successAlert === 'string' && successAlert) {
+                            alert(successAlert);
+                        } else if (!isAuto && successAlert !== false) {
+                            alert("数据已从服务器刷新！");
+                        }
+                        console.log(`[${getNow().toLocaleTimeString()}] 数据同步完成`);
+                        if (retryTimerRef.current) {
+                            clearTimeout(retryTimerRef.current);
+                            retryTimerRef.current = null;
+                        }
+                        return { success: true, updatedAt: remoteTs };
+                    }
+                    initialServerSyncDoneRef.current = true;
+                    if (typeof emptyAlert === 'string' && emptyAlert) {
+                        alert(emptyAlert);
+                    } else if (!isAuto && emptyAlert !== false) {
+                        alert("服务器无数据或数据为空。");
+                    }
+                    return { success: true, empty: true };
+                })
+                .catch(err => {
+                    console.error("Server fetch failed", err);
+                    setSyncStatus('error');
+                    if (typeof errorAlert === 'string' && errorAlert) {
+                        alert(errorAlert);
+                    } else if (!isAuto && errorAlert !== false) {
+                        alert("刷新失败，无法连接到服务器。");
+                    }
+                    if (!retryTimerRef.current) {
+                        retryTimerRef.current = setTimeout(() => {
+                            retryTimerRef.current = null;
+                            fetchFromServerCore(true);
+                        }, RETRY_CONNECT_MS);
+                    }
+                    throw err;
+                });
+        }, []);
+
         const savePayloadToServer = useCallback((payload, nowTs) => {
             if (window.__CM_TEST_MODE__) {
                 setSyncStatus('saved');
@@ -1555,9 +1654,24 @@ const INITIAL_TREASURES = [
                     if (res.status === 409) {
                         const serverUpdatedAt = Number(data?.serverUpdatedAt) || 0;
                         if (serverUpdatedAt > 0) serverMetaRef.current = { updatedAt: serverUpdatedAt };
-                        setSyncStatus('error');
                         isSavingRef.current = false;
-                        alert('检测到其他浏览器或标签页已更新服务器数据，请先刷新后再保存。');
+                        try {
+                            const refreshResult = await fetchFromServerCore({
+                                isAuto: true,
+                                allowDirtyOverride: true,
+                                successAlert: false,
+                                emptyAlert: false,
+                                errorAlert: false
+                            });
+                            if (!refreshResult || refreshResult.skipped) {
+                                throw new Error('CONFLICT_REFRESH_SKIPPED');
+                            }
+                            alert('服务器数据已自动刷新，请基于最新数据重新操作后再保存。');
+                        } catch (refreshErr) {
+                            setSyncStatus('error');
+                            console.error('冲突后自动刷新失败', refreshErr);
+                            alert('检测到其他浏览器或标签页已更新服务器数据，且自动刷新失败，请手动刷新后再保存。');
+                        }
                         throw new Error('DATA_CONFLICT');
                     }
                     if (!res.ok) {
@@ -1575,9 +1689,23 @@ const INITIAL_TREASURES = [
                     isSavingRef.current = false;
                     throw err;
                 });
-        }, []);
+        }, [fetchFromServerCore]);
 
-        const persistDataPatch = useCallback((partialData) => {
+        const persistDataPatch = useCallback((partialData, options = {}) => {
+            const suppressFollowupAutoSave = options?.suppressFollowupAutoSave === true;
+            if (suppressFollowupAutoSave && partialData && typeof partialData === 'object') {
+                if (
+                    Object.prototype.hasOwnProperty.call(partialData, 'battle') ||
+                    Object.prototype.hasOwnProperty.call(partialData, 'examArchives')
+                ) {
+                    skipBattleAutosaveRef.current = true;
+                }
+                if (
+                    Object.keys(partialData).some(key => key !== 'battle' && key !== 'examArchives')
+                ) {
+                    skipMainAutosaveRef.current = true;
+                }
+            }
             isSavingRef.current = true;
             const nowTs = getNow().getTime();
             const fullData = buildCurrentFullData(partialData || {});
@@ -1588,9 +1716,14 @@ const INITIAL_TREASURES = [
                 logs: fullData?.logs
             });
             const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
+            const hasExplicitExamArchives = !!(partialData && Object.prototype.hasOwnProperty.call(partialData, 'examArchives'));
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
+            const allowEmptyExamArchives = hasExplicitExamArchives &&
+                Array.isArray(incomingExamArchives.exams) &&
+                incomingExamArchives.exams.length === 0;
             const protectedExamArchives = (
+                !allowEmptyExamArchives &&
                 Array.isArray(incomingExamArchives.exams) &&
                 incomingExamArchives.exams.length === 0 &&
                 Array.isArray(currentExamArchives.exams) &&
@@ -1608,7 +1741,8 @@ const INITIAL_TREASURES = [
                 __meta: {
                     updatedAt: nowTs,
                     baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
-                    deviceId: getDeviceId()
+                    deviceId: getDeviceId(),
+                    allowEmptyExamArchives
                 }
             };
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
@@ -1638,9 +1772,14 @@ const INITIAL_TREASURES = [
                 logs: fullData?.logs
             });
             const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
+            const hasExplicitExamArchives = !!(fullData && Object.prototype.hasOwnProperty.call(fullData, 'examArchives'));
             const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
             const currentExamArchives = normalizeExamArchives(examArchives, battle);
+            const allowEmptyExamArchives = hasExplicitExamArchives &&
+                Array.isArray(incomingExamArchives.exams) &&
+                incomingExamArchives.exams.length === 0;
             const protectedExamArchives = (
+                !allowEmptyExamArchives &&
                 Array.isArray(incomingExamArchives.exams) &&
                 incomingExamArchives.exams.length === 0 &&
                 Array.isArray(currentExamArchives.exams) &&
@@ -1658,75 +1797,16 @@ const INITIAL_TREASURES = [
                 __meta: {
                     updatedAt: nowTs,
                     baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
-                    deviceId: getDeviceId()
+                    deviceId: getDeviceId(),
+                    allowEmptyExamArchives
                 }
             };
             return savePayloadToServer(fullDataWithMeta, nowTs);
         }, [students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
-        const fetchFromServer = useCallback((isAuto = false) => {
-            if (window.__CM_TEST_MODE__) {
-                if (!isAuto) alert("测试模式中已禁止同步。");
-                return;
-            }
-            const apiUrl = getApiUrl();
-            if (!apiUrl) {
-                if (!isAuto) {
-                    console.warn("Manual refresh ignored: unsupported runtime environment.");
-                    alert("当前环境无法连接服务器。");
-                }
-                return;
-            }
-            // 自动刷新时：若有未保存更改或正在保存，一律跳过，避免同步覆盖
-            if (isAuto && (isSavingRef.current || isDirtyRef.current)) {
-                console.log('[自动刷新] 跳过：存在未保存更改或正在保存');
-                return;
-            }
-            if (!isAuto && (isSavingRef.current || isDirtyRef.current)) {
-                alert("当前存在未保存更改，已阻止同步覆盖，请稍后再刷新。");
-                return;
-            }
-
-            if(!isAuto) setSyncStatus('unsaved');
-                
-            fetch(apiUrl, {
-                headers: window.__getAuthHeaders__()
-            })
-                .then(res => {
-                    if (window.__handleAuthError__(res)) return;
-                    return res.json();
-                })
-                .then(data => {
-                    if (!data) return;
-                    if (data && Object.keys(data).length > 0) {
-                        const normalized = normalizeFullData(data);
-                        const remoteTs = Number(normalized.__meta.updatedAt) || 0;
-                        markServerMeta(remoteTs);
-                        applyFullData(data, { mergeAttendance: true });
-                        setSyncStatus('success');
-                        if(!isAuto) alert("数据已从服务器刷新！");
-                        console.log(`[${getNow().toLocaleTimeString()}] 数据同步完成`);
-                        if (retryTimerRef.current) {
-                            clearTimeout(retryTimerRef.current);
-                            retryTimerRef.current = null;
-                        }
-                    } else {
-                        initialServerSyncDoneRef.current = true;
-                        if(!isAuto) alert("服务器无数据或数据为空。");
-                    }
-                })
-                .catch(err => {
-                    console.error("Server fetch failed", err);
-                    setSyncStatus('error');
-                    if(!isAuto) alert("刷新失败，无法连接到服务器。");
-                    if (!retryTimerRef.current) {
-                        retryTimerRef.current = setTimeout(() => {
-                            retryTimerRef.current = null;
-                            fetchFromServer(true);
-                        }, RETRY_CONNECT_MS);
-                    }
-                });
-        }, []);
+        const fetchFromServer = useCallback((options = {}) => {
+            return fetchFromServerCore(options);
+        }, [fetchFromServerCore]);
 
         useEffect(() => {
             // 1. Initial sync
@@ -1815,6 +1895,11 @@ const INITIAL_TREASURES = [
         // --- 自动保存逻辑 (Debounced) ---
         useEffect(() => {
             if (!localHydrationDone) return undefined;
+            if (skipMainAutosaveRef.current) {
+                skipMainAutosaveRef.current = false;
+                isDirtyRef.current = false;
+                return undefined;
+            }
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
@@ -1837,6 +1922,11 @@ const INITIAL_TREASURES = [
 
         useEffect(() => {
             if (!localHydrationDone) return undefined;
+            if (skipBattleAutosaveRef.current) {
+                skipBattleAutosaveRef.current = false;
+                isDirtyRef.current = false;
+                return undefined;
+            }
             isDirtyRef.current = true;
 
             if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {

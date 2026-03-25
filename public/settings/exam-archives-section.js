@@ -19,8 +19,7 @@
                 examArchives,
                 setBattle,
                 setExamArchives,
-                persistExamArchives,
-                adminPassword
+                persistExamArchives
             } = props || {};
 
             return h("div", { className: "border-t pt-6 space-y-4" },
@@ -28,7 +27,7 @@
                     h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                         h("div", null,
                             h("h3", { className: "font-bold text-indigo-800 mb-1 flex items-center gap-2" }, h(Icon, { name: "fileText" }), "考试档案"),
-                            h("p", { className: "text-sm text-indigo-700/80" }, "考试导入、删除和档案查看已从双子星移到这里。模块默认不加载，点开后才按需加载。")
+                            h("p", { className: "text-sm text-indigo-700/80" }, "考试成绩导入、模板下载、删除和档案查看统一收在这里。模块默认不加载，点开后才按需加载。")
                         ),
                         h("button", {
                             onClick: openExamArchivesManager,
@@ -44,8 +43,7 @@
                             examArchives,
                             setBattle,
                             setExamArchives,
-                            persistExamArchives,
-                            adminPassword
+                            persistExamArchives
                         })
                         : h("div", { className: "border rounded-xl p-6 bg-gray-50 text-center space-y-2" },
                             h("div", { className: "font-bold text-gray-800" }, examArchivesModuleStatus === 'error' ? "考试档案模块加载失败" : "考试档案模块加载中"),

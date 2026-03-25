@@ -523,6 +523,8 @@
             return persistDataPatch({
                 battle: nextBattle,
                 examArchives: nextExamArchives
+            }, {
+                suppressFollowupAutoSave: true
             }).then(() => {
                 if (isDirtyRef) isDirtyRef.current = false;
                 if (successMessage) alert(successMessage);
@@ -578,8 +580,7 @@
                 examArchives,
                 setBattle,
                 setExamArchives,
-                persistExamArchives: persistExamArchiveChanges,
-                adminPassword: window.DEFAULT_ADMIN_PASSWORD
+                persistExamArchives: persistExamArchiveChanges
             }),
             renderSystemConfigSection({
                 config,

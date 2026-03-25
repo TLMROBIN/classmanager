@@ -10,10 +10,14 @@
 
         const getRankFromExam = ({ exams, examId, studentId }) => {
             const exam = getExamById(exams, examId);
-            const rank = exam && exam.ranks ? exam.ranks[studentId] : null;
-            if (!rank) return null;
-            const c = Number(rank.c);
-            const g = Number(rank.g);
+            if (!exam) return null;
+            const record = exam.records?.[studentId] || exam.records?.[String(studentId)] || null;
+            const rank = exam.ranks?.[studentId] || exam.ranks?.[String(studentId)] || null;
+            const rawC = record?.totalClassRank != null ? record.totalClassRank : rank?.c;
+            const rawG = record?.totalGradeRank != null ? record.totalGradeRank : rank?.g;
+            const c = Number.isFinite(Number(rawC)) ? Number(rawC) : null;
+            const g = Number.isFinite(Number(rawG)) ? Number(rawG) : null;
+            if (c == null && g == null) return null;
             return { c, g };
         };
 

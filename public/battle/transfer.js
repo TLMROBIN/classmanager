@@ -47,6 +47,22 @@
         return { mapped, missingNames };
     };
 
+    const mapExamRecords = (records, oldIdToName, nameToId) => {
+        const mapped = {};
+        const missingNames = [];
+        Object.keys(records || {}).forEach(oldId => {
+            const name = oldIdToName.get(oldId);
+            if (!name) return;
+            const newId = nameToId.get(name);
+            if (!newId) {
+                missingNames.push(name);
+                return;
+            }
+            mapped[newId] = records[oldId];
+        });
+        return { mapped, missingNames };
+    };
+
     const mapBattleBackupToCurrentStudents = (payload, students) => {
         const importStudents = Array.isArray(payload?.students) ? payload.students : [];
         const { nameToId } = buildStudentMaps(students);
@@ -71,9 +87,15 @@
 
         const examWarnings = new Set();
         const exams = (payload?.exams || []).map(exam => {
-            const result = mapExamRanks(exam.ranks || {}, oldIdToName, nameToId);
-            result.missingNames.forEach(name => examWarnings.add(name));
-            return { ...exam, ranks: result.mapped };
+            const rankResult = mapExamRanks(exam.ranks || {}, oldIdToName, nameToId);
+            const recordResult = mapExamRecords(exam.records || {}, oldIdToName, nameToId);
+            rankResult.missingNames.forEach(name => examWarnings.add(name));
+            recordResult.missingNames.forEach(name => examWarnings.add(name));
+            return {
+                ...exam,
+                ranks: rankResult.mapped,
+                records: recordResult.mapped
+            };
         });
 
         return {
