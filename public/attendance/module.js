@@ -97,8 +97,9 @@
 
             const syncAttendanceRecords = (nextRecords, options = {}) => {
                 if (typeof onAttendanceRecordsChange === 'function') {
-                    onAttendanceRecordsChange(nextRecords || {}, options);
+                    return onAttendanceRecordsChange(nextRecords || {}, options);
                 }
+                return null;
             };
 
             useEffect(() => {
@@ -234,7 +235,10 @@
 
                 if (!result) return;
                 if (result.status === 'exists') return alert("已打卡！");
-                syncAttendanceRecords(result.newRecords);
+                syncAttendanceRecords(result.newRecords, {
+                    persistImmediately: true,
+                    actionLabel: '打卡记录'
+                });
 
                 const student = students.find(stu => stu.name === studentName);
                 if (result.status === 'late' && student && !result.usedLateCardYesterday) {
@@ -425,7 +429,10 @@
                     handleUndoByReasons
                 });
                 setRecords(newRec);
-                syncAttendanceRecords(newRec);
+                syncAttendanceRecords(newRec, {
+                    persistImmediately: true,
+                    actionLabel: '考勤修正'
+                });
                 setSelectedIssues([]);
                 alert("修正成功");
             };
@@ -446,7 +453,10 @@
                     updatePoints
                 });
                 setRecords(newRec);
-                syncAttendanceRecords(newRec);
+                syncAttendanceRecords(newRec, {
+                    persistImmediately: true,
+                    actionLabel: '缺勤结算'
+                });
                 setSelectedIssues([]);
                 alert("结算成功");
             };
@@ -467,7 +477,10 @@
                     updatePoints
                 });
                 setRecords(newRec);
-                syncAttendanceRecords(newRec);
+                syncAttendanceRecords(newRec, {
+                    persistImmediately: true,
+                    actionLabel: '缺勤批量结算'
+                });
                 const settledIds = new Set(allAbsentItems.map(item => item.id));
                 setSelectedIssues(selectedIssues.filter(id => !settledIds.has(id)));
                 alert("批量结算成功");

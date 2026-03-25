@@ -33,6 +33,44 @@ const SCHEMA_SQL = `
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS test_sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        sim_time_ms INTEGER,
+        time_speed REAL NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_test_sessions_user ON test_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_test_sessions_expires ON test_sessions(expires_at);
+
+    CREATE TABLE IF NOT EXISTS test_class_data (
+        session_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        data_key TEXT NOT NULL,
+        data_value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (session_id, user_id, data_key),
+        FOREIGN KEY (session_id) REFERENCES test_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_test_class_data_session_user ON test_class_data(session_id, user_id);
+
+    CREATE TABLE IF NOT EXISTS test_maintenance_credentials (
+        session_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        password_hash TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (session_id, user_id),
+        FOREIGN KEY (session_id) REFERENCES test_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
 `;
 
 const ensureSchema = (db) => {

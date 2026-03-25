@@ -685,6 +685,127 @@ const INITIAL_TREASURES = [
     var useRef = React.useRef;
         
     // --- Helper Functions ---
+    const getRawStorageItem = (storage, key) => {
+        try {
+            return storage.getItem(key);
+        } catch (_) {
+            return null;
+        }
+    };
+    const setRawStorageItem = (storage, key, value) => {
+        try {
+            storage.setItem(key, value);
+        } catch (_) {}
+    };
+    const removeRawStorageItem = (storage, key) => {
+        try {
+            storage.removeItem(key);
+        } catch (_) {}
+    };
+    const getScopedLocalStorageKey = (key) => {
+        if (window.__CM_TEST_MODE__ && window.__CM_TEST_SESSION_ID__) {
+            return `cm_test:${window.__CM_TEST_SESSION_ID__}:${key}`;
+        }
+        return key;
+    };
+    const getStorageItem = (key) => getRawStorageItem(localStorage, getScopedLocalStorageKey(key));
+    const setStorageItem = (key, value) => setRawStorageItem(localStorage, getScopedLocalStorageKey(key), value);
+    const getSessionItem = (key) => getRawStorageItem(sessionStorage, key);
+    const setSessionItem = (key, value) => setRawStorageItem(sessionStorage, key, value);
+    const removeSessionItem = (key) => removeRawStorageItem(sessionStorage, key);
+
+    const TEST_SESSION_ID_KEY = 'cm_test_session_id';
+    const TEST_SIM_TIME_KEY = 'cm_test_sim_time';
+    const TEST_TIME_SPEED_KEY = 'cm_test_time_speed';
+    const TEST_SESSION_INVALID_EVENT = 'cm:test-session-invalid';
+    const TEST_SESSION_ERROR_CODES = new Set([
+        'TEST_SESSION_INVALID',
+        'TEST_SESSION_EXPIRED'
+    ]);
+    const clearLocalStorageByPrefix = (prefix) => {
+        if (!prefix) return;
+        try {
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i += 1) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(prefix)) keys.push(key);
+            }
+            keys.forEach((key) => localStorage.removeItem(key));
+        } catch (_) {}
+    };
+
+    const getStoredTestSessionState = () => {
+        const sessionId = getSessionItem(TEST_SESSION_ID_KEY) || '';
+        const simTimeMs = Number(getSessionItem(TEST_SIM_TIME_KEY));
+        const timeSpeed = Number(getSessionItem(TEST_TIME_SPEED_KEY));
+        return {
+            sessionId,
+            simTimeMs: Number.isFinite(simTimeMs) ? simTimeMs : Date.now(),
+            timeSpeed: timeSpeed > 0 ? timeSpeed : 1
+        };
+    };
+    const storeTestSessionState = ({ sessionId, simTimeMs, timeSpeed }) => {
+        if (!sessionId) return;
+        setSessionItem(TEST_SESSION_ID_KEY, String(sessionId));
+        setSessionItem(TEST_SIM_TIME_KEY, String(Number.isFinite(Number(simTimeMs)) ? Number(simTimeMs) : Date.now()));
+        setSessionItem(TEST_TIME_SPEED_KEY, String(timeSpeed > 0 ? timeSpeed : 1));
+    };
+    const clearStoredTestSessionState = () => {
+        removeSessionItem(TEST_SESSION_ID_KEY);
+        removeSessionItem(TEST_SIM_TIME_KEY);
+        removeSessionItem(TEST_TIME_SPEED_KEY);
+    };
+    const applyTestRuntimeContext = ({ enabled, sessionId, simTimeMs, timeSpeed } = {}) => {
+        const active = enabled === true && !!sessionId;
+        window.__CM_TEST_MODE__ = active;
+        window.__CM_TEST_SESSION_ID__ = active ? String(sessionId) : null;
+        window.__CM_TEST_TIME__ = active
+            ? (Number.isFinite(Number(simTimeMs)) ? Number(simTimeMs) : Date.now())
+            : null;
+        window.__CM_TEST_TIME_SPEED__ = active
+            ? (timeSpeed > 0 ? timeSpeed : 1)
+            : 1;
+    };
+    const notifyInvalidTestSession = (message) => {
+        const sessionId = window.__CM_TEST_SESSION_ID__ ? String(window.__CM_TEST_SESSION_ID__) : '';
+        clearStoredTestSessionState();
+        try {
+            window.dispatchEvent(new CustomEvent(TEST_SESSION_INVALID_EVENT, {
+                detail: {
+                    message: message || '测试会话已失效，请重新进入测试模式。',
+                    sessionId
+                }
+            }));
+        } catch (_) {}
+    };
+    const handleTestSessionApiError = (res, data) => {
+        void res;
+        const code = data?.code || '';
+        if (!window.__CM_TEST_MODE__) return false;
+        if (!TEST_SESSION_ERROR_CODES.has(code)) return false;
+        notifyInvalidTestSession(data?.error || '测试会话已失效，请重新进入测试模式。');
+        return true;
+    };
+    const getTestRequestHeaders = () => {
+        if (!window.__CM_TEST_MODE__ || !window.__CM_TEST_SESSION_ID__) return {};
+        const headers = {
+            'X-Test-Session': String(window.__CM_TEST_SESSION_ID__)
+        };
+        const simTimeMs = Number(window.__CM_TEST_TIME__);
+        if (Number.isFinite(simTimeMs)) {
+            headers['X-Test-Now'] = String(simTimeMs);
+        }
+        return headers;
+    };
+
+    const initialTestSessionState = getStoredTestSessionState();
+    applyTestRuntimeContext({
+        enabled: Boolean(initialTestSessionState.sessionId),
+        sessionId: initialTestSessionState.sessionId,
+        simTimeMs: initialTestSessionState.simTimeMs,
+        timeSpeed: initialTestSessionState.timeSpeed
+    });
+
     const getNow = () => {
         if (window.__CM_TEST_MODE__) {
             const t = Number(window.__CM_TEST_TIME__);
@@ -744,80 +865,19 @@ const INITIAL_TREASURES = [
         return window.__cmScriptPromises[src];
     };
 
-    const deepClone = (data) => JSON.parse(JSON.stringify(data));
-    const getStorageItem = (key) => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                const store = window.__CM_TEST_STORAGE__ || {};
-                return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
-            }
-            return localStorage.getItem(key);
-        } catch (_) {
-            return null;
-        }
-    };
-    const setStorageItem = (key, value) => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                const store = window.__CM_TEST_STORAGE__ || {};
-                store[key] = value;
-                window.__CM_TEST_STORAGE__ = store;
-                return;
-            }
-            localStorage.setItem(key, value);
-        } catch (_) {}
-    };
-    const getSessionItem = (key) => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                const store = window.__CM_TEST_STORAGE__ || {};
-                return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
-            }
-            return sessionStorage.getItem(key);
-        } catch (_) {
-            return null;
-        }
-    };
-    const setSessionItem = (key, value) => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                const store = window.__CM_TEST_STORAGE__ || {};
-                store[key] = value;
-                window.__CM_TEST_STORAGE__ = store;
-                return;
-            }
-            sessionStorage.setItem(key, value);
-        } catch (_) {}
-    };
-    const removeSessionItem = (key) => {
-        try {
-            if (window.__CM_TEST_MODE__) {
-                const store = window.__CM_TEST_STORAGE__ || {};
-                delete store[key];
-                window.__CM_TEST_STORAGE__ = store;
-                return;
-            }
-            sessionStorage.removeItem(key);
-        } catch (_) {}
-    };
-    const snapshotStorage = () => {
-        const store = {};
-        try {
-            for (let i = 0; i < localStorage.length; i += 1) {
-                const key = localStorage.key(i);
-                if (key) store[key] = localStorage.getItem(key);
-            }
-        } catch (_) {}
-        return store;
-    };
-
     const ADMIN_AUTH_TOKEN_KEY = 'maintenance_token';
     const ADMIN_AUTH_EXPIRES_KEY = 'maintenance_token_expires_at';
     const ADMIN_AUTH_TTL_MS = 10 * 60 * 1000;
+    const getScopedAdminAuthKey = (baseKey) => {
+        if (window.__CM_TEST_MODE__ && window.__CM_TEST_SESSION_ID__) {
+            return `${baseKey}:test:${window.__CM_TEST_SESSION_ID__}`;
+        }
+        return `${baseKey}:formal`;
+    };
 
     const getAdminAuthUntil = () => {
         try {
-            const raw = getSessionItem(ADMIN_AUTH_EXPIRES_KEY);
+            const raw = getSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_EXPIRES_KEY));
             return raw ? Number(raw) : 0;
         } catch (_) {
             return 0;
@@ -825,10 +885,10 @@ const INITIAL_TREASURES = [
     };
 
     const getAdminAuthToken = () => {
-        const token = getSessionItem(ADMIN_AUTH_TOKEN_KEY);
+        const token = getSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_TOKEN_KEY));
         if (!token) return null;
         const expiresAt = getAdminAuthUntil();
-        if (!expiresAt || expiresAt <= getNow().getTime()) {
+        if (!expiresAt || expiresAt <= Date.now()) {
             clearAdminAuth();
             return null;
         }
@@ -837,17 +897,23 @@ const INITIAL_TREASURES = [
 
     const setAdminAuthSession = ({ token, expiresAt }) => {
         if (!token) return;
-        setSessionItem(ADMIN_AUTH_TOKEN_KEY, token);
+        setSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_TOKEN_KEY), token);
         if (expiresAt) {
-            setSessionItem(ADMIN_AUTH_EXPIRES_KEY, String(expiresAt));
+            setSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_EXPIRES_KEY), String(expiresAt));
         } else {
-            setSessionItem(ADMIN_AUTH_EXPIRES_KEY, String(getNow().getTime() + ADMIN_AUTH_TTL_MS));
+            setSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_EXPIRES_KEY), String(Date.now() + ADMIN_AUTH_TTL_MS));
         }
     };
 
     const clearAdminAuth = () => {
-        removeSessionItem(ADMIN_AUTH_TOKEN_KEY);
-        removeSessionItem(ADMIN_AUTH_EXPIRES_KEY);
+        removeSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_TOKEN_KEY));
+        removeSessionItem(getScopedAdminAuthKey(ADMIN_AUTH_EXPIRES_KEY));
+    };
+    const clearScopedTestArtifacts = (sessionId) => {
+        if (!sessionId) return;
+        clearLocalStorageByPrefix(`cm_test:${sessionId}:`);
+        removeSessionItem(`${ADMIN_AUTH_TOKEN_KEY}:test:${sessionId}`);
+        removeSessionItem(`${ADMIN_AUTH_EXPIRES_KEY}:test:${sessionId}`);
     };
 
     const isAdminAuthed = () => Boolean(getAdminAuthToken());
@@ -879,16 +945,36 @@ const INITIAL_TREASURES = [
             ...options,
             headers: {
                 ...window.__getAuthHeaders__(),
+                ...getTestRequestHeaders(),
                 ...getAdminAuthHeaders(),
                 ...(options.headers || {})
             }
         });
-        if (window.__handleAuthError__(res)) {
+        const { data, text } = await parseApiResponse(res);
+        if (handleTestSessionApiError(res, data)) {
+            const error = new Error(data?.error || '测试会话已失效');
+            error.code = data?.code || 'TEST_SESSION_INVALID';
+            throw error;
+        }
+        const authErrorType = res && res.headers && typeof res.headers.get === 'function'
+            ? res.headers.get('x-auth-error')
+            : '';
+        const isAccessAuthError = res.status === 401 && (
+            authErrorType === 'access-required'
+            || data?.code === 'AUTH_REQUIRED'
+            || data?.error === '未授权，请先登录'
+            || data?.error === 'Token无效或已过期'
+        );
+        if (isAccessAuthError) {
+            if (typeof window.__clearAuthAndRedirect__ === 'function') {
+                window.__clearAuthAndRedirect__();
+            } else if (window.__handleAuthError__(res)) {
+                // no-op: global handler already redirected
+            }
             const error = new Error('登录已失效，请重新登录');
             error.code = 'AUTH_REQUIRED';
             throw error;
         }
-        const { data, text } = await parseApiResponse(res);
         if (!res.ok) {
             let message = data.error || '请求失败';
             if (res.status === 404 && url.startsWith('/api/maintenance/')) {
@@ -906,25 +992,10 @@ const INITIAL_TREASURES = [
     };
 
     const fetchMaintenanceStatus = async () => {
-        if (window.__CM_TEST_MODE__) {
-            return {
-                success: true,
-                configured: true,
-                unlocked: isAdminAuthed(),
-                expiresAt: getAdminAuthUntil() || (getNow().getTime() + ADMIN_AUTH_TTL_MS)
-            };
-        }
         return requestMaintenanceJson('/api/maintenance/status');
     };
 
     const unlockAdminAuth = async (password) => {
-        if (window.__CM_TEST_MODE__) {
-            setAdminAuthSession({
-                token: 'test-maintenance-token',
-                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
-            });
-            return { success: true, expiresAt: getAdminAuthUntil() };
-        }
         const data = await requestMaintenanceJson('/api/maintenance/unlock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -935,13 +1006,6 @@ const INITIAL_TREASURES = [
     };
 
     const setupAdminAuth = async (password) => {
-        if (window.__CM_TEST_MODE__) {
-            setAdminAuthSession({
-                token: 'test-maintenance-token',
-                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
-            });
-            return { success: true, expiresAt: getAdminAuthUntil() };
-        }
         const data = await requestMaintenanceJson('/api/maintenance/setup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -952,13 +1016,6 @@ const INITIAL_TREASURES = [
     };
 
     const changeAdminAuthPassword = async (currentPassword, newPassword) => {
-        if (window.__CM_TEST_MODE__) {
-            setAdminAuthSession({
-                token: 'test-maintenance-token',
-                expiresAt: getNow().getTime() + ADMIN_AUTH_TTL_MS
-            });
-            return { success: true, expiresAt: getAdminAuthUntil() };
-        }
         const data = await requestMaintenanceJson('/api/maintenance/change', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1462,10 +1519,10 @@ const INITIAL_TREASURES = [
 
         const displayStudents = (Array.isArray(students) && students.length > 0) ? students : GUEST_ROSTER;
 
-        const [testMode, setTestMode] = useState(false);
-        const [simTime, setSimTime] = useState(Date.now());
-        const [timeSpeed, setTimeSpeed] = useState(1);
-        const testSnapshotRef = useRef(null);
+        const [testSessionId, setTestSessionId] = useState(initialTestSessionState.sessionId || '');
+        const [testMode, setTestMode] = useState(Boolean(initialTestSessionState.sessionId));
+        const [simTime, setSimTime] = useState(initialTestSessionState.simTimeMs || Date.now());
+        const [timeSpeed, setTimeSpeed] = useState(initialTestSessionState.timeSpeed || 1);
 
         const [syncStatus, setSyncStatus] = useState('idle'); // idle, success, error, saved, unsaved
         const [localHydrationDone, setLocalHydrationDone] = useState(false);
@@ -1580,14 +1637,23 @@ const INITIAL_TREASURES = [
         }, [activeTab, settingsModuleStatus]);
 
         useEffect(() => {
-            if (testMode) {
-                window.__CM_TEST_MODE__ = true;
-                window.__CM_TEST_TIME__ = simTime;
+            if (testMode && testSessionId) {
+                applyTestRuntimeContext({
+                    enabled: true,
+                    sessionId: testSessionId,
+                    simTimeMs: simTime,
+                    timeSpeed
+                });
+                storeTestSessionState({
+                    sessionId: testSessionId,
+                    simTimeMs: simTime,
+                    timeSpeed
+                });
             } else {
-                window.__CM_TEST_MODE__ = false;
-                window.__CM_TEST_TIME__ = null;
+                applyTestRuntimeContext({ enabled: false });
+                clearStoredTestSessionState();
             }
-        }, [testMode, simTime]);
+        }, [testMode, testSessionId, simTime, timeSpeed]);
 
         useEffect(() => {
             if (!testMode) return;
@@ -1608,7 +1674,25 @@ const INITIAL_TREASURES = [
         const initialServerSyncDoneRef = useRef(!getApiUrl());
         const skipMainAutosaveRef = useRef(false);
         const skipBattleAutosaveRef = useRef(false);
+        const pendingAttendanceSaveRef = useRef(null);
+        const attendanceSaveInFlightRef = useRef(false);
+        const attendanceSaveDrainPromiseRef = useRef(Promise.resolve({ skipped: true }));
+        const latestSyncStateRef = useRef({
+            students: [],
+            studentProfiles: buildNormalizedStudentProfiles(),
+            history: [],
+            config: {},
+            attendanceRecords: {}
+        });
         const RETRY_CONNECT_MS = 10 * 60 * 1000;
+
+        latestSyncStateRef.current = {
+            students,
+            studentProfiles,
+            history,
+            config,
+            attendanceRecords
+        };
 
         const getDeviceId = () => {
             const key = 'cm_device_id';
@@ -1675,17 +1759,23 @@ const INITIAL_TREASURES = [
             };
         };
 
-        const applyFullData = (data, options = {}) => {
+        const applyFullData = (data, options = {}, baseState = null) => {
             const normalized = normalizeFullData(data);
+            const latestState = baseState || latestSyncStateRef.current || {};
+            const latestStudents = Array.isArray(latestState.students) ? latestState.students : students;
+            const latestStudentProfiles = latestState.studentProfiles || studentProfiles;
+            const latestHistory = Array.isArray(latestState.history) ? latestState.history : history;
+            const latestConfig = latestState.config || config;
+            const latestAttendanceRecords = latestState.attendanceRecords || attendanceRecords;
             const use = (flag) => options.force || flag;
-            const incomingTreasures = resolveTreasuresData(normalized.treasures, normalized.config || config);
+            const incomingTreasures = resolveTreasuresData(normalized.treasures, normalized.config || latestConfig);
             const hasIncomingLegacyTreasureConfig = Array.isArray(getLegacyTreasureList(normalized.config));
 
             if (use(normalized.flags.students)) setStudents(normalized.students || []);
-            if (use(normalized.flags.studentProfiles)) setStudentProfiles(restoreStudentProfilesFromData(normalized, studentProfiles, students));
+            if (use(normalized.flags.studentProfiles)) setStudentProfiles(restoreStudentProfilesFromData(normalized, latestStudentProfiles, latestStudents));
             if (use(normalized.flags.history)) {
                 const incomingHistory = normalized.history || [];
-                const hasLocalHistory = Array.isArray(history) && history.length > 0;
+                const hasLocalHistory = Array.isArray(latestHistory) && latestHistory.length > 0;
                 const hasIncomingHistory = Array.isArray(incomingHistory) && incomingHistory.length > 0;
                 const keepLocal = !options.force && hasLocalHistory && !hasIncomingHistory;
                 if (!keepLocal) setHistory(incomingHistory);
@@ -1694,7 +1784,7 @@ const INITIAL_TREASURES = [
 
             if (use(normalized.flags.attendanceRecords)) {
                 const att = options.mergeAttendance
-                    ? mergeAttendanceRecords(attendanceRecords || {}, normalized.attendanceRecords || {})
+                    ? mergeAttendanceRecords(latestAttendanceRecords || {}, normalized.attendanceRecords || {})
                     : (normalized.attendanceRecords || {});
                 setAttendanceRecords(att);
             }
@@ -1715,64 +1805,70 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
         };
 
-        const enterTestMode = useCallback(() => {
+        const enterTestMode = useCallback(async () => {
             if (testMode) return;
-            testSnapshotRef.current = {
-                students: deepClone(students),
-                studentProfiles: deepClone(buildNormalizedStudentProfiles(studentProfiles, students)),
-                history: deepClone(history),
-                config: deepClone(sanitizeStoredConfig(config)),
-                attendanceRecords: deepClone(attendanceRecords),
-                treasures: deepClone(effectiveTreasures),
-                storage: deepClone(storage),
-                logs: deepClone(logs),
-                quotes: deepClone(quotes),
-                messages: deepClone(messages),
-                teacherMessages: deepClone(teacherMessages),
-                redemptionHistory: deepClone(redemptionHistory),
-                dailyRedemptionCounts: deepClone(dailyRedemptionCounts),
-                dailyUsageCounts: deepClone(dailyUsageCounts),
-                tasks: deepClone(tasks),
-                battle: deepClone(battle),
-                examArchives: deepClone(examArchives),
-                activeTab
-            };
-            window.__CM_TEST_STORAGE__ = snapshotStorage();
-            setTestMode(true);
-            setSimTime(getNow().getTime());
-            setTimeSpeed(1);
-            setSyncStatus('saved');
-        }, [testMode, students, studentProfiles, history, config, attendanceRecords, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives, activeTab]);
-
-        const exitTestMode = useCallback(() => {
-            if (!testMode) return;
-            const snap = testSnapshotRef.current;
-            if (snap) {
-                setStudents(snap.students || []);
-                setStudentProfiles(restoreStudentProfilesFromData(snap, studentProfiles, students));
-                setHistory(snap.history || []);
-                setConfig(sanitizeStoredConfig(snap.config || {}));
-                setAttendanceRecords(snap.attendanceRecords || {});
-                setTreasures(snap.treasures || []);
-                setStorage(snap.storage || {});
-                setLogs(snap.logs || []);
-                setQuotes(snap.quotes || []);
-                setMessages(snap.messages || []);
-                setTeacherMessages(snap.teacherMessages || []);
-                setRedemptionHistory(snap.redemptionHistory || {});
-                setDailyRedemptionCounts(snap.dailyRedemptionCounts || {});
-                setDailyUsageCounts(snap.dailyUsageCounts || {});
-                setTasks(snap.tasks || []);
-                setBattle(battleNormalize(snap.battle || {}));
-                setExamArchives(snap.examArchives || normalizeExamArchives(undefined, snap.battle));
-                if (snap.activeTab) setActiveTab(snap.activeTab);
+            if (!getApiUrl()) {
+                alert('当前环境无法启用真测试模式。');
+                return;
             }
-            window.__CM_TEST_STORAGE__ = null;
-            setTestMode(false);
-            setSimTime(Date.now());
-            setTimeSpeed(1);
-            setSyncStatus('saved');
+            try {
+                const nowTs = getNow().getTime();
+                const res = await fetch('/api/test-sessions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...window.__getAuthHeaders__()
+                    },
+                    body: JSON.stringify({
+                        simTimeMs: nowTs,
+                        timeSpeed: 1
+                    })
+                });
+                const { data } = await parseApiResponse(res);
+                if (window.__handleAuthError__(res)) return;
+                if (!res.ok) {
+                    throw new Error(data?.error || '进入测试模式失败');
+                }
+                setTestSessionId(data?.sessionId || '');
+                setTestMode(true);
+                setSimTime(Number.isFinite(Number(data?.simTimeMs)) ? Number(data.simTimeMs) : nowTs);
+                setTimeSpeed(Number(data?.timeSpeed) > 0 ? Number(data.timeSpeed) : 1);
+                setSyncStatus('saved');
+            } catch (error) {
+                console.error('进入测试模式失败:', error);
+                alert(error.message || '进入测试模式失败');
+            }
         }, [testMode]);
+
+        const exitTestMode = useCallback(async () => {
+            if (!testMode || !testSessionId) return;
+            try {
+                const res = await fetch(`/api/test-sessions/${encodeURIComponent(testSessionId)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        ...window.__getAuthHeaders__(),
+                        ...getTestRequestHeaders()
+                    }
+                });
+                const { data } = await parseApiResponse(res);
+                if (window.__handleAuthError__(res)) return;
+                if (!res.ok && res.status !== 404) {
+                    throw new Error(data?.error || '退出测试模式失败');
+                }
+                clearAdminAuth();
+                clearScopedTestArtifacts(testSessionId);
+                clearStoredTestSessionState();
+                applyTestRuntimeContext({ enabled: false });
+                setTestSessionId('');
+                setTestMode(false);
+                setSimTime(Date.now());
+                setTimeSpeed(1);
+                setSyncStatus('saved');
+            } catch (error) {
+                console.error('退出测试模式失败:', error);
+                alert(error.message || '退出测试模式失败');
+            }
+        }, [testMode, testSessionId]);
 
         const buildCurrentFullData = useCallback((overrides = {}) => {
             const att = Object.prototype.hasOwnProperty.call(overrides, 'attendanceRecords')
@@ -1808,7 +1904,7 @@ const INITIAL_TREASURES = [
             };
         }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
 
-        const fetchFromServerCore = useCallback((options = {}) => {
+        const fetchFromServerCore = useCallback(async (options = {}) => {
             const normalizedOptions = typeof options === 'boolean' ? { isAuto: options } : (options || {});
             const {
                 isAuto = false,
@@ -1818,12 +1914,6 @@ const INITIAL_TREASURES = [
                 errorAlert
             } = normalizedOptions;
 
-            if (window.__CM_TEST_MODE__) {
-                if (!isAuto && errorAlert !== false) {
-                    alert(typeof errorAlert === 'string' ? errorAlert : "测试模式中已禁止同步。");
-                }
-                return Promise.resolve({ skipped: true, reason: 'test-mode' });
-            }
             const apiUrl = getApiUrl();
             if (!apiUrl) {
                 if (!isAuto && errorAlert !== false) {
@@ -1846,130 +1936,140 @@ const INITIAL_TREASURES = [
 
             if (!isAuto) setSyncStatus('unsaved');
 
-            return fetch(apiUrl, {
-                headers: window.__getAuthHeaders__()
-            })
-                .then(res => {
-                    if (window.__handleAuthError__(res)) return null;
-                    return res.json();
-                })
-                .then(data => {
-                    if (!data) return { skipped: true, reason: 'auth' };
-                    if (data && Object.keys(data).length > 0) {
-                        const normalized = normalizeFullData(data);
-                        const remoteTs = Number(normalized.__meta.updatedAt) || 0;
-                        markServerMeta(remoteTs);
-                        skipMainAutosaveRef.current = true;
-                        skipBattleAutosaveRef.current = true;
-                        applyFullData(data, {
-                            mergeAttendance: true,
-                            force: allowDirtyOverride
-                        });
-                        setSyncStatus('success');
-                        if (typeof successAlert === 'string' && successAlert) {
-                            alert(successAlert);
-                        } else if (!isAuto && successAlert !== false) {
-                            alert("数据已从服务器刷新！");
-                        }
-                        console.log(`[${getNow().toLocaleTimeString()}] 数据同步完成`);
-                        if (retryTimerRef.current) {
-                            clearTimeout(retryTimerRef.current);
-                            retryTimerRef.current = null;
-                        }
-                        return { success: true, updatedAt: remoteTs };
+            try {
+                const res = await fetch(apiUrl, {
+                    headers: {
+                        ...window.__getAuthHeaders__(),
+                        ...getTestRequestHeaders()
                     }
-                    initialServerSyncDoneRef.current = true;
-                    if (typeof emptyAlert === 'string' && emptyAlert) {
-                        alert(emptyAlert);
-                    } else if (!isAuto && emptyAlert !== false) {
-                        alert("服务器无数据或数据为空。");
-                    }
-                    return { success: true, empty: true };
-                })
-                .catch(err => {
-                    console.error("Server fetch failed", err);
-                    setSyncStatus('error');
-                    if (typeof errorAlert === 'string' && errorAlert) {
-                        alert(errorAlert);
-                    } else if (!isAuto && errorAlert !== false) {
-                        alert("刷新失败，无法连接到服务器。");
-                    }
-                    if (!retryTimerRef.current) {
-                        retryTimerRef.current = setTimeout(() => {
-                            retryTimerRef.current = null;
-                            fetchFromServerCore(true);
-                        }, RETRY_CONNECT_MS);
-                    }
-                    throw err;
                 });
+                const { data, text } = await parseApiResponse(res);
+                if (window.__handleAuthError__(res)) return { skipped: true, reason: 'auth' };
+                if (handleTestSessionApiError(res, data)) {
+                    return { skipped: true, reason: 'test-session-invalid' };
+                }
+                if (!res.ok) {
+                    throw new Error(data?.error || text || '刷新失败');
+                }
+                if (data && Object.keys(data).length > 0) {
+                    const normalized = normalizeFullData(data);
+                    const remoteTs = Number(normalized.__meta.updatedAt) || 0;
+                    markServerMeta(remoteTs);
+                    skipMainAutosaveRef.current = true;
+                    skipBattleAutosaveRef.current = true;
+                    applyFullData(data, {
+                        mergeAttendance: true,
+                        force: allowDirtyOverride
+                    }, latestSyncStateRef.current);
+                    setSyncStatus('success');
+                    if (typeof successAlert === 'string' && successAlert) {
+                        alert(successAlert);
+                    } else if (!isAuto && successAlert !== false) {
+                        alert("数据已从服务器刷新！");
+                    }
+                    console.log(`[${getNow().toLocaleTimeString()}] 数据同步完成`);
+                    if (retryTimerRef.current) {
+                        clearTimeout(retryTimerRef.current);
+                        retryTimerRef.current = null;
+                    }
+                    return { success: true, updatedAt: remoteTs };
+                }
+                initialServerSyncDoneRef.current = true;
+                if (typeof emptyAlert === 'string' && emptyAlert) {
+                    alert(emptyAlert);
+                } else if (!isAuto && emptyAlert !== false) {
+                    alert("服务器无数据或数据为空。");
+                }
+                return { success: true, empty: true };
+            } catch (err) {
+                if (err?.message === 'TEST_SESSION_INVALID') {
+                    return { skipped: true, reason: 'test-session-invalid' };
+                }
+                console.error("Server fetch failed", err);
+                setSyncStatus('error');
+                if (typeof errorAlert === 'string' && errorAlert) {
+                    alert(errorAlert);
+                } else if (!isAuto && errorAlert !== false) {
+                    alert("刷新失败，无法连接到服务器。");
+                }
+                if (!retryTimerRef.current) {
+                    retryTimerRef.current = setTimeout(() => {
+                        retryTimerRef.current = null;
+                        fetchFromServerCore(true);
+                    }, RETRY_CONNECT_MS);
+                }
+                throw err;
+            }
         }, []);
 
-        const savePayloadToServer = useCallback((payload, nowTs) => {
-            if (window.__CM_TEST_MODE__) {
-                setSyncStatus('saved');
-                isSavingRef.current = false;
-                return Promise.resolve({ success: true, updatedAt: nowTs });
-            }
+        const savePayloadToServer = useCallback(async (payload, nowTs) => {
             const apiUrl = getApiUrl();
             if (!apiUrl) {
                 setSyncStatus('error');
                 isSavingRef.current = false;
-                return Promise.reject(new Error('SERVER_UNAVAILABLE'));
+                throw new Error('SERVER_UNAVAILABLE');
             }
-            return fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...window.__getAuthHeaders__(),
-                    ...getAdminAuthHeaders()
-                },
-                body: JSON.stringify(payload)
-            })
-                .then(async (res) => {
-                    if (window.__handleAuthError__(res)) return null;
-                    const data = await res.json().catch(() => ({}));
-                    if (res.status === 409) {
-                        const serverUpdatedAt = Number(data?.serverUpdatedAt) || 0;
-                        if (serverUpdatedAt > 0) serverMetaRef.current = { updatedAt: serverUpdatedAt };
-                        isSavingRef.current = false;
-                        try {
-                            const refreshResult = await fetchFromServerCore({
-                                isAuto: true,
-                                allowDirtyOverride: true,
-                                successAlert: false,
-                                emptyAlert: false,
-                                errorAlert: false
-                            });
-                            if (!refreshResult || refreshResult.skipped) {
-                                throw new Error('CONFLICT_REFRESH_SKIPPED');
-                            }
-                            alert('服务器数据已自动刷新，请基于最新数据重新操作后再保存。');
-                        } catch (refreshErr) {
-                            setSyncStatus('error');
-                            console.error('冲突后自动刷新失败', refreshErr);
-                            alert('检测到其他浏览器或标签页已更新服务器数据，且自动刷新失败，请手动刷新后再保存。');
-                        }
-                        throw new Error('DATA_CONFLICT');
-                    }
-                    if (res.status === 403 && data?.code === 'MAINTENANCE_AUTH_REQUIRED') {
-                        clearAdminAuth();
-                        throw new Error(data?.error || '当前操作需要重新验证维护密码');
-                    }
-                    if (!res.ok) {
-                        throw new Error(data?.error || '保存失败');
-                    }
-                    const savedUpdatedAt = Number(data?.updatedAt) || nowTs;
-                    markServerMeta(savedUpdatedAt);
-                    setSyncStatus('saved');
-                    isSavingRef.current = false;
-                    return { success: true, updatedAt: savedUpdatedAt };
-                })
-                .catch((err) => {
-                    if (err?.message === 'DATA_CONFLICT') throw err;
-                    setSyncStatus('unsaved');
-                    isSavingRef.current = false;
-                    throw err;
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...window.__getAuthHeaders__(),
+                        ...getTestRequestHeaders(),
+                        ...getAdminAuthHeaders()
+                    },
+                    body: JSON.stringify(payload)
                 });
+                const { data } = await parseApiResponse(res);
+                if (window.__handleAuthError__(res)) return null;
+                if (handleTestSessionApiError(res, data)) {
+                    throw new Error(data?.code || 'TEST_SESSION_INVALID');
+                }
+                if (res.status === 409) {
+                    const serverUpdatedAt = Number(data?.serverUpdatedAt) || 0;
+                    if (serverUpdatedAt > 0) serverMetaRef.current = { updatedAt: serverUpdatedAt };
+                    isSavingRef.current = false;
+                    try {
+                        const refreshResult = await fetchFromServerCore({
+                            isAuto: true,
+                            allowDirtyOverride: true,
+                            successAlert: false,
+                            emptyAlert: false,
+                            errorAlert: false
+                        });
+                        if (!refreshResult || refreshResult.skipped) {
+                            throw new Error('CONFLICT_REFRESH_SKIPPED');
+                        }
+                        alert('服务器数据已自动刷新，请基于最新数据重新操作后再保存。');
+                    } catch (refreshErr) {
+                        setSyncStatus('error');
+                        console.error('冲突后自动刷新失败', refreshErr);
+                        alert('检测到其他浏览器或标签页已更新服务器数据，且自动刷新失败，请手动刷新后再保存。');
+                    }
+                    throw new Error('DATA_CONFLICT');
+                }
+                if (res.status === 403 && data?.code === 'MAINTENANCE_AUTH_REQUIRED') {
+                    clearAdminAuth();
+                    throw new Error(data?.error || '当前操作需要重新验证维护密码');
+                }
+                if (!res.ok) {
+                    throw new Error(data?.error || '保存失败');
+                }
+                const savedUpdatedAt = Number(data?.updatedAt) || nowTs;
+                markServerMeta(savedUpdatedAt);
+                setSyncStatus('saved');
+                isSavingRef.current = false;
+                return { success: true, updatedAt: savedUpdatedAt };
+            } catch (err) {
+                if (err?.message === 'DATA_CONFLICT') throw err;
+                if (err?.message === 'TEST_SESSION_INVALID' || err?.message === 'TEST_SESSION_EXPIRED') {
+                    isSavingRef.current = false;
+                    return { skipped: true, reason: 'test-session-invalid' };
+                }
+                setSyncStatus('unsaved');
+                isSavingRef.current = false;
+                throw err;
+            }
         }, [fetchFromServerCore]);
 
         const persistDataPatch = useCallback((partialData, options = {}) => {
@@ -2042,6 +2142,43 @@ const INITIAL_TREASURES = [
             return savePayloadToServer(payload, nowTs);
         }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
+        const flushPendingAttendanceSaves = useCallback(() => {
+            if (attendanceSaveInFlightRef.current) {
+                return attendanceSaveDrainPromiseRef.current;
+            }
+
+            attendanceSaveInFlightRef.current = true;
+            attendanceSaveDrainPromiseRef.current = (async () => {
+                while (pendingAttendanceSaveRef.current) {
+                    const pending = pendingAttendanceSaveRef.current;
+                    pendingAttendanceSaveRef.current = null;
+                    try {
+                        await persistDataPatch({
+                            attendanceRecords: pending.records
+                        });
+                    } catch (err) {
+                        console.error('考勤即时保存失败:', err);
+                        if (err?.message !== 'DATA_CONFLICT') {
+                            alert(`${pending?.options?.actionLabel || '考勤记录'}写入服务器失败，请检查网络后重试。`);
+                        }
+                    }
+                }
+                return { success: true };
+            })().finally(() => {
+                attendanceSaveInFlightRef.current = false;
+            });
+
+            return attendanceSaveDrainPromiseRef.current;
+        }, [persistDataPatch]);
+
+        const queueImmediateAttendanceSave = useCallback((records, options = {}) => {
+            pendingAttendanceSaveRef.current = {
+                records: records || {},
+                options
+            };
+            return flushPendingAttendanceSaves();
+        }, [flushPendingAttendanceSaves]);
+
         /** 统一持久化：将当前完整数据写入服务器。 */
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
@@ -2088,6 +2225,53 @@ const INITIAL_TREASURES = [
         const fetchFromServer = useCallback((options = {}) => {
             return fetchFromServerCore(options);
         }, [fetchFromServerCore]);
+
+        const previousTestContextRef = useRef({
+            testMode,
+            testSessionId
+        });
+
+        useEffect(() => {
+            const handleInvalidTestSession = (event) => {
+                clearScopedTestArtifacts(event?.detail?.sessionId || testSessionId);
+                applyTestRuntimeContext({ enabled: false });
+                setTestSessionId('');
+                setTestMode(false);
+                setSimTime(Date.now());
+                setTimeSpeed(1);
+                setSyncStatus('saved');
+                const message = event?.detail?.message;
+                if (message) {
+                    setTimeout(() => alert(message), 0);
+                }
+            };
+            window.addEventListener(TEST_SESSION_INVALID_EVENT, handleInvalidTestSession);
+            return () => {
+                window.removeEventListener(TEST_SESSION_INVALID_EVENT, handleInvalidTestSession);
+            };
+        }, [testSessionId]);
+
+        useEffect(() => {
+            const prev = previousTestContextRef.current;
+            const changed = prev.testMode !== testMode || prev.testSessionId !== testSessionId;
+            previousTestContextRef.current = {
+                testMode,
+                testSessionId
+            };
+            if (!localHydrationDone || !changed) return;
+
+            serverMetaRef.current = { updatedAt: 0 };
+            initialServerSyncDoneRef.current = false;
+            isDirtyRef.current = false;
+            isSavingRef.current = false;
+            fetchFromServer({
+                isAuto: true,
+                allowDirtyOverride: true,
+                successAlert: false,
+                emptyAlert: false,
+                errorAlert: false
+            }).catch(() => {});
+        }, [localHydrationDone, testMode, testSessionId, fetchFromServer]);
 
         useEffect(() => {
             // 1. Initial sync
@@ -2183,7 +2367,7 @@ const INITIAL_TREASURES = [
             }
             isDirtyRef.current = true;
 
-            if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
+            if (getApiUrl() && !initialServerSyncDoneRef.current) {
                 isDirtyRef.current = false;
                 return undefined;
             }
@@ -2210,7 +2394,7 @@ const INITIAL_TREASURES = [
             }
             isDirtyRef.current = true;
 
-            if (!window.__CM_TEST_MODE__ && getApiUrl() && !initialServerSyncDoneRef.current) {
+            if (getApiUrl() && !initialServerSyncDoneRef.current) {
                 isDirtyRef.current = false;
                 return undefined;
             }
@@ -2289,7 +2473,8 @@ const INITIAL_TREASURES = [
         const handleWage = () => runHandleWage({
             config,
             students,
-            getTodayStr,
+            history,
+            getNow,
             getSystemConfig,
             getCustomRoles,
             batchUpdatePoints,
@@ -2498,9 +2683,14 @@ const INITIAL_TREASURES = [
             return true;
         };
 
-        const handleAttendanceRecordsChange = useCallback((nextRecords) => {
-            setAttendanceRecords(nextRecords || {});
-        }, []);
+        const handleAttendanceRecordsChange = useCallback((nextRecords, options = {}) => {
+            const safeRecords = nextRecords || {};
+            setAttendanceRecords(safeRecords);
+
+            if (options?.persistImmediately !== true) return Promise.resolve({ skipped: true });
+
+            return queueImmediateAttendanceSave(safeRecords, options);
+        }, [queueImmediateAttendanceSave]);
 
         return h("div", { className: "min-h-screen pb-20" },
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),

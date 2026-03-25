@@ -28,25 +28,28 @@
             const token = localStorage.getItem('token');
             return token ? { 'Authorization': 'Bearer ' + token } : {};
         };
-        window.__handleAuthError__ = function(res) {
-            if (res.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                localStorage.removeItem('cm_battle_snapshots_v1');
-                sessionStorage.removeItem('maintenance_token');
-                sessionStorage.removeItem('maintenance_token_expires_at');
-                window.location.href = '/login.html';
-                return true;
-            }
-            return false;
-        };
-        window.__logout__ = function() {
+        window.__clearAuthAndRedirect__ = function() {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('cm_battle_snapshots_v1');
             sessionStorage.removeItem('maintenance_token');
             sessionStorage.removeItem('maintenance_token_expires_at');
             window.location.href = '/login.html';
+        };
+        window.__handleAuthError__ = function(res) {
+            const authErrorType = res && res.headers && typeof res.headers.get === 'function'
+                ? res.headers.get('x-auth-error')
+                : '';
+            const requestUrl = res && typeof res.url === 'string' ? res.url : '';
+            const isMaintenanceApi = requestUrl.includes('/api/maintenance/');
+            if (res.status === 401 && (authErrorType === 'access-required' || !isMaintenanceApi)) {
+                window.__clearAuthAndRedirect__();
+                return true;
+            }
+            return false;
+        };
+        window.__logout__ = function() {
+            window.__clearAuthAndRedirect__();
         };
         window.__getCurrentUser__ = function() {
             try {

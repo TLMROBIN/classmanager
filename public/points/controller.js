@@ -97,6 +97,20 @@
         return batchUpdatePoints(updates);
     };
 
+    const getLocalDateKey = (date) => {
+        const target = new Date(date);
+        if (isNaN(target.getTime())) return "";
+        const year = target.getFullYear();
+        const month = String(target.getMonth() + 1).padStart(2, '0');
+        const day = String(target.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const isWageHistoryRecord = (item) => {
+        const reason = typeof item?.reason === 'string' ? item.reason : "";
+        return reason === "每日工资" || reason.startsWith("班级职务津贴");
+    };
+
     const handleUndo = ({
         recordId,
         history,
@@ -187,15 +201,24 @@
     const handleWage = ({
         config,
         students,
-        getTodayStr,
+        history,
+        getNow,
         getSystemConfig,
         getCustomRoles,
         batchUpdatePoints,
         setConfig
     }) => {
-        const today = getTodayStr();
-        if (config.lastWageDate === today) {
-            if (!confirm("今日工资似乎已发放，确定要再次发放吗？")) return;
+        const now = typeof getNow === 'function' ? getNow() : new Date();
+        const today = getLocalDateKey(now);
+        const alreadyIssuedToday = config?.lastWageDate === today || (Array.isArray(history) ? history : []).some(item => (
+            item &&
+            !item.isUndoLog &&
+            isWageHistoryRecord(item) &&
+            getLocalDateKey(item.ts) === today
+        ));
+        if (alreadyIssuedToday) {
+            alert("今日一键工资已发放，每天只能发一次");
+            return;
         }
 
         const systemConfig = getSystemConfig(config);
