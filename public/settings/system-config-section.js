@@ -198,7 +198,7 @@
                                                 h("p", { className: "text-xs text-gray-500 mt-1" }, "“一键工资”只会给这里勾选的小组成员发放工资。")
                                             )
                                         )
-                                    )
+                                    ),
                                 )
                             ),
                             StudentRosterSection && h(StudentRosterSection, studentRosterProps || {}),

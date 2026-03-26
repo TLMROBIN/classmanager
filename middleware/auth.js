@@ -99,21 +99,53 @@ const getAccessTokenFromRequest = (req) => {
     return cookies[ACCESS_TOKEN_COOKIE_NAME] || null;
 };
 
-const authMiddleware = (req, res, next) => {
-    const token = getAccessTokenFromRequest(req);
+const normalizeAuthUser = (user) => {
+    if (!user) return null;
 
-    if (!token) {
-        return sendAccessAuthError(res, '未授权，请先登录');
+    const normalizedId = Number(user.id);
+    if (!Number.isFinite(normalizedId)) return null;
+
+    const role = user.role === 'admin' || user.role === 'user'
+        ? user.role
+        : null;
+    if (!role) return null;
+
+    return {
+        id: normalizedId,
+        username: typeof user.username === 'string' ? user.username : '',
+        email: typeof user.email === 'string' ? user.email : null,
+        role,
+        created_at: user.created_at || null
+    };
+};
+
+const createAuthMiddleware = ({ findUserById }) => {
+    if (typeof findUserById !== 'function') {
+        throw new TypeError('createAuthMiddleware 需要提供 findUserById');
     }
 
-    const decoded = verifyToken(token);
-    
-    if (!decoded) {
-        return sendAccessAuthError(res, 'Token无效或已过期');
-    }
-    
-    req.user = decoded;
-    next();
+    return (req, res, next) => {
+        const token = getAccessTokenFromRequest(req);
+
+        if (!token) {
+            return sendAccessAuthError(res, '未授权，请先登录');
+        }
+
+        const decoded = verifyToken(token);
+
+        if (!decoded) {
+            return sendAccessAuthError(res, 'Token无效或已过期');
+        }
+
+        const user = normalizeAuthUser(findUserById(decoded.id));
+        if (!user) {
+            return sendAccessAuthError(res, '账户不存在或已失效，请重新登录');
+        }
+
+        req.authToken = decoded;
+        req.user = user;
+        next();
+    };
 };
 
 const adminMiddleware = (req, res, next) => {
@@ -135,9 +167,9 @@ module.exports = {
     generateMaintenanceToken,
     verifyToken,
     verifyMaintenanceToken,
+    createAuthMiddleware,
     ACCESS_TOKEN_COOKIE_NAME,
     ACCESS_TOKEN_TTL_MS,
-    authMiddleware,
     adminMiddleware,
     userMiddleware,
     MAINTENANCE_TOKEN_TTL_MS

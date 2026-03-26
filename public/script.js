@@ -170,6 +170,8 @@ const DEFAULT_SYSTEM_CONFIG = {
     points: {
         dailyWageAmount: 5,
         dailyWageGroups: ['discipline', 'hygiene'],
+        penaltyDecayDays: 7,
+        penaltyDecayAmount: 10,
         reasons: [
             { name: "每日工资", val: 5, type: 'bonus', note: "组长+6", scene: "班级", category: "班务" },
             { name: "宣传组装饰", val: 100, type: 'bonus', note: "组长+120", scene: "班级", category: "纪律" },
@@ -383,6 +385,14 @@ const getSystemConfig = (config) => {
         }
         if (Array.isArray(userConfig.points.dailyWageGroups)) {
             merged.points.dailyWageGroups = userConfig.points.dailyWageGroups;
+        }
+        if (userConfig.points.penaltyDecayDays !== undefined) {
+            const decayDays = Number(userConfig.points.penaltyDecayDays);
+            if (Number.isFinite(decayDays)) merged.points.penaltyDecayDays = decayDays;
+        }
+        if (userConfig.points.penaltyDecayAmount !== undefined) {
+            const decayAmount = Number(userConfig.points.penaltyDecayAmount);
+            if (Number.isFinite(decayAmount)) merged.points.penaltyDecayAmount = decayAmount;
         }
         if (userConfig.points.reasons) {
             merged.points.reasons = userConfig.points.reasons;
@@ -1537,8 +1547,6 @@ const INITIAL_TREASURES = [
         });
         const effectiveTreasures = resolveTreasuresData(treasures, config);
         const treasureGachaConfig = getTreasureGachaConfig(config);
-        const prevFrozenRef = useRef(!!(config && config.frozen));
-            
         const [modal, setModal] = useState({ open: false, title: "", content: null, onConfirm: null, type: 'info' });
         const NavView = getNavView();
         const DashboardView = getDashboardView();
@@ -2308,54 +2316,6 @@ const INITIAL_TREASURES = [
             const className = systemConfig.className || "班级自在管理系统";
             document.title = className;
         }, [config]);
-
-        const applyPenaltyDecay = useCallback(() => {
-            if (config && config.frozen) return;
-            if (!Array.isArray(students) || students.length === 0) return;
-            const now = getNow();
-            const todayKey = getDateString(now);
-            const lastRun = getStorageItem('penalty_decay_last_run');
-            if (lastRun === todayKey) return;
-            const lastMap = new Map();
-            (history || []).forEach(h => {
-                if (!h || h.studentId == null) return;
-                if (h.type !== 'penalty' && !(Number(h.val) < 0)) return;
-                const prev = lastMap.get(h.studentId) || 0;
-                if (h.ts > prev) lastMap.set(h.studentId, h.ts);
-            });
-            let changed = false;
-            const nextStudents = students.map(s => {
-                const lastFromHistory = lastMap.get(s.id) || 0;
-                const lastPenaltyAt = Math.max(Number(s.lastPenaltyAt) || 0, lastFromHistory || 0);
-                const penaltyVal = Number(s.penalty) || 0;
-                if (!lastPenaltyAt || penaltyVal <= 0) return s;
-                const weeks = Math.floor((now.getTime() - lastPenaltyAt) / (7 * DAY_MS));
-                if (weeks <= 0) return s;
-                const reduce = 10 * weeks;
-                const nextPenalty = Math.max(0, penaltyVal - reduce);
-                const nextLast = lastPenaltyAt + weeks * 7 * DAY_MS;
-                if (nextPenalty === penaltyVal && nextLast === lastPenaltyAt) return s;
-                changed = true;
-                return { ...s, penalty: nextPenalty, lastPenaltyAt: nextLast };
-            });
-            if (changed) setStudents(nextStudents);
-            setStorageItem('penalty_decay_last_run', todayKey);
-        }, [students, history, config]);
-
-        useEffect(() => {
-            const wasFrozen = prevFrozenRef.current;
-            const isFrozen = !!(config && config.frozen);
-            if (wasFrozen && !isFrozen) {
-                const nowTs = getNow().getTime();
-                setStudents(prev => (prev || []).map(s => ({ ...s, lastPenaltyAt: nowTs })));
-            }
-            prevFrozenRef.current = isFrozen;
-        }, [config]);
-
-        useEffect(() => {
-            applyPenaltyDecay();
-        }, [applyPenaltyDecay]);
-
 
         // --- 自动保存逻辑 (Debounced) ---
         useEffect(() => {

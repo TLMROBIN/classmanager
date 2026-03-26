@@ -335,6 +335,80 @@
             );
         };
 
+        const PenaltyDecaySection = ({ config, setConfig, embedded = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const systemConfig = getSystemConfig(config);
+            const pointsConfig = (systemConfig && systemConfig.points) || {};
+            const isVisible = isOpen;
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", { className: "space-y-1" },
+                        h("div", { className: "flex items-center gap-2 text-gray-800" },
+                            h(Icon, { name: "clock", size: 18 }),
+                            h("h3", { className: "font-bold text-sm" }, "扣分衰减设置")
+                        ),
+                        h("p", { className: "text-xs text-gray-500" }, "设置扣分多久自动衰减一次，以及每次衰减多少分。")
+                    ),
+                    h("button", {
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入维护密码以打开扣分衰减设置："
+                            });
+                        },
+                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                    }, isOpen ? "收起扣分衰减设置" : "打开扣分衰减设置")
+                ),
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "衰减周期（天）"),
+                            h("input", {
+                                type: "number",
+                                min: 0,
+                                step: 1,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: pointsConfig.penaltyDecayDays ?? 7,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        penaltyDecayDays: Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "每满多少天自动衰减一次。填 0 表示关闭衰减。")
+                        ),
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "每周期衰减数额"),
+                            h("input", {
+                                type: "number",
+                                min: 0,
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: pointsConfig.penaltyDecayAmount ?? 10,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        penaltyDecayAmount: Math.max(0, Number(e.target.value) || 0)
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "每到一个衰减周期，从当前扣分里扣减这部分数额，最低减到 0。")
+                        )
+                    ),
+                    h("div", { className: "rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 leading-5" }, "扣分衰减由服务端统一计算并写入数据库，不依赖页面是否打开。")
+                )
+            );
+        };
+
         const RecordAttributesSection = ({ history, setHistory, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const [recordSearch, setRecordSearch] = useState("");
@@ -499,6 +573,7 @@
         return {
             SubjectConfigSection,
             ReasonsConfigSection,
+            PenaltyDecaySection,
             RecordAttributesSection
         };
     };

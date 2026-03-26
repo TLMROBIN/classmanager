@@ -120,6 +120,7 @@
         const {
             SubjectConfigSection,
             ReasonsConfigSection,
+            PenaltyDecaySection,
             RecordAttributesSection
         } = createOperationSettingsSections({
             h,
@@ -363,6 +364,11 @@
                             )
                         ),
                         h(ReasonsConfigSection, {
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
+                        h(PenaltyDecaySection, {
                             config,
                             setConfig,
                             embedded: true

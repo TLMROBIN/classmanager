@@ -9,7 +9,6 @@
             getNow,
             getDateString,
             getStartOfDay,
-            diffDays,
             DAY_MS,
             getSystemConfig,
             getCustomRoles,
@@ -20,7 +19,7 @@
             getProfileAvatarUI
         } = deps || {};
 
-        if (!h || !useState || !useMemo || !Icon || !requireAdminAuth || !getNow || !getDateString || !getStartOfDay || !diffDays || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
+        if (!h || !useState || !useMemo || !Icon || !requireAdminAuth || !getNow || !getDateString || !getStartOfDay || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
             throw new Error('DashboardView dependencies are missing');
         }
 
@@ -193,18 +192,47 @@
                 (Array.isArray(history) ? history : []).forEach(item => {
                     if (!item || item.studentId == null) return;
                     if (item.type !== 'penalty' && !(Number(item.val) < 0)) return;
-                    const prev = map.get(item.studentId) || 0;
-                    if (item.ts > prev) map.set(item.studentId, item.ts);
+                    const studentKey = String(item.studentId);
+                    const prev = map.get(studentKey) || 0;
+                    if (item.ts > prev) map.set(studentKey, item.ts);
                 });
                 return map;
             }, [history]);
 
+            const penaltyDecayConfig = useMemo(() => {
+                const pointsConfig = getSystemConfig(config).points || {};
+                const cycleDays = Math.max(0, Math.floor(Number(pointsConfig.penaltyDecayDays) || 0));
+                const decayAmount = Math.max(0, Number(pointsConfig.penaltyDecayAmount) || 0);
+                return { cycleDays, decayAmount };
+            }, [config]);
+
+            const formatPenaltyDecayValue = (value) => {
+                const numeric = Number(value) || 0;
+                return Number.isInteger(numeric) ? String(numeric) : String(Number(numeric.toFixed(2)));
+            };
+
             const getNoPenaltyText = (student) => {
-                const lastFromHistory = penaltyLastMap.get(student.id) || 0;
+                const { cycleDays, decayAmount } = penaltyDecayConfig;
+                if (cycleDays <= 0 || decayAmount <= 0) return "扣分衰减已关闭";
+
+                const penaltyVal = Math.max(0, Number(student.penalty) || 0);
+                if (penaltyVal <= 0) return "当前无待衰减扣分";
+
+                const lastFromHistory = penaltyLastMap.get(String(student.id)) || 0;
                 const lastPenaltyAt = Math.max(Number(student.lastPenaltyAt) || 0, lastFromHistory || 0);
-                if (!lastPenaltyAt) return "无扣分";
-                const days = Math.max(0, diffDays(getStartOfDay(new Date(lastPenaltyAt)), getStartOfDay(getNow())));
-                return `${days}天未扣分`;
+                const nextReduce = Math.min(decayAmount, penaltyVal);
+                if (!lastPenaltyAt) {
+                    return `再有${cycleDays}天不扣分，即可减${formatPenaltyDecayValue(nextReduce)}分`;
+                }
+
+                const nowTs = getNow().getTime();
+                const nextDecayAt = lastPenaltyAt + (cycleDays * DAY_MS);
+                const remainingMs = nextDecayAt - nowTs;
+                const remainingDays = Math.max(0, Math.ceil(remainingMs / DAY_MS));
+                if (remainingDays <= 0) {
+                    return `已达到减${formatPenaltyDecayValue(nextReduce)}分条件`;
+                }
+                return `再有${remainingDays}天不扣分，即可减${formatPenaltyDecayValue(nextReduce)}分`;
             };
 
             return h("div", { className: "space-y-6 animate-fade-in" },

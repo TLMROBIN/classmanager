@@ -57,7 +57,7 @@
                                     setConfigSafe(c => ({ ...c, frozen: newFrozen }));
 
                                     if (!newFrozen) {
-                                        const now = Date.now();
+                                        const now = getNow().getTime();
                                         const newStudents = studentList.map(student => ({
                                             ...student,
                                             lastPenaltyAt: now

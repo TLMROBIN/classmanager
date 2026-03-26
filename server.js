@@ -9,9 +9,9 @@ const {
     generateToken,
     generateMaintenanceToken,
     verifyMaintenanceToken,
+    createAuthMiddleware,
     ACCESS_TOKEN_COOKIE_NAME,
     ACCESS_TOKEN_TTL_MS,
-    authMiddleware,
     adminMiddleware,
     userMiddleware,
     MAINTENANCE_TOKEN_TTL_MS
@@ -55,6 +55,7 @@ const CSP_POLICY = [
 
 const selectClassDataRows = db.prepare('SELECT data_key, data_value FROM class_data WHERE user_id = ?');
 const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
+const selectAccessAuthUserById = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?');
 const upsertClassData = db.prepare(`
     INSERT INTO class_data (user_id, data_key, data_value, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -161,6 +162,9 @@ const DEFAULT_WEEKEND_RULES = {
 const DEFAULT_SUNDAY_SPECIAL_LATE_TIME = { evening: '19:00' };
 const ATTENDANCE_LOOKBACK_DAYS = 60;
 const ABSENT_GRACE_MS = 2 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_PENALTY_DECAY_DAYS = 7;
+const DEFAULT_PENALTY_DECAY_AMOUNT = 10;
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const parseStoredValue = (value) => {
@@ -371,6 +375,141 @@ const getAttendanceConfig = (config) => {
         ...(isPlainObject(attendance.sundaySpecialLateTime) ? attendance.sundaySpecialLateTime : {})
     };
     return { schedule, weekendRules, sundaySpecialLateTime };
+};
+
+const getPenaltyDecayConfig = (config) => {
+    const points = isPlainObject(config?.systemConfig?.points) ? config.systemConfig.points : {};
+    const cycleDays = Number(points.penaltyDecayDays);
+    const decayAmount = Number(points.penaltyDecayAmount);
+    return {
+        cycleDays: Number.isFinite(cycleDays) ? Math.max(0, Math.floor(cycleDays)) : DEFAULT_PENALTY_DECAY_DAYS,
+        decayAmount: Number.isFinite(decayAmount) ? Math.max(0, decayAmount) : DEFAULT_PENALTY_DECAY_AMOUNT
+    };
+};
+
+const buildPenaltyLastMap = (history) => {
+    const lastMap = new Map();
+    (Array.isArray(history) ? history : []).forEach(item => {
+        if (!item || item.studentId == null) return;
+        if (item.type !== 'penalty' && !(Number(item.val) < 0)) return;
+        const studentKey = String(item.studentId);
+        const currentTs = Number(item.ts) || 0;
+        const prevTs = lastMap.get(studentKey) || 0;
+        if (currentTs > prevTs) lastMap.set(studentKey, currentTs);
+    });
+    return lastMap;
+};
+
+const resetPenaltyDecayClock = (students, nowTs) => {
+    if (!Array.isArray(students)) return { students: [], changed: false };
+    let changed = false;
+    const nextStudents = students.map(student => {
+        const nextLastPenaltyAt = Number(nowTs) || 0;
+        if (Number(student?.lastPenaltyAt) === nextLastPenaltyAt) return student;
+        changed = true;
+        return {
+            ...student,
+            lastPenaltyAt: nextLastPenaltyAt
+        };
+    });
+    return { students: nextStudents, changed };
+};
+
+const applyPenaltyDecayToStudents = (students, history, config, now) => {
+    if (!Array.isArray(students) || students.length === 0) {
+        return { students: Array.isArray(students) ? students : [], changed: false };
+    }
+    if (config?.frozen) {
+        return { students, changed: false };
+    }
+
+    const { cycleDays, decayAmount } = getPenaltyDecayConfig(config);
+    if (cycleDays <= 0 || decayAmount <= 0) {
+        return { students, changed: false };
+    }
+
+    const cycleMs = cycleDays * DAY_MS;
+    const nowTs = now instanceof Date ? now.getTime() : Number(now);
+    if (!Number.isFinite(nowTs)) {
+        return { students, changed: false };
+    }
+
+    const lastPenaltyMap = buildPenaltyLastMap(history);
+    let changed = false;
+    const nextStudents = students.map(student => {
+        const studentKey = String(student?.id ?? '');
+        const lastFromHistory = lastPenaltyMap.get(studentKey) || 0;
+        const storedLastPenaltyAt = Number(student?.lastPenaltyAt) || 0;
+        const lastPenaltyAt = Math.max(storedLastPenaltyAt, lastFromHistory);
+        const penaltyVal = Number(student?.penalty) || 0;
+
+        if (!lastPenaltyAt || penaltyVal <= 0) return student;
+
+        const cycles = Math.floor((nowTs - lastPenaltyAt) / cycleMs);
+        if (cycles <= 0) return student;
+
+        const nextPenalty = Math.max(0, penaltyVal - (decayAmount * cycles));
+        const nextLastPenaltyAt = lastPenaltyAt + (cycles * cycleMs);
+        if (nextPenalty === penaltyVal && nextLastPenaltyAt === storedLastPenaltyAt) return student;
+
+        changed = true;
+        return {
+            ...student,
+            penalty: nextPenalty,
+            lastPenaltyAt: nextLastPenaltyAt
+        };
+    });
+
+    return { students: nextStudents, changed };
+};
+
+const applyPenaltyDecayLifecycle = ({
+    students,
+    history,
+    config,
+    now,
+    previousConfig
+}) => {
+    const safeStudents = Array.isArray(students) ? students : [];
+    let nextStudents = safeStudents;
+    let changed = false;
+
+    if (previousConfig?.frozen === true && config?.frozen === false) {
+        const resetResult = resetPenaltyDecayClock(nextStudents, now instanceof Date ? now.getTime() : now);
+        nextStudents = resetResult.students;
+        changed = resetResult.changed || changed;
+    }
+
+    const decayResult = applyPenaltyDecayToStudents(nextStudents, history, config, now);
+    nextStudents = decayResult.students;
+    changed = decayResult.changed || changed;
+
+    return {
+        students: nextStudents,
+        changed
+    };
+};
+
+const buildNextStoredMeta = (existingMeta, now) => {
+    const nowTs = now instanceof Date ? now.getTime() : Number(now);
+    const existingUpdatedAt = Number(existingMeta?.updatedAt) || 0;
+    const nextUpdatedAt = Number.isFinite(nowTs)
+        ? Math.max(nowTs, existingUpdatedAt + 1)
+        : Math.max(Date.now(), existingUpdatedAt + 1);
+    return {
+        ...(isPlainObject(existingMeta) ? existingMeta : {}),
+        updatedAt: nextUpdatedAt
+    };
+};
+
+const persistDataObject = (store, dataObject) => {
+    const entries = Object.entries(dataObject || {});
+    const transaction = db.transaction(() => {
+        entries.forEach(([key, value]) => {
+            store.upsertDataKey(key, JSON.stringify(value));
+        });
+    });
+    transaction();
 };
 
 const getRulesForDate = (config, dateObj) => {
@@ -836,6 +975,11 @@ const buildMaintenanceResponse = (store) => ({
     success: true,
     configured: Boolean(getMaintenanceCredential(store))
 });
+const authMiddleware = createAuthMiddleware({
+    findUserById(userId) {
+        return selectAccessAuthUserById.get(Number(userId));
+    }
+});
 
 cleanupExpiredTestSessions();
 const testSessionCleanupTimer = setInterval(cleanupExpiredTestSessions, TEST_SESSION_CLEANUP_INTERVAL_MS);
@@ -949,20 +1093,10 @@ app.post('/api/auth/login', (req, res) => {
 
 // 验证token
 app.get('/api/auth/verify', authMiddleware, (req, res) => {
-    const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?').get(req.user.id);
-    
-    if (!user) {
-        clearAccessAuthCookie(req, res);
-        return res
-            .status(401)
-            .set('X-Auth-Error', 'access-required')
-            .json({ error: '登录已失效，请重新登录', code: 'AUTH_REQUIRED' });
-    }
-
     res.set('Cache-Control', 'no-store');
     res.json({ 
         success: true,
-        user: { id: user.id, username: user.username, email: user.email, role: user.role }
+        user: { id: req.user.id, username: req.user.username, email: req.user.email, role: req.user.role }
     });
 });
 
@@ -1195,8 +1329,24 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
 
     try {
         const data = store.readAllData();
+        const now = getRequestNow(req);
+        const existingMeta = readStoredJson(store, '__meta') || data.__meta || {};
+        const decayResult = applyPenaltyDecayLifecycle({
+            students: data.students,
+            history: data.history,
+            config: data.config,
+            now
+        });
+        if (decayResult.changed) {
+            data.students = decayResult.students;
+            data.__meta = buildNextStoredMeta(existingMeta, now);
+            persistDataObject(store, {
+                students: data.students,
+                __meta: data.__meta
+            });
+        }
         data.config = stripLegacyAdminPasswordFromConfig(data.config);
-        data.attendanceRecords = buildAttendanceRecordsForResponse(data, getRequestNow(req));
+        data.attendanceRecords = buildAttendanceRecordsForResponse(data, now);
 
         res.json(data);
     } catch (err) {
@@ -1215,6 +1365,7 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
     }
     
     try {
+        const now = getRequestNow(req);
         const incomingMeta = data?.__meta && typeof data.__meta === 'object' ? data.__meta : {};
         const existingMeta = readStoredJson(store, '__meta') || {};
         const existingUpdatedAt = Number(existingMeta.updatedAt) || 0;
@@ -1234,6 +1385,32 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
                 code: 'MAINTENANCE_AUTH_REQUIRED'
             });
         }
+        const existingStudents = Array.isArray(readStoredJson(store, 'students')) ? readStoredJson(store, 'students') : [];
+        const existingHistory = Array.isArray(readStoredJson(store, 'history')) ? readStoredJson(store, 'history') : [];
+        const existingConfig = readStoredJson(store, 'config') || {};
+        const mergedStudents = Array.isArray(data.students) ? data.students : existingStudents;
+        const mergedHistory = Array.isArray(data.history) ? data.history : existingHistory;
+        const mergedConfig = Object.prototype.hasOwnProperty.call(data, 'config') ? data.config : existingConfig;
+        const decayResult = applyPenaltyDecayLifecycle({
+            students: mergedStudents,
+            history: mergedHistory,
+            config: mergedConfig,
+            now,
+            previousConfig: existingConfig
+        });
+        const normalizedIncomingMeta = {
+            ...incomingMeta,
+            updatedAt: Number(incomingMeta.updatedAt) || Date.now()
+        };
+        if (decayResult.changed) {
+            data.students = decayResult.students;
+            normalizedIncomingMeta.updatedAt = Math.max(
+                normalizedIncomingMeta.updatedAt,
+                Number(now.getTime()) || 0,
+                existingUpdatedAt + 1
+            );
+        }
+        data.__meta = normalizedIncomingMeta;
         const protectedTreasureDomain = getProtectedTreasureDomain(store, data, incomingMeta);
 
         const transaction = db.transaction(() => {
@@ -1267,7 +1444,7 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
         res.json({
             success: true,
             message: '保存成功',
-            updatedAt: Number(incomingMeta.updatedAt) || Date.now()
+            updatedAt: Number(normalizedIncomingMeta.updatedAt) || Date.now()
         });
     } catch (err) {
         console.error('保存数据出错:', err);
