@@ -108,6 +108,14 @@
         const [reportEnd, setReportEnd] = useState(() => getReportRange(7).end);
         const [countdownName, setCountdownName] = useState("");
         const [countdownDate, setCountdownDate] = useState("");
+        const initialScheduleDate = getDateString(getNow());
+        const [scheduleDate, setScheduleDate] = useState(() => initialScheduleDate);
+        const [scheduleText, setScheduleText] = useState(() => {
+            const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
+                ? config.scheduleNotes
+                : {};
+            return String(scheduleNotes[initialScheduleDate] || '');
+        });
         const [showExamArchivesManager, setShowExamArchivesManager] = useState(false);
         const [showStudentRosterManager, setShowStudentRosterManager] = useState(false);
         const [showOrganizationManager, setShowOrganizationManager] = useState(false);
@@ -292,6 +300,44 @@
             URL.revokeObjectURL(url);
         };
 
+        const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
+            ? config.scheduleNotes
+            : {};
+        const handleScheduleDateChange = (value) => {
+            setScheduleDate(value);
+            setScheduleText(String(scheduleNotes[value] || ''));
+        };
+        const handleSaveSchedule = (nextDateInput = scheduleDate, nextTextInput = scheduleText) => {
+            const nextDate = String(nextDateInput || '').trim();
+            const nextText = String(nextTextInput || '').trim();
+            if (!nextDate) return alert('请选择日程日期');
+            setConfigSafe(prev => {
+                const nextScheduleNotes = prev?.scheduleNotes && typeof prev.scheduleNotes === 'object'
+                    ? { ...prev.scheduleNotes }
+                    : {};
+                if (nextText) {
+                    nextScheduleNotes[nextDate] = nextText;
+                } else {
+                    delete nextScheduleNotes[nextDate];
+                }
+                return { ...prev, scheduleNotes: nextScheduleNotes };
+            });
+            setScheduleText(nextText);
+            alert(nextText ? '日程已保存' : '日程已清空');
+        };
+        const handleDeleteSchedule = (date) => {
+            if (!date) return;
+            setConfigSafe(prev => {
+                const nextScheduleNotes = prev?.scheduleNotes && typeof prev.scheduleNotes === 'object'
+                    ? { ...prev.scheduleNotes }
+                    : {};
+                delete nextScheduleNotes[date];
+                return { ...prev, scheduleNotes: nextScheduleNotes };
+            });
+            if (date === scheduleDate) {
+                setScheduleText('');
+            }
+        };
         const historySource = Array.isArray(history) ? history : [];
 
         const STUDENT_IMPORT_HEADERS = ["姓名", "性别", "小组", "职位", "宿舍"];
@@ -741,6 +787,12 @@
                 setTimeSpeed,
                 getNow,
                 formatDateTimeLocal,
+                scheduleDate,
+                scheduleText,
+                setScheduleText,
+                handleScheduleDateChange,
+                handleSaveSchedule,
+                handleDeleteSchedule,
                 countdownName,
                 setCountdownName,
                 countdownDate,

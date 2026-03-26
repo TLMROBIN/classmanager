@@ -27,6 +27,12 @@
                 setTimeSpeed,
                 getNow,
                 formatDateTimeLocal,
+                scheduleDate,
+                scheduleText,
+                setScheduleText,
+                handleScheduleDateChange,
+                handleSaveSchedule,
+                handleDeleteSchedule,
                 countdownName,
                 setCountdownName,
                 countdownDate,
@@ -43,6 +49,13 @@
 
             const studentList = Array.isArray(students) ? students : [];
             const countdownEvents = Array.isArray(config?.countdownEvents) ? config.countdownEvents : [];
+            const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
+                ? config.scheduleNotes
+                : {};
+            const scheduleNoteList = Object.entries(scheduleNotes)
+                .map(([date, note]) => ({ date, note: String(note || '').trim() }))
+                .filter(item => item.date && item.note)
+                .sort((a, b) => a.date.localeCompare(b.date));
 
             return h("div", { className: "border-t pt-6" },
                 h("h3", { className: "font-bold text-gray-700 mb-4" }, "🧰 工具区"),
@@ -116,6 +129,57 @@
                                     h("button", { onClick: () => setSimTime(time => time + 24 * 60 * 60 * 1000), className: "px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "前进1天"),
                                     h("button", { onClick: () => setSimTime(getNow().getTime()), className: "px-3 py-2 bg-gray-200 rounded text-xs hover:bg-gray-300" }, "重置当前")
                                 )
+                            )
+                        )
+                    ),
+                    renderToolCard(
+                        "🗓️ 日程设置",
+                        "维护仪表盘首页“日历日程”的显示内容。",
+                        h("div", { className: "space-y-3" },
+                            h("div", { className: "flex flex-col gap-2" },
+                                h("input", {
+                                    type: "date",
+                                    className: "border rounded p-2 text-sm bg-white",
+                                    value: scheduleDate,
+                                    onChange: e => handleScheduleDateChange(e.target.value)
+                                }),
+                                h("textarea", {
+                                    className: "border rounded p-2 text-sm bg-white min-h-[88px]",
+                                    value: scheduleText,
+                                    onChange: e => setScheduleText(e.target.value),
+                                    placeholder: "输入当天日程内容"
+                                }),
+                                h("div", { className: "flex gap-2" },
+                                    h("button", {
+                                        onClick: handleSaveSchedule,
+                                        className: "flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                                    }, "保存日程"),
+                                    h("button", {
+                                        onClick: () => {
+                                            setScheduleText('');
+                                            handleSaveSchedule(scheduleDate, '');
+                                        },
+                                        className: "px-3 py-2 bg-gray-100 text-gray-700 rounded text-sm"
+                                    }, "清空")
+                                )
+                            ),
+                            h("div", { className: "space-y-2" },
+                                scheduleNoteList.length === 0
+                                    ? h("div", { className: "text-xs text-gray-400" }, "暂无已设置日程")
+                                    : scheduleNoteList.map(item => h("div", { key: item.date, className: "bg-gray-50 border rounded p-2 space-y-2" },
+                                        h("div", { className: "text-xs font-medium text-gray-700" }, item.date),
+                                        h("div", { className: "text-sm text-gray-600 whitespace-pre-wrap break-words" }, item.note),
+                                        h("div", { className: "flex gap-2" },
+                                            h("button", {
+                                                onClick: () => handleScheduleDateChange(item.date),
+                                                className: "px-2 py-1 text-xs bg-white border text-gray-700 rounded"
+                                            }, "编辑"),
+                                            h("button", {
+                                                onClick: () => handleDeleteSchedule(item.date),
+                                                className: "px-2 py-1 text-xs bg-red-50 text-red-600 rounded"
+                                            }, "删除")
+                                        )
+                                    ))
                             )
                         )
                     ),
