@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
@@ -8,6 +9,8 @@ const {
     generateToken,
     generateMaintenanceToken,
     verifyMaintenanceToken,
+    ACCESS_TOKEN_COOKIE_NAME,
+    ACCESS_TOKEN_TTL_MS,
     authMiddleware,
     adminMiddleware,
     userMiddleware,
@@ -32,6 +35,23 @@ const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿']);
 const PUBLIC_ATTENDANCE_STATUSES = new Set(['ok', 'late']);
 const TEST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const TEST_SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const CSP_REPORT_URI = '/api/security/csp-report';
+const AUTH_COOKIE_SECURE_MODE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase();
+const CSP_POLICY = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'report-sample'",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "manifest-src 'self'",
+    "worker-src 'self' blob:",
+    `report-uri ${CSP_REPORT_URI}`
+].join('; ');
 
 const selectClassDataRows = db.prepare('SELECT data_key, data_value FROM class_data WHERE user_id = ?');
 const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
@@ -165,6 +185,44 @@ const parseStoredRows = (rows) => {
     return data;
 };
 const getSingleHeaderValue = (value) => Array.isArray(value) ? value[0] : value;
+const shouldUseSecureAuthCookie = (req) => {
+    if (AUTH_COOKIE_SECURE_MODE === 'true') return true;
+    if (AUTH_COOKIE_SECURE_MODE === 'false') return false;
+
+    const forwardedProto = getSingleHeaderValue(req.headers['x-forwarded-proto']);
+    return Boolean(req.secure || forwardedProto === 'https');
+};
+const buildAuthCookieOptions = (req) => ({
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: shouldUseSecureAuthCookie(req),
+    path: '/',
+    maxAge: ACCESS_TOKEN_TTL_MS
+});
+const setAccessAuthCookie = (req, res, token) => {
+    res.cookie(ACCESS_TOKEN_COOKIE_NAME, token, buildAuthCookieOptions(req));
+};
+const clearAccessAuthCookie = (req, res) => {
+    res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: shouldUseSecureAuthCookie(req),
+        path: '/'
+    });
+};
+const serializeAuthUser = (user) => ({
+    id: user.id,
+    username: user.username,
+    role: user.role
+});
+const sendAuthSuccess = (req, res, user, token) => {
+    setAccessAuthCookie(req, res, token);
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        user: serializeAuthUser(user)
+    });
+};
 const toSqlDateTime = (value) => {
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return null;
@@ -786,8 +844,40 @@ if (typeof testSessionCleanupTimer.unref === 'function') {
 }
 
 app.use(cors());
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', CSP_POLICY);
+    next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+app.post(
+    CSP_REPORT_URI,
+    express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'] }),
+    (req, res) => {
+        const rawReports = Array.isArray(req.body) ? req.body : [req.body];
+        rawReports
+            .filter(Boolean)
+            .slice(0, 5)
+            .forEach((entry) => {
+                const report = entry['csp-report'] || entry.body || entry;
+                console.warn('[CSP-REPORT]', JSON.stringify({
+                    documentUri: report['document-uri'] || report.documentURL || report.documentUri || '',
+                    violatedDirective: report['violated-directive'] || report.violatedDirective || '',
+                    effectiveDirective: report['effective-directive'] || report.effectiveDirective || '',
+                    blockedUri: report['blocked-uri'] || report.blockedURL || report.blockedUri || '',
+                    sourceFile: report['source-file'] || report.sourceFile || '',
+                    lineNumber: report['line-number'] || report.lineNumber || ''
+                }));
+            });
+        res.status(204).end();
+    }
+);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==================== 认证 API ====================
@@ -824,12 +914,8 @@ app.post('/api/auth/register', (req, res) => {
         const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
         
         const token = generateToken(user);
-        
-        res.json({ 
-            success: true, 
-            token,
-            user: { id: user.id, username: user.username, role: user.role }
-        });
+
+        sendAuthSuccess(req, res, user, token);
     } catch (err) {
         console.error('注册失败:', err);
         res.status(500).json({ error: '注册失败，请重试' });
@@ -857,12 +943,8 @@ app.post('/api/auth/login', (req, res) => {
     db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
     
     const token = generateToken(user);
-    
-    res.json({
-        success: true,
-        token,
-        user: { id: user.id, username: user.username, role: user.role }
-    });
+
+    sendAuthSuccess(req, res, user, token);
 });
 
 // 验证token
@@ -870,9 +952,14 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
     const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?').get(req.user.id);
     
     if (!user) {
-        return res.status(404).json({ error: '用户不存在' });
+        clearAccessAuthCookie(req, res);
+        return res
+            .status(401)
+            .set('X-Auth-Error', 'access-required')
+            .json({ error: '登录已失效，请重新登录', code: 'AUTH_REQUIRED' });
     }
-    
+
+    res.set('Cache-Control', 'no-store');
     res.json({ 
         success: true,
         user: { id: user.id, username: user.username, email: user.email, role: user.role }
@@ -881,6 +968,8 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
 
 // 登出
 app.post('/api/auth/logout', (req, res) => {
+    clearAccessAuthCookie(req, res);
+    res.set('Cache-Control', 'no-store');
     res.json({ success: true, message: '登出成功' });
 });
 

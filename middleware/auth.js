@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
+const ACCESS_TOKEN_COOKIE_NAME = 'cm_access_token';
+const ACCESS_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAINTENANCE_TOKEN_EXPIRES_IN = '10m';
 const MAINTENANCE_TOKEN_TTL_MS = 10 * 60 * 1000;
 
@@ -60,14 +62,50 @@ const sendAccessAuthError = (res, error) => {
         });
 };
 
-const authMiddleware = (req, res, next) => {
+const parseCookies = (cookieHeader) => {
+    if (typeof cookieHeader !== 'string' || !cookieHeader.trim()) {
+        return {};
+    }
+
+    return cookieHeader
+        .split(';')
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .reduce((cookies, segment) => {
+            const separatorIndex = segment.indexOf('=');
+            if (separatorIndex <= 0) return cookies;
+
+            const key = segment.slice(0, separatorIndex).trim();
+            const rawValue = segment.slice(separatorIndex + 1).trim();
+
+            if (!key) return cookies;
+
+            try {
+                cookies[key] = decodeURIComponent(rawValue);
+            } catch (_) {
+                cookies[key] = rawValue;
+            }
+            return cookies;
+        }, {});
+};
+
+const getAccessTokenFromRequest = (req) => {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        return authHeader.split(' ')[1];
+    }
+
+    const cookies = parseCookies(req.headers.cookie);
+    return cookies[ACCESS_TOKEN_COOKIE_NAME] || null;
+};
+
+const authMiddleware = (req, res, next) => {
+    const token = getAccessTokenFromRequest(req);
+
+    if (!token) {
         return sendAccessAuthError(res, '未授权，请先登录');
     }
-    
-    const token = authHeader.split(' ')[1];
+
     const decoded = verifyToken(token);
     
     if (!decoded) {
@@ -97,6 +135,8 @@ module.exports = {
     generateMaintenanceToken,
     verifyToken,
     verifyMaintenanceToken,
+    ACCESS_TOKEN_COOKIE_NAME,
+    ACCESS_TOKEN_TTL_MS,
     authMiddleware,
     adminMiddleware,
     userMiddleware,

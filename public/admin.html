@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员后台 - 班级管理系统</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/vendor/tailwind.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div id="app" class="max-w-6xl mx-auto p-6">
@@ -16,7 +16,7 @@
                 </div>
                 <div class="flex gap-3">
                     <a href="/" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition">返回主页</a>
-                    <button onclick="logout()" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition">退出登录</button>
+                    <button id="logoutBtn" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition">退出登录</button>
                 </div>
             </div>
         </div>
@@ -60,125 +60,7 @@
         </div>
     </div>
 
-    <script>
-        const token = localStorage.getItem('token');
-        if (!token) {
-            window.location.href = '/login.html';
-        }
-
-        async function fetchWithAuth(url, options = {}) {
-            const res = await fetch(url, {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (res.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                localStorage.removeItem('cm_battle_snapshots_v1');
-                sessionStorage.removeItem('maintenance_token');
-                sessionStorage.removeItem('maintenance_token_expires_at');
-                window.location.href = '/login.html';
-                return null;
-            }
-            if (res.status === 403) {
-                alert('当前账户没有管理员权限');
-                window.location.href = '/login.html';
-                return null;
-            }
-            return res;
-        }
-
-        async function loadStats() {
-            const res = await fetchWithAuth('/api/admin/stats');
-            if (!res) return;
-            const data = await res.json();
-            if (data.success) {
-                document.getElementById('totalUsers').textContent = data.stats.totalUsers;
-                document.getElementById('totalData').textContent = data.stats.totalDataRecords;
-            }
-        }
-
-        async function loadUsers() {
-            const res = await fetchWithAuth('/api/admin/users');
-            if (!res) return;
-            const data = await res.json();
-            
-            if (data.success) {
-                const adminCount = data.users.filter(u => u.role === 'admin').length;
-                document.getElementById('adminCount').textContent = adminCount;
-                
-                const tbody = document.getElementById('userList');
-                tbody.innerHTML = data.users.map(user => `
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3 text-sm text-gray-600">${user.id}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-800">${user.username}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500">${user.email || '-'}</td>
-                        <td class="px-4 py-3 text-sm">
-                            <span class="px-2 py-1 rounded text-xs font-medium ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}">
-                                ${user.role === 'admin' ? '管理员' : '用户'}
-                            </span>
-                        </td>
-                        <td class="px-4 py-3 text-sm text-gray-600">${user.data_count}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500">${user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td>
-                        <td class="px-4 py-3 text-sm">
-                            <button onclick="toggleRole(${user.id}, '${user.role}')" class="text-blue-600 hover:text-blue-800 mr-3">
-                                ${user.role === 'admin' ? '设为用户' : '设为管理员'}
-                            </button>
-                            <button onclick="deleteUser(${user.id})" class="text-red-600 hover:text-red-800">删除</button>
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        }
-
-        async function toggleRole(userId, currentRole) {
-            const newRole = currentRole === 'admin' ? 'user' : 'admin';
-            if (!confirm(`确定要将该用户角色改为"${newRole === 'admin' ? '管理员' : '普通用户'}"吗？`)) return;
-            
-            const res = await fetchWithAuth(`/api/admin/users/${userId}/role`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ role: newRole })
-            });
-            
-            if (!res) return;
-            const data = await res.json();
-            if (data.success) {
-                loadUsers();
-            } else {
-                alert(data.error || '操作失败');
-            }
-        }
-
-        async function deleteUser(userId) {
-            if (!confirm('确定要删除该用户及其所有数据吗？此操作不可恢复！')) return;
-            
-            const res = await fetchWithAuth(`/api/admin/users/${userId}`, { method: 'DELETE' });
-            
-            if (!res) return;
-            const data = await res.json();
-            if (data.success) {
-                loadUsers();
-                loadStats();
-            } else {
-                alert(data.error || '删除失败');
-            }
-        }
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            localStorage.removeItem('cm_battle_snapshots_v1');
-            sessionStorage.removeItem('maintenance_token');
-            sessionStorage.removeItem('maintenance_token_expires_at');
-            window.location.href = '/login.html';
-        }
-
-        loadStats();
-        loadUsers();
-    </script>
+    <script src="/session.js"></script>
+    <script src="/admin.js"></script>
 </body>
 </html>

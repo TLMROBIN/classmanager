@@ -4,94 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="page-title">班级自在管理系统 (多用户版)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="/vendor/tailwind.css">
+    <script src="/vendor/react.production.min.js"></script>
+    <script src="/vendor/react-dom.production.min.js"></script>
+    <script src="/vendor/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="styles.css">
-    <script>
-        window.__MULTI_USER_MODE__ = true;
-        window.__checkAuth__ = function() {
-            const token = localStorage.getItem('token');
-            if (!token) { window.location.href = '/login.html'; return false; }
-            try {
-                const userStr = localStorage.getItem('user');
-                const user = userStr ? JSON.parse(userStr) : null;
-                if (user && user.role === 'admin') {
-                    window.location.href = '/admin.html';
-                    return false;
-                }
-            } catch (_) {}
-            return true;
-        };
-        window.__getAuthHeaders__ = function() {
-            const token = localStorage.getItem('token');
-            return token ? { 'Authorization': 'Bearer ' + token } : {};
-        };
-        window.__clearAuthAndRedirect__ = function() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            localStorage.removeItem('cm_battle_snapshots_v1');
-            sessionStorage.removeItem('maintenance_token');
-            sessionStorage.removeItem('maintenance_token_expires_at');
-            window.location.href = '/login.html';
-        };
-        window.__handleAuthError__ = function(res) {
-            const authErrorType = res && res.headers && typeof res.headers.get === 'function'
-                ? res.headers.get('x-auth-error')
-                : '';
-            const requestUrl = res && typeof res.url === 'string' ? res.url : '';
-            const isMaintenanceApi = requestUrl.includes('/api/maintenance/');
-            if (res.status === 401 && (authErrorType === 'access-required' || !isMaintenanceApi)) {
-                window.__clearAuthAndRedirect__();
-                return true;
-            }
-            return false;
-        };
-        window.__logout__ = function() {
-            window.__clearAuthAndRedirect__();
-        };
-        window.__getCurrentUser__ = function() {
-            try {
-                const userStr = localStorage.getItem('user');
-                return userStr ? JSON.parse(userStr) : null;
-            } catch { return null; }
-        };
-        window.__isAdmin__ = function() {
-            try {
-                const userStr = localStorage.getItem('user');
-                const user = userStr ? JSON.parse(userStr) : null;
-                return user && user.role === 'admin';
-            } catch { return false; }
-        };
-    </script>
 </head>
 <body>
-    <div id="root"></div>
-    <script>if (!window.__checkAuth__()) { throw new Error('Not authenticated'); }</script>
-    <script src="points/config.js"></script>
-    <script src="points/controller.js"></script>
-    <script src="attendance/points.js"></script>
-    <script src="attendance/admin-tools.js"></script>
-    <script src="attendance/module.js"></script>
-    <script src="attendance/settings.js"></script>
-    <script src="treasure/points.js"></script>
-    <script src="treasure/actions.js"></script>
-    <script src="treasure/io.js"></script>
-    <script src="treasure/module.js"></script>
-    <script src="nav/module.js"></script>
-    <script src="dashboard/module.js"></script>
-    <script src="operations/ui-state.js"></script>
-    <script src="operations/selectors.js"></script>
-    <script src="operations/builders.js"></script>
-    <script src="operations/actions.js"></script>
-    <script src="operations/views.js"></script>
-    <script src="operations/settings.js"></script>
-    <script src="operations/admin-tools.js"></script>
-    <script src="operations/module.js"></script>
-    <script src="profile/utils.js"></script>
-    <script src="profile/avatar-ui.js"></script>
-    <script src="profile/persistence.js"></script>
-    <script src="script.js"></script>
+    <div id="root" class="min-h-screen flex items-center justify-center text-gray-500">正在验证登录状态...</div>
+    <script src="/session.js"></script>
+    <script src="/index.bootstrap.js"></script>
 </body>
 </html>
