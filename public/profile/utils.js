@@ -142,8 +142,19 @@
     };
 
     const getFallbackAvatar = (studentName, mood) => {
-        const seed = studentName + (mood === 'sad' ? 'sad' : '');
-        return `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}&backgroundColor=${mood === 'happy' ? 'b6e3f4' : 'ffd5dc'}`;
+        const normalizedName = String(studentName || '').trim() || '?';
+        const label = normalizedName.slice(0, 1).toUpperCase();
+        const palette = mood === 'sad'
+            ? { background: '#ffd5dc', foreground: '#9f1239', accent: '#fb7185' }
+            : { background: '#b6e3f4', foreground: '#0f4c5c', accent: '#38bdf8' };
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="默认头像">
+                <rect width="96" height="96" rx="24" fill="${palette.background}"/>
+                <circle cx="48" cy="36" r="18" fill="${palette.accent}" opacity="0.35"/>
+                <text x="48" y="60" text-anchor="middle" font-size="34" font-family="sans-serif" fill="${palette.foreground}" font-weight="700">${label}</text>
+            </svg>
+        `.trim();
+        return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
     };
 
     const handleAvatarError = (event, studentName, mood = 'happy') => {
