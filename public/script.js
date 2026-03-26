@@ -1183,6 +1183,7 @@ const INITIAL_TREASURES = [
             h,
             useState,
             useEffect,
+            useRef,
             Modal,
             Icon,
             requireAdminAuth,

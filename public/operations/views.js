@@ -2,6 +2,7 @@
     window.createOperationViews = function createOperationViews(deps) {
         const {
             h,
+            useRef,
             Modal,
             Icon,
             normalizePointScene,
@@ -14,6 +15,7 @@
 
         if (
             !h ||
+            !useRef ||
             !Modal ||
             !Icon ||
             !normalizePointScene ||
@@ -96,44 +98,140 @@
             reasons,
             onReasonClick,
             onCustomReason
-        }) => h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-            h("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
-                h("div", { className: "flex items-center gap-3" },
-                    h("span", { className: "font-bold text-gray-700" }, `已选 ${selectedCount} 人`),
-                    selectedCount === 0 && h("span", { className: "text-xs text-gray-400" }, "请选择学生后操作")
-                ),
-                h("div", { className: "flex items-center gap-2" },
-                    h("div", { className: "flex bg-gray-100 p-1 rounded-lg" },
-                        h("button", {
-                            onClick: () => setOpTab('bonus'),
-                            className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'bonus' ? 'bg-white text-green-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
-                        }, h(Icon, { name: "plus", size: 14 }), "奖励"),
-                        h("button", {
-                            onClick: () => setOpTab('penalty'),
-                            className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'penalty' ? 'bg-white text-red-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
-                        }, h(Icon, { name: "minus", size: 14 }), "扣分")
+        }) => {
+            const scrollRef = useRef(null);
+            const dragStateRef = useRef({
+                active: false,
+                startX: 0,
+                startScrollLeft: 0,
+                moved: false,
+                suppressClick: false
+            });
+
+            const beginDrag = (clientX) => {
+                const el = scrollRef.current;
+                if (!el) return;
+                dragStateRef.current.active = true;
+                dragStateRef.current.startX = clientX;
+                dragStateRef.current.startScrollLeft = el.scrollLeft;
+                dragStateRef.current.moved = false;
+            };
+
+            const moveDrag = (clientX) => {
+                const el = scrollRef.current;
+                const state = dragStateRef.current;
+                if (!el || !state.active) return false;
+                const deltaX = clientX - state.startX;
+                if (Math.abs(deltaX) > 6) {
+                    state.moved = true;
+                    state.suppressClick = true;
+                }
+                el.scrollLeft = state.startScrollLeft - deltaX;
+                return state.moved;
+            };
+
+            const endDrag = () => {
+                dragStateRef.current.active = false;
+                if (!dragStateRef.current.moved) {
+                    dragStateRef.current.suppressClick = false;
+                    return;
+                }
+                setTimeout(() => {
+                    dragStateRef.current.suppressClick = false;
+                }, 0);
+            };
+
+            const handleTouchStart = (event) => {
+                const touch = event.touches && event.touches[0];
+                if (!touch) return;
+                beginDrag(touch.clientX);
+            };
+
+            const handleTouchMove = (event) => {
+                const touch = event.touches && event.touches[0];
+                if (!touch) return;
+                if (moveDrag(touch.clientX)) {
+                    event.preventDefault();
+                }
+            };
+
+            const handleTouchEnd = () => {
+                endDrag();
+            };
+
+            const handleMouseDown = (event) => {
+                if (event.button !== 0) return;
+                beginDrag(event.clientX);
+            };
+
+            const handleMouseMove = (event) => {
+                if (!dragStateRef.current.active) return;
+                if (moveDrag(event.clientX)) {
+                    event.preventDefault();
+                }
+            };
+
+            const handleMouseUp = () => {
+                endDrag();
+            };
+
+            const runReasonAction = (callback) => {
+                if (dragStateRef.current.suppressClick) return;
+                callback();
+            };
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                h("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
+                    h("div", { className: "flex items-center gap-3" },
+                        h("span", { className: "font-bold text-gray-700" }, `已选 ${selectedCount} 人`),
+                        selectedCount === 0 && h("span", { className: "text-xs text-gray-400" }, "请选择学生后操作")
                     ),
-                    h("button", { onClick: onClearSelection, className: "text-gray-400 hover:text-gray-600 px-2" }, "清空")
-                )
-            ),
-            h("div", { className: "flex gap-2 overflow-x-auto scrollbar-hide pb-2" },
-                reasons.map((reason, idx) => h("button", {
-                    key: idx,
-                    onClick: () => onReasonClick(reason),
-                    className: `flex-shrink-0 px-4 py-3 rounded-xl border text-sm font-medium whitespace-nowrap transition flex flex-col items-center min-w-[100px] ${reason.type === 'bonus' ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'}`
+                    h("div", { className: "flex items-center gap-2" },
+                        h("div", { className: "flex bg-gray-100 p-1 rounded-lg" },
+                            h("button", {
+                                onClick: () => setOpTab('bonus'),
+                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'bonus' ? 'bg-white text-green-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
+                            }, h(Icon, { name: "plus", size: 14 }), "奖励"),
+                            h("button", {
+                                onClick: () => setOpTab('penalty'),
+                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'penalty' ? 'bg-white text-red-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
+                            }, h(Icon, { name: "minus", size: 14 }), "扣分")
+                        ),
+                        h("button", { onClick: onClearSelection, className: "text-gray-400 hover:text-gray-600 px-2" }, "清空")
+                    )
+                ),
+                h("div", {
+                    ref: scrollRef,
+                    className: "overflow-x-auto scrollbar-hide pb-2 reason-scroll cursor-grab active:cursor-grabbing",
+                    onMouseDown: handleMouseDown,
+                    onMouseMove: handleMouseMove,
+                    onMouseUp: handleMouseUp,
+                    onMouseLeave: handleMouseUp,
+                    onTouchStart: handleTouchStart,
+                    onTouchMove: handleTouchMove,
+                    onTouchEnd: handleTouchEnd,
+                    onTouchCancel: handleTouchEnd
                 },
-                    h("span", { className: "font-bold" }, reason.name),
-                    h("span", { className: "text-xs opacity-70 mt-1" }, reason.val > 0 ? `+${reason.val}` : reason.val)
-                )),
-                h("button", {
-                    onClick: onCustomReason,
-                    className: `flex-shrink-0 px-4 py-3 rounded-xl border-2 border-dashed text-sm font-bold whitespace-nowrap transition flex flex-col items-center min-w-[100px] hover:bg-gray-50 ${opTab === 'bonus' ? 'border-green-300 text-green-600' : 'border-red-300 text-red-600'}`
-                },
-                    h("span", null, "自定义"),
-                    h("span", { className: "text-xs opacity-70 mt-1" }, "输入理由")
+                    h("div", { className: "flex gap-2 min-w-max" },
+                        reasons.map((reason, idx) => h("button", {
+                            key: idx,
+                            onClick: () => runReasonAction(() => onReasonClick(reason)),
+                            className: `flex-shrink-0 px-4 py-3 rounded-xl border text-sm font-medium whitespace-nowrap transition flex flex-col items-center min-w-[100px] ${reason.type === 'bonus' ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'}`
+                        },
+                            h("span", { className: "font-bold" }, reason.name),
+                            h("span", { className: "text-xs opacity-70 mt-1" }, reason.val > 0 ? `+${reason.val}` : reason.val)
+                        )),
+                        h("button", {
+                            onClick: () => runReasonAction(onCustomReason),
+                            className: `flex-shrink-0 px-4 py-3 rounded-xl border-2 border-dashed text-sm font-bold whitespace-nowrap transition flex flex-col items-center min-w-[100px] hover:bg-gray-50 ${opTab === 'bonus' ? 'border-green-300 text-green-600' : 'border-red-300 text-red-600'}`
+                        },
+                            h("span", null, "自定义"),
+                            h("span", { className: "text-xs opacity-70 mt-1" }, "输入理由")
+                        )
+                    )
                 )
-            )
-        );
+            );
+        };
 
         const HomeworkPanel = ({
             students,

@@ -4,6 +4,7 @@
             h,
             useState,
             useEffect,
+            useRef,
             Modal,
             Icon,
             requireAdminAuth,
@@ -57,6 +58,7 @@
             !h ||
             !useState ||
             !useEffect ||
+            !useRef ||
             !Modal ||
             !Icon ||
             !requireAdminAuth ||
@@ -108,6 +110,7 @@
             BatchAdjustModalView
         } = createOperationViews({
             h,
+            useRef,
             Modal,
             Icon,
             normalizePointScene,
