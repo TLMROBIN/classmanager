@@ -34,8 +34,35 @@ const DIRECT_MAINTENANCE_KEYS = ['studentProfiles', 'examArchives'];
 const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿']);
 const TEST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const TEST_SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const KB = 1024;
+const MB = 1024 * KB;
 const CSP_REPORT_URI = '/api/security/csp-report';
 const AUTH_COOKIE_SECURE_MODE = String(process.env.AUTH_COOKIE_SECURE || 'auto').toLowerCase();
+const LEGACY_DATA_KEY_ALIASES = Object.freeze({
+    attendance_records: 'attendanceRecords'
+});
+const MAX_DATA_PAYLOAD_BYTES = 8 * MB;
+const DATA_DOMAIN_RULES = Object.freeze({
+    students: { kind: 'array', maxBytes: 1 * MB },
+    studentProfiles: { kind: 'object', maxBytes: 1 * MB },
+    history: { kind: 'array', maxBytes: 2 * MB },
+    config: { kind: 'object', maxBytes: 512 * KB },
+    attendanceRecords: { kind: 'object', maxBytes: 2 * MB },
+    treasures: { kind: 'array', maxBytes: 512 * KB },
+    storage: { kind: 'object', maxBytes: 512 * KB },
+    logs: { kind: 'array', maxBytes: 1 * MB },
+    quotes: { kind: 'array', maxBytes: 128 * KB },
+    messages: { kind: 'array', maxBytes: 512 * KB },
+    teacherMessages: { kind: 'array', maxBytes: 512 * KB },
+    redemptionHistory: { kind: 'object', maxBytes: 256 * KB },
+    dailyRedemptionCounts: { kind: 'object', maxBytes: 256 * KB },
+    dailyUsageCounts: { kind: 'object', maxBytes: 256 * KB },
+    tasks: { kind: 'array', maxBytes: 512 * KB },
+    battle: { kind: 'object', maxBytes: 1 * MB },
+    examArchives: { kind: 'object', maxBytes: 2 * MB },
+    __meta: { kind: 'object', maxBytes: 32 * KB }
+});
+const ALLOWED_DATA_KEYS = new Set(Object.keys(DATA_DOMAIN_RULES));
 const CSP_POLICY = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -55,6 +82,7 @@ const CSP_POLICY = [
 const selectClassDataRows = db.prepare('SELECT data_key, data_value FROM class_data WHERE user_id = ?');
 const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
 const selectAccessAuthUserById = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?');
+const deleteClassDataKey = db.prepare('DELETE FROM class_data WHERE user_id = ? AND data_key = ?');
 const upsertClassData = db.prepare(`
     INSERT INTO class_data (user_id, data_key, data_value, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -109,6 +137,10 @@ const selectTestClassDataRows = db.prepare(`
 const selectTestClassDataValue = db.prepare(`
     SELECT data_value
     FROM test_class_data
+    WHERE session_id = ? AND user_id = ? AND data_key = ?
+`);
+const deleteTestClassDataKey = db.prepare(`
+    DELETE FROM test_class_data
     WHERE session_id = ? AND user_id = ? AND data_key = ?
 `);
 const upsertTestClassData = db.prepare(`
@@ -283,6 +315,12 @@ const createDataStore = (req, userId = req?.user?.id) => {
             upsertDataKey(dataKey, value) {
                 return upsertTestClassData.run(sessionId, normalizedUserId, dataKey, value);
             },
+            deleteDataKeys(dataKeys) {
+                const keys = Array.isArray(dataKeys) ? dataKeys : [];
+                keys.forEach((dataKey) => {
+                    deleteTestClassDataKey.run(sessionId, normalizedUserId, String(dataKey));
+                });
+            },
             readMaintenanceCredential() {
                 return selectTestMaintenanceCredential.get(sessionId, normalizedUserId);
             },
@@ -308,6 +346,12 @@ const createDataStore = (req, userId = req?.user?.id) => {
         },
         upsertDataKey(dataKey, value) {
             return upsertClassData.run(normalizedUserId, dataKey, value);
+        },
+        deleteDataKeys(dataKeys) {
+            const keys = Array.isArray(dataKeys) ? dataKeys : [];
+            keys.forEach((dataKey) => {
+                deleteClassDataKey.run(normalizedUserId, String(dataKey));
+            });
         },
         readMaintenanceCredential() {
             return selectMaintenanceCredential.get(normalizedUserId);
@@ -1029,6 +1073,178 @@ const hasMaintenanceAccess = (req) => Boolean(getMaintenanceSession(req));
 const getMaintenanceTokenScope = (req) => (
     req.testSession?.id ? { testSessionId: req.testSession.id } : {}
 );
+
+const formatByteLimit = (bytes) => {
+    if (bytes >= MB) {
+        const value = bytes / MB;
+        return `${Number.isInteger(value) ? value : value.toFixed(1)}MB`;
+    }
+    if (bytes >= KB) {
+        const value = bytes / KB;
+        return `${Number.isInteger(value) ? value : value.toFixed(1)}KB`;
+    }
+    return `${bytes}B`;
+};
+
+const measureSerializedSize = (value) => {
+    try {
+        return Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
+    } catch (_) {
+        return Infinity;
+    }
+};
+
+const matchesDomainKind = (value, kind) => {
+    if (kind === 'array') return Array.isArray(value);
+    if (kind === 'object') return isPlainObject(value);
+    return false;
+};
+
+const normalizeStoredDataDomains = (store, payload) => {
+    const safe = isPlainObject(payload) ? { ...payload } : {};
+    const removableKeys = new Set();
+
+    if (Object.prototype.hasOwnProperty.call(safe, 'attendance_records')) {
+        if (!Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords')) {
+            safe.attendanceRecords = stripDerivedAttendanceRecords(safe.attendance_records);
+            store.upsertDataKey('attendanceRecords', JSON.stringify(safe.attendanceRecords));
+        }
+        delete safe.attendance_records;
+        removableKeys.add('attendance_records');
+    }
+
+    Object.keys(safe).forEach((key) => {
+        if (ALLOWED_DATA_KEYS.has(key)) return;
+        delete safe[key];
+        removableKeys.add(key);
+    });
+
+    if (removableKeys.size > 0) {
+        store.deleteDataKeys([...removableKeys]);
+    }
+
+    return safe;
+};
+
+const normalizeIncomingDataPayload = (payload) => {
+    if (!isPlainObject(payload)) {
+        return { data: payload, error: null };
+    }
+
+    const normalized = {};
+    const unsupportedKeys = [];
+    const conflictingAliases = [];
+
+    Object.entries(payload).forEach(([rawKey, rawValue]) => {
+        const key = LEGACY_DATA_KEY_ALIASES[rawKey] || rawKey;
+        if (!ALLOWED_DATA_KEYS.has(key)) {
+            unsupportedKeys.push(rawKey);
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(normalized, key)) {
+            if (stringifyComparable(normalized[key]) !== stringifyComparable(rawValue)) {
+                conflictingAliases.push(key);
+            }
+            return;
+        }
+        normalized[key] = rawValue;
+    });
+
+    if (unsupportedKeys.length > 0) {
+        return {
+            data: null,
+            error: {
+                status: 400,
+                code: 'UNSUPPORTED_DATA_DOMAIN',
+                message: `包含不支持的数据域: ${unsupportedKeys.join(', ')}`
+            }
+        };
+    }
+
+    if (conflictingAliases.length > 0) {
+        return {
+            data: null,
+            error: {
+                status: 400,
+                code: 'CONFLICTING_DATA_DOMAIN',
+                message: `检测到重复且冲突的数据域别名: ${conflictingAliases.join(', ')}`
+            }
+        };
+    }
+
+    return { data: normalized, error: null };
+};
+
+const validateDataPayload = (payload) => {
+    if (!isPlainObject(payload)) {
+        return {
+            data: payload,
+            error: { status: 400, code: 'INVALID_DATA_PAYLOAD', message: '保存数据格式无效' }
+        };
+    }
+
+    const normalized = {};
+    let totalBytes = 0;
+
+    for (const [key, rawValue] of Object.entries(payload)) {
+        const rule = DATA_DOMAIN_RULES[key];
+        if (!rule) {
+            return {
+                data: null,
+                error: { status: 400, code: 'UNSUPPORTED_DATA_DOMAIN', message: `不支持的数据域: ${key}` }
+            };
+        }
+
+        let value = rawValue;
+        if (key === 'config') {
+            value = stripLegacyAdminPasswordFromConfig(value);
+        }
+        if (key === 'attendanceRecords') {
+            value = stripDerivedAttendanceRecords(value);
+        }
+
+        if (!matchesDomainKind(value, rule.kind)) {
+            return {
+                data: null,
+                error: { status: 400, code: 'INVALID_DATA_DOMAIN', message: `${key} 数据格式无效` }
+            };
+        }
+
+        const sizeBytes = measureSerializedSize(value);
+        if (!Number.isFinite(sizeBytes)) {
+            return {
+                data: null,
+                error: { status: 400, code: 'INVALID_DATA_DOMAIN', message: `${key} 数据无法序列化` }
+            };
+        }
+        if (sizeBytes > rule.maxBytes) {
+            return {
+                data: null,
+                error: {
+                    status: 413,
+                    code: 'DATA_DOMAIN_TOO_LARGE',
+                    message: `${key} 数据过大，超过 ${formatByteLimit(rule.maxBytes)}`
+                }
+            };
+        }
+
+        normalized[key] = value;
+        totalBytes += sizeBytes;
+    }
+
+    if (totalBytes > MAX_DATA_PAYLOAD_BYTES) {
+        return {
+            data: null,
+            error: {
+                status: 413,
+                code: 'DATA_PAYLOAD_TOO_LARGE',
+                message: `保存数据总量过大，超过 ${formatByteLimit(MAX_DATA_PAYLOAD_BYTES)}`
+            }
+        };
+    }
+
+    return { data: normalized, error: null };
+};
 
 const sanitizePayloadConfig = (payload) => {
     if (!isPlainObject(payload)) return payload;
@@ -1869,7 +2085,7 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
     const store = getRequestDataStore(req);
 
     try {
-        const data = store.readAllData();
+        const data = normalizeStoredDataDomains(store, store.readAllData());
         const now = getRequestNow(req);
         const existingMeta = readStoredJson(store, '__meta') || data.__meta || {};
         const decayResult = applyPenaltyDecayLifecycle({
@@ -1900,13 +2116,28 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
 // 保存数据
 app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
     const store = getRequestDataStore(req);
-    const data = sanitizePayloadConfig(req.body);
+    const normalizedPayload = normalizeIncomingDataPayload(req.body);
+    if (normalizedPayload.error) {
+        return res.status(normalizedPayload.error.status).json({
+            error: normalizedPayload.error.message,
+            code: normalizedPayload.error.code
+        });
+    }
+    const validatedPayload = validateDataPayload(sanitizePayloadConfig(normalizedPayload.data));
+    if (validatedPayload.error) {
+        return res.status(validatedPayload.error.status).json({
+            error: validatedPayload.error.message,
+            code: validatedPayload.error.code
+        });
+    }
+    const data = validatedPayload.data;
 
     if (!isPlainObject(data)) {
         return res.status(400).json({ error: '保存数据格式无效' });
     }
     
     try {
+        normalizeStoredDataDomains(store, store.readAllData());
         const now = getRequestNow(req);
         const incomingMeta = data?.__meta && typeof data.__meta === 'object' ? data.__meta : {};
         const existingMeta = readStoredJson(store, '__meta') || {};
