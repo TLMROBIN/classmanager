@@ -8,6 +8,8 @@
     "init-db": "node database/init.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js",
     "migrate:security": "node scripts/migrate-maintenance-secrets.js",
+    "data:audit": "node scripts/audit-class-data.js",
+    "data:audit:apply": "node scripts/audit-class-data.js --apply",
     "build:web-assets": "node scripts/build-web-assets.js",
     "backup:sqlite": "node scripts/backup-sqlite.js",
     "backup:verify": "node scripts/verify-backup.js --latest",
