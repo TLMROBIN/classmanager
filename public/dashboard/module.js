@@ -64,10 +64,10 @@
                         stats[student.dorm].bonus += val;
                     } else if (val < 0) {
                         const category = normalizePointCategory(item.category);
-                        if (category === "纪律") {
-                            stats[student.dorm].discipline += Math.abs(val);
-                        } else if (category === "卫生") {
+                        if (category === "卫生") {
                             stats[student.dorm].hygiene += Math.abs(val);
+                        } else {
+                            stats[student.dorm].discipline += Math.abs(val);
                         }
                     }
                 });
@@ -326,7 +326,7 @@
                                     h("h3", { className: "font-bold text-indigo-600 flex items-center gap-2" }, h(Icon, { name: "chart" }), "宿舍分值图"),
                                     h("div", { className: "flex gap-3 text-[10px] text-gray-500" },
                                         h("div", { className: "flex items-center gap-1" }, h("div", { className: "w-2 h-2 bg-green-500 rounded-full" }), "加分"),
-                                        h("div", { className: "flex items-center gap-1" }, h("div", { className: "w-2 h-2 bg-red-400 rounded-full" }), "纪律扣分"),
+                                        h("div", { className: "flex items-center gap-1" }, h("div", { className: "w-2 h-2 bg-red-400 rounded-full" }), "纪律/出勤扣分"),
                                         h("div", { className: "flex items-center gap-1" }, h("div", { className: "w-2 h-2 bg-yellow-400 rounded-full" }), "卫生扣分")
                                     )
                                 ),
