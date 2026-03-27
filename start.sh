@@ -14,6 +14,10 @@ if [ -f ".env.runtime" ]; then
     set +a
 fi
 
+DB_PATH="${CLASSMANAGER_DB_PATH:-$(pwd)/database/classmanager.db}"
+BACKUP_DIR="${CLASSMANAGER_BACKUP_DIR:-$(pwd)/backups/sqlite}"
+PORT="${PORT:-3002}"
+
 # 检查 Node.js
 if ! command -v node &> /dev/null; then
     echo "❌ 错误: 未找到 Node.js，请先安装 Node.js"
@@ -31,7 +35,10 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # 检查数据库是否存在，不存在则初始化
-if [ ! -f "database/classmanager.db" ]; then
+mkdir -p "$(dirname "$DB_PATH")"
+mkdir -p "$BACKUP_DIR"
+
+if [ ! -f "$DB_PATH" ]; then
     echo "🗄️  初始化数据库..."
     node database/init.js
 fi
@@ -65,9 +72,11 @@ if ps -p $PID > /dev/null 2>&1; then
     echo ""
     echo "✅ 服务器启动成功！"
     echo ""
-    echo "   访问地址: http://localhost:3002"
-    echo "   管理后台: http://localhost:3002/admin.html"
+    echo "   访问地址: http://localhost:$PORT"
+    echo "   管理后台: http://localhost:$PORT/admin.html"
     echo "   首个管理员请使用: npm run bootstrap-admin"
+    echo "   数据库文件: $DB_PATH"
+    echo "   备份目录: $BACKUP_DIR"
     echo ""
     echo "   日志文件: $(pwd)/server.log"
     echo "   进程 PID: $PID"

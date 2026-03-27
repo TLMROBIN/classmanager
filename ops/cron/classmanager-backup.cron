@@ -1,9 +1,11 @@
 # classmanager-multi backup cron template
 # 使用前请先把下面路径替换为你的实际仓库目录。
+# 如果你在 `.env.runtime` 里配置了 `CLASSMANAGER_DB_PATH` / `CLASSMANAGER_BACKUP_DIR`，
+# 下面模板会一起加载。
 #
 # 安装示例：
 #   crontab -e
 #   然后粘贴以下两行
 
-15 2 * * * cd /path/to/classmanager-multi && /usr/bin/npm run backup:daily >> backups/backup.log 2>&1
-30 2 * * 1 cd /path/to/classmanager-multi && /usr/bin/npm run backup:verify >> backups/backup.log 2>&1
+15 2 * * * /bin/bash -lc 'cd /path/to/classmanager-multi && if [ -f ./.env.runtime ]; then set -a; . ./.env.runtime; set +a; fi; /usr/bin/npm run backup:daily >> backups/backup.log 2>&1'
+30 2 * * 1 /bin/bash -lc 'cd /path/to/classmanager-multi && if [ -f ./.env.runtime ]; then set -a; . ./.env.runtime; set +a; fi; /usr/bin/npm run backup:verify >> backups/backup.log 2>&1'

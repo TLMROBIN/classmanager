@@ -4,6 +4,10 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+RUNTIME_ENV_FILE="$PROJECT_DIR/.env.runtime"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi"
+RECOMMENDED_DB_PATH="$STATE_ROOT/database/classmanager.db"
+RECOMMENDED_BACKUP_DIR="$STATE_ROOT/backups/sqlite"
 
 UNITS=(
     classmanager-backup.service
@@ -34,5 +38,9 @@ echo "Enabled timers:"
 echo "  - classmanager-backup.timer"
 echo "  - classmanager-backup-verify.timer"
 echo "  - classmanager-backup-freshness.timer"
+echo "These units also read: $RUNTIME_ENV_FILE"
+echo "Recommended runtime data paths:"
+echo "  CLASSMANAGER_DB_PATH=$RECOMMENDED_DB_PATH"
+echo "  CLASSMANAGER_BACKUP_DIR=$RECOMMENDED_BACKUP_DIR"
 echo "Check status with:"
 echo "  systemctl --user list-timers | rg classmanager-backup"

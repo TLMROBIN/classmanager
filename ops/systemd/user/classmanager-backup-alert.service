@@ -4,4 +4,5 @@ Description=Alert when classmanager backup fails
 [Service]
 Type=oneshot
 WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=-__PROJECT_DIR__/.env.runtime
 ExecStart=/usr/bin/node scripts/backup-failure-notify.js --unit classmanager-backup.service --reason backup-failed

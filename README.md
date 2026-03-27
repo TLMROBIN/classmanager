@@ -33,13 +33,28 @@ npm run init-db
 
 ### 4. 启动服务
 
-启动前必须先配置 `JWT_SECRET`。推荐在项目根目录创建 `.env.runtime`：
+启动前必须先配置 `JWT_SECRET`。推荐在项目根目录创建 `.env.runtime`。
+
+也可以先复制仓库内的示例文件：
 
 ```bash
-cat > .env.runtime <<'EOF'
+cp .env.example .env.runtime
+```
+
+如果你希望把“代码目录 / 数据目录 / 备份目录”分离，推荐同时把 SQLite 主库和备份目录放到仓库外，例如当前用户的状态目录：
+
+```bash
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi"
+mkdir -p "$STATE_ROOT/database" "$STATE_ROOT/backups/sqlite"
+
+cat > .env.runtime <<EOF
 JWT_SECRET=请替换为至少32位的随机字符串
+CLASSMANAGER_DB_PATH=$STATE_ROOT/database/classmanager.db
+CLASSMANAGER_BACKUP_DIR=$STATE_ROOT/backups/sqlite
 EOF
 ```
+
+如果你是从仓库内旧库迁移过来，请先手动复制旧数据，再切换这两个路径变量。当前项目不会自动搬迁现有数据库和备份。
 
 首次部署还需要先创建首个管理员：
 
@@ -77,6 +92,8 @@ systemctl --user status classmanager-app.service
 sudo loginctl enable-linger $USER
 ```
 
+`classmanager-app.service` 和备份相关的 `systemd` 单元都会读取项目根目录的 `.env.runtime`，所以数据库路径、备份目录和 `JWT_SECRET` 可以统一在这一个文件里维护。
+
 ### 6. 配置 SQLite 定时备份
 
 项目已提供用户级备份定时器安装脚本：
@@ -89,6 +106,12 @@ sudo loginctl enable-linger $USER
 
 ```bash
 systemctl --user list-timers | rg classmanager-backup
+```
+
+如果你使用 `cron` 而不是 `systemd`，仓库里也提供了会自动加载 `.env.runtime` 的模板：
+
+```bash
+cat ops/cron/classmanager-backup.cron
 ```
 
 ## 内置脚本和工具

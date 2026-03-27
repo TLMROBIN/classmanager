@@ -4,4 +4,5 @@ Description=Check classmanager backup freshness
 [Service]
 Type=oneshot
 WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=-__PROJECT_DIR__/.env.runtime
 ExecStart=/usr/bin/npm run backup:check-freshness

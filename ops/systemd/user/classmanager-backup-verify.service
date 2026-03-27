@@ -7,4 +7,5 @@ OnFailure=classmanager-backup-verify-alert.service
 [Service]
 Type=oneshot
 WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=-__PROJECT_DIR__/.env.runtime
 ExecStart=/usr/bin/npm run backup:verify
