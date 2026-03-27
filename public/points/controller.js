@@ -1,6 +1,67 @@
 (function() {
+    const buildBatchPointState = ({
+        updates,
+        students,
+        history,
+        GUEST_ROSTER,
+        ts,
+        normalizePointScene,
+        normalizePointCategory
+    }) => {
+        const sourceStudents = (Array.isArray(students) && students.length > 0) ? students : GUEST_ROSTER;
+        const sourceHistory = Array.isArray(history) ? history : [];
+        const nextStudents = sourceStudents.map(student => ({ ...student }));
+        const nextHistoryRecords = [];
+
+        (Array.isArray(updates) ? updates : []).forEach(update => {
+            const idx = nextStudents.findIndex(student => student.id === update.id);
+            if (idx === -1) return;
+
+            const student = nextStudents[idx];
+            student.zizai = Number.isFinite(Number(student.zizai)) ? Number(student.zizai) : 0;
+            student.balance = Number.isFinite(Number(student.balance)) ? Number(student.balance) : 0;
+            student.penalty = Number.isFinite(Number(student.penalty)) ? Number(student.penalty) : 0;
+
+            const snapshot = {
+                zizai: student.zizai,
+                balance: student.balance,
+                penalty: student.penalty
+            };
+            const parsedVal = Number(update.val);
+            const val = Number.isFinite(parsedVal) ? parsedVal : 0;
+
+            if (val > 0) student.zizai += val;
+            student.balance += val;
+            if (val < 0 && update.type === 'penalty') {
+                student.penalty += Math.abs(val);
+                student.lastPenaltyAt = ts;
+            }
+
+            nextHistoryRecords.push({
+                id: ts + Math.random(),
+                ts,
+                studentId: student.id,
+                studentName: student.name,
+                val,
+                reason: update.reason,
+                snapshot,
+                type: update.type,
+                scene: normalizePointScene(update.scene),
+                category: normalizePointCategory(update.category)
+            });
+        });
+
+        return {
+            count: nextHistoryRecords.length,
+            nextStudents,
+            nextHistory: [...nextHistoryRecords, ...sourceHistory]
+        };
+    };
+
     const batchUpdatePoints = ({
         updates,
+        students,
+        history,
         POINT_SCENES,
         POINT_CATEGORIES,
         getNow,
@@ -8,7 +69,8 @@
         setHistory,
         GUEST_ROSTER,
         normalizePointScene,
-        normalizePointCategory
+        normalizePointCategory,
+        onPersist
     }) => {
         if (!Array.isArray(updates) || updates.length === 0) return 0;
         const invalid = updates.find(update => (
@@ -23,59 +85,29 @@
         }
 
         const ts = getNow().getTime();
-
-        setStudents(prevStudents => {
-            const sourceStudents = (Array.isArray(prevStudents) && prevStudents.length > 0) ? prevStudents : GUEST_ROSTER;
-            const nextStudents = sourceStudents.map(student => ({ ...student }));
-            const nextHistoryRecords = [];
-
-            updates.forEach(update => {
-                const idx = nextStudents.findIndex(student => student.id === update.id);
-                if (idx === -1) return;
-
-                const student = nextStudents[idx];
-                student.zizai = Number.isFinite(Number(student.zizai)) ? Number(student.zizai) : 0;
-                student.balance = Number.isFinite(Number(student.balance)) ? Number(student.balance) : 0;
-                student.penalty = Number.isFinite(Number(student.penalty)) ? Number(student.penalty) : 0;
-
-                const snapshot = {
-                    zizai: student.zizai,
-                    balance: student.balance,
-                    penalty: student.penalty
-                };
-                const parsedVal = Number(update.val);
-                const val = Number.isFinite(parsedVal) ? parsedVal : 0;
-
-                if (val > 0) student.zizai += val;
-                student.balance += val;
-                if (val < 0 && update.type === 'penalty') {
-                    student.penalty += Math.abs(val);
-                    student.lastPenaltyAt = ts;
-                }
-
-                nextHistoryRecords.push({
-                    id: ts + Math.random(),
-                    ts,
-                    studentId: student.id,
-                    studentName: student.name,
-                    val,
-                    reason: update.reason,
-                    snapshot,
-                    type: update.type,
-                    scene: normalizePointScene(update.scene),
-                    category: normalizePointCategory(update.category)
-                });
-            });
-
-            setHistory(prevHistory => {
-                const sourceHistory = Array.isArray(prevHistory) ? prevHistory : [];
-                return [...nextHistoryRecords, ...sourceHistory];
-            });
-
-            return nextStudents;
+        const result = buildBatchPointState({
+            updates,
+            students,
+            history,
+            GUEST_ROSTER,
+            ts,
+            normalizePointScene,
+            normalizePointCategory
         });
 
-        return updates.length;
+        if (result.count === 0) return 0;
+
+        if (typeof setStudents === 'function') {
+            setStudents(result.nextStudents);
+        }
+        if (typeof setHistory === 'function') {
+            setHistory(result.nextHistory);
+        }
+        if (typeof onPersist === 'function') {
+            onPersist(result);
+        }
+
+        return result.count;
     };
 
     const updatePoints = ({
@@ -118,10 +150,11 @@
         setStudents,
         setHistory,
         normalizePointScene,
-        normalizePointCategory
+        normalizePointCategory,
+        onPersist
     }) => {
         const record = (Array.isArray(history) ? history : []).find(item => item.id === recordId);
-        if (!record || record.isUndoLog) return;
+        if (!record || record.isUndoLog) return false;
 
         const nextStudents = [...(Array.isArray(students) ? students : [])];
         const idx = nextStudents.findIndex(student => student.id === record.studentId);
@@ -179,6 +212,13 @@
 
         setStudents(nextStudents);
         setHistory([undoEntry, ...filteredHistory]);
+        if (typeof onPersist === 'function') {
+            onPersist({
+                nextStudents,
+                nextHistory: [undoEntry, ...filteredHistory]
+            });
+        }
+        return true;
     };
 
     const handleWage = ({
@@ -188,8 +228,13 @@
         getNow,
         getSystemConfig,
         getCustomRoles,
-        batchUpdatePoints,
-        setConfig
+        setStudents,
+        setHistory,
+        setConfig,
+        GUEST_ROSTER,
+        normalizePointScene,
+        normalizePointCategory,
+        onPersist
     }) => {
         const now = typeof getNow === 'function' ? getNow() : new Date();
         const today = getLocalDateKey(now);
@@ -201,7 +246,7 @@
         ));
         if (alreadyIssuedToday) {
             alert("今日一键工资已发放，每天只能发一次");
-            return;
+            return 0;
         }
 
         const systemConfig = getSystemConfig(config);
@@ -215,7 +260,8 @@
         const paidCustomRoles = customRoles.filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
 
         if (targets.length === 0 && paidCustomRoles.length === 0) {
-            return alert("没有找到可发放工资或津贴的对象");
+            alert("没有找到可发放工资或津贴的对象");
+            return 0;
         }
 
         const updates = targets.map(target => ({
@@ -238,12 +284,38 @@
             });
         });
 
-        batchUpdatePoints(updates);
-        setConfig({ ...config, lastWageDate: today });
+        const result = buildBatchPointState({
+            updates,
+            students,
+            history,
+            GUEST_ROSTER,
+            ts: now.getTime(),
+            normalizePointScene,
+            normalizePointCategory
+        });
+        const nextConfig = { ...config, lastWageDate: today };
+
+        if (typeof setStudents === 'function') {
+            setStudents(result.nextStudents);
+        }
+        if (typeof setHistory === 'function') {
+            setHistory(result.nextHistory);
+        }
+        if (typeof setConfig === 'function') {
+            setConfig(nextConfig);
+        }
+        if (typeof onPersist === 'function') {
+            onPersist({
+                nextStudents: result.nextStudents,
+                nextHistory: result.nextHistory,
+                nextConfig
+            });
+        }
 
         const extraNotes = [];
         if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
         alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
+        return result.count;
     };
 
     window.PointsController = {

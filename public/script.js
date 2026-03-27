@@ -485,6 +485,38 @@ const hasTreasureDomainData = (domain) => {
         || Object.keys(normalized.storage).length > 0;
 };
 
+const buildMainAutosavePatch = (previousSnapshot, currentSnapshot) => {
+    if (!previousSnapshot || !currentSnapshot) return null;
+
+    const patch = {};
+    const markChanged = (key) => {
+        if (previousSnapshot[key] !== currentSnapshot[key]) {
+            patch[key] = currentSnapshot[key];
+        }
+    };
+
+    if (previousSnapshot.students !== currentSnapshot.students) {
+        patch.students = currentSnapshot.students;
+    } else if (previousSnapshot.studentProfiles !== currentSnapshot.studentProfiles) {
+        patch.studentProfiles = currentSnapshot.studentProfiles;
+    }
+
+    markChanged('history');
+    markChanged('config');
+    markChanged('treasures');
+    markChanged('storage');
+    markChanged('logs');
+    markChanged('quotes');
+    markChanged('messages');
+    markChanged('teacherMessages');
+    markChanged('redemptionHistory');
+    markChanged('dailyRedemptionCounts');
+    markChanged('dailyUsageCounts');
+    markChanged('tasks');
+
+    return Object.keys(patch).length > 0 ? patch : null;
+};
+
 const protectTreasureDomain = (nextDomain, readExistingDomain, options = {}) => {
     const normalizedNext = normalizeTreasureDomain(nextDomain);
     if (options.allowEmptyOverwrite || hasTreasureDomainData(normalizedNext)) {
@@ -1736,6 +1768,7 @@ const INITIAL_TREASURES = [
         const initialServerSyncDoneRef = useRef(!getApiUrl());
         const skipMainAutosaveRef = useRef(false);
         const skipBattleAutosaveRef = useRef(false);
+        const mainAutosaveSnapshotRef = useRef(null);
         const latestSyncStateRef = useRef({
             students: [],
             studentProfiles: buildNormalizedStudentProfiles(),
@@ -2199,6 +2232,12 @@ const INITIAL_TREASURES = [
                 }
             };
             const payload = { ...partialData, __meta: fullDataWithMeta.__meta };
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'students')) {
+                payload.students = fullDataWithMeta.students;
+                payload.studentProfiles = fullDataWithMeta.studentProfiles;
+            } else if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'studentProfiles')) {
+                payload.studentProfiles = fullDataWithMeta.studentProfiles;
+            }
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'config')) {
                 payload.config = sanitizeStoredConfig(partialData.config);
             }
@@ -2210,6 +2249,12 @@ const INITIAL_TREASURES = [
             }
             if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'logs')) {
                 payload.logs = safeTreasureDomain.logs;
+            }
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'battle')) {
+                payload.battle = fullDataWithMeta.battle;
+            }
+            if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'examArchives')) {
+                payload.examArchives = fullDataWithMeta.examArchives;
             }
             return savePayloadToServer(payload, nowTs);
         }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
@@ -2260,6 +2305,12 @@ const INITIAL_TREASURES = [
         const fetchFromServer = useCallback((options = {}) => {
             return fetchFromServerCore(options);
         }, [fetchFromServerCore]);
+
+        const persistManagedPatch = useCallback((partialData) => (
+            persistDataPatch(partialData, {
+                suppressFollowupAutoSave: true
+            })
+        ), [persistDataPatch]);
 
         const fetchAttendanceData = useCallback(async (options = {}) => {
             const {
@@ -2412,8 +2463,35 @@ const INITIAL_TREASURES = [
         // --- 自动保存逻辑 (Debounced) ---
         useEffect(() => {
             if (!localHydrationDone) return undefined;
+            const currentMainAutosaveSnapshot = {
+                students,
+                studentProfiles,
+                history,
+                config,
+                treasures,
+                storage,
+                logs,
+                quotes,
+                messages,
+                teacherMessages,
+                redemptionHistory,
+                dailyRedemptionCounts,
+                dailyUsageCounts,
+                tasks
+            };
+            if (!mainAutosaveSnapshotRef.current) {
+                mainAutosaveSnapshotRef.current = currentMainAutosaveSnapshot;
+                return undefined;
+            }
             if (skipMainAutosaveRef.current) {
                 skipMainAutosaveRef.current = false;
+                mainAutosaveSnapshotRef.current = currentMainAutosaveSnapshot;
+                isDirtyRef.current = false;
+                return undefined;
+            }
+            const patch = buildMainAutosavePatch(mainAutosaveSnapshotRef.current, currentMainAutosaveSnapshot);
+            mainAutosaveSnapshotRef.current = currentMainAutosaveSnapshot;
+            if (!patch) {
                 isDirtyRef.current = false;
                 return undefined;
             }
@@ -2425,8 +2503,7 @@ const INITIAL_TREASURES = [
             }
 
             const saveData = () => {
-                const fullData = buildCurrentFullData();
-                persistData(fullData).then(() => { 
+                persistDataPatch(patch).then(() => {
                     isDirtyRef.current = false; 
                 }).catch(() => { 
                     isDirtyRef.current = false; 
@@ -2435,7 +2512,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [localHydrationDone, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData]);
+        }, [localHydrationDone, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistDataPatch]);
 
         useEffect(() => {
             if (!localHydrationDone) return undefined;
@@ -2470,6 +2547,8 @@ const INITIAL_TREASURES = [
         // NEW Batch Update Function
         const batchUpdatePoints = useCallback((updates) => runBatchUpdatePoints({
             updates,
+            students,
+            history,
             POINT_SCENES,
             POINT_CATEGORIES,
             getNow,
@@ -2477,8 +2556,14 @@ const INITIAL_TREASURES = [
             setHistory,
             GUEST_ROSTER,
             normalizePointScene,
-            normalizePointCategory
-        }), []);
+            normalizePointCategory,
+            onPersist: ({ nextStudents, nextHistory }) => {
+                persistManagedPatch({
+                    students: nextStudents,
+                    history: nextHistory
+                });
+            }
+        }), [students, history, persistManagedPatch]);
 
         const updatePoints = (ids, val, reason, type = 'bonus', scene, category) => runUpdatePoints({
             ids,
@@ -2512,7 +2597,13 @@ const INITIAL_TREASURES = [
             setStudents,
             setHistory,
             normalizePointScene,
-            normalizePointCategory
+            normalizePointCategory,
+            onPersist: ({ nextStudents, nextHistory }) => {
+                persistManagedPatch({
+                    students: nextStudents,
+                    history: nextHistory
+                });
+            }
         });
 
         const handleWage = () => runHandleWage({
@@ -2522,8 +2613,19 @@ const INITIAL_TREASURES = [
             getNow,
             getSystemConfig,
             getCustomRoles,
-            batchUpdatePoints,
-            setConfig
+            setStudents,
+            setHistory,
+            setConfig,
+            GUEST_ROSTER,
+            normalizePointScene,
+            normalizePointCategory,
+            onPersist: ({ nextStudents, nextHistory, nextConfig }) => {
+                persistManagedPatch({
+                    students: nextStudents,
+                    history: nextHistory,
+                    config: nextConfig
+                });
+            }
         });
 
         const runTreasureAction = (builderName, params) => {
@@ -2545,7 +2647,7 @@ const INITIAL_TREASURES = [
             if (Object.prototype.hasOwnProperty.call(nextState, 'redemptionHistory')) setRedemptionHistory(nextState.redemptionHistory || {});
             if (Object.prototype.hasOwnProperty.call(nextState, 'dailyUsageCounts')) setDailyUsageCounts(nextState.dailyUsageCounts || {});
             if (Object.prototype.hasOwnProperty.call(nextState, 'dailyRedemptionCounts')) setDailyRedemptionCounts(nextState.dailyRedemptionCounts || {});
-            persistData(buildCurrentFullData(nextState));
+            persistManagedPatch(nextState);
             return result;
         };
 
@@ -2619,10 +2721,10 @@ const INITIAL_TREASURES = [
                 note: formatTreasureGachaSettingsSummary(normalizedGachaConfig)
             }, ...(Array.isArray(logs) ? logs : [])];
 
-            return persistData(buildCurrentFullData({
+            return persistManagedPatch({
                 config: nextConfig,
                 logs: nextLogs
-            })).then(() => {
+            }).then(() => {
                 setConfig(nextConfig);
                 setLogs(nextLogs);
                 return {
@@ -2658,7 +2760,7 @@ const INITIAL_TREASURES = [
 
         const handleApplyFixedStudents = (nextStudents) => {
             setStudents(nextStudents);
-            persistData(buildCurrentFullData({ students: nextStudents }));
+            persistManagedPatch({ students: nextStudents });
         };
 
         const handleImportTreasureData = (nextDomain) => {
@@ -2678,14 +2780,14 @@ const INITIAL_TREASURES = [
             setRedemptionHistory({});
             setDailyRedemptionCounts({});
             setDailyUsageCounts({});
-            persistData(buildCurrentFullData({
+            persistManagedPatch({
                 treasures: safeDomain.treasures,
                 storage: safeDomain.storage,
                 logs: safeDomain.logs,
                 redemptionHistory: {},
                 dailyRedemptionCounts: {},
                 dailyUsageCounts: {}
-            }));
+            });
 
             return { ok: true };
         };
@@ -2707,11 +2809,11 @@ const INITIAL_TREASURES = [
             setStudents(result.nextStudents);
             setHistory(result.nextHistory);
 
-            persistData(buildCurrentFullData({
+            persistManagedPatch({
                 students: result.nextStudents,
                 history: result.nextHistory,
                 tasks: result.nextTasks
-            }));
+            });
             return true;
         };
 
