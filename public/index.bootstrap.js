@@ -2,6 +2,10 @@
     const root = document.getElementById('root');
 
     const APP_SCRIPTS = [
+        '/core/runtime.js',
+        '/core/sync.js',
+        '/core/store.js',
+        '/ui/modal.js',
         '/points/config.js',
         '/points/controller.js',
         '/attendance/points.js',
