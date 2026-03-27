@@ -1,6 +1,14 @@
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'classmanager.db');
+const DEFAULT_DB_PATH = path.join(__dirname, 'classmanager.db');
+const resolveConfiguredPath = (configuredPath, fallbackPath) => {
+    if (!configuredPath) return fallbackPath;
+    return path.isAbsolute(configuredPath)
+        ? configuredPath
+        : path.resolve(process.cwd(), configuredPath);
+};
+
+const dbPath = resolveConfiguredPath(process.env.CLASSMANAGER_DB_PATH, DEFAULT_DB_PATH);
 
 const SCHEMA_SQL = `
     CREATE TABLE IF NOT EXISTS users (

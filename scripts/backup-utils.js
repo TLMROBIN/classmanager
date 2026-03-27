@@ -4,8 +4,20 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
-const DEFAULT_DB_PATH = path.join(ROOT_DIR, 'database', 'classmanager.db');
-const DEFAULT_BACKUP_DIR = path.join(ROOT_DIR, 'backups', 'sqlite');
+const resolveConfiguredPath = (configuredPath, fallbackPath) => {
+    if (!configuredPath) return fallbackPath;
+    return path.isAbsolute(configuredPath)
+        ? configuredPath
+        : path.resolve(process.cwd(), configuredPath);
+};
+const DEFAULT_DB_PATH = resolveConfiguredPath(
+    process.env.CLASSMANAGER_DB_PATH,
+    path.join(ROOT_DIR, 'database', 'classmanager.db')
+);
+const DEFAULT_BACKUP_DIR = resolveConfiguredPath(
+    process.env.CLASSMANAGER_BACKUP_DIR,
+    path.join(ROOT_DIR, 'backups', 'sqlite')
+);
 
 const pad2 = (value) => String(value).padStart(2, '0');
 

@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { hashPassword, verifyPassword } = require('./utils/password');
+const { buildHealthReport } = require('./utils/health');
 const {
     generateToken,
     generateMaintenanceToken,
@@ -21,6 +22,8 @@ const { stripLegacyAdminPasswordFromConfig } = require('./utils/config-security'
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const HOST = process.env.CLASSMANAGER_HOST || '0.0.0.0';
+const startedAtMs = Date.now();
 
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
@@ -1489,6 +1492,15 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+app.get('/api/health', (req, res) => {
+    const report = buildHealthReport({
+        db,
+        dbPath,
+        startedAtMs
+    });
+    res.status(report.statusCode).json(report.body);
+});
+
 app.post(
     CSP_REPORT_URI,
     express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'] }),
@@ -2358,17 +2370,20 @@ if (countAdmins(db) === 0) {
     process.exit(1);
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, HOST, () => {
+    const address = server.address();
+    const boundPort = address && typeof address === 'object' ? address.port : PORT;
     console.log('=====================================================');
     console.log(`✅ 班级管理系统（多用户版）已启动！`);
-    console.log(`📂 本机访问: http://localhost:${PORT}`);
-    console.log(`📡 局域网访问: 请使用本机 IP 地址 + :${PORT}`);
-    console.log(`🔧 管理员后台: http://localhost:${PORT}/admin.html`);
+    console.log(`📂 本机访问: http://localhost:${boundPort}`);
+    console.log(`📡 局域网访问: 请使用本机 IP 地址 + :${boundPort}`);
+    console.log(`🔧 管理员后台: http://localhost:${boundPort}/admin.html`);
     console.log('=====================================================');
 });
 
 process.on('SIGINT', () => {
     clearInterval(testSessionCleanupTimer);
+    server.close();
     db.close();
     process.exit();
 });

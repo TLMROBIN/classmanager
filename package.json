@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
     "init-db": "node database/init.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js",
     "migrate:security": "node scripts/migrate-maintenance-secrets.js",
