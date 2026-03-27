@@ -1,10 +1,14 @@
 (function() {
     window.createTasksView = function createTasksView(deps) {
-        const { h, useState, Modal, Icon, requireAdminAuth } = deps || {};
+        const { h, useState, Modal, Icon, requireAdminAuth, getNow } = deps || {};
 
         if (!h || !useState || !Modal || !Icon || !requireAdminAuth) {
             throw new Error('TasksView dependencies are missing');
         }
+
+        const readNow = typeof getNow === 'function'
+            ? getNow
+            : () => new Date();
 
         return function TasksView({ students, tasks, setTasks, onClaimTask }) {
             const [currentUser, setCurrentUser] = useState("");
@@ -54,7 +58,7 @@
                 if (taskIndex === -1) return;
                 const task = taskList[taskIndex];
 
-                const now = new Date();
+                const now = readNow();
                 const start = new Date(task.startTime || 0);
                 const end = new Date(task.endTime || 0);
                 if (isNaN(start.getTime()) || isNaN(end.getTime())) return alert("任务时间无效");
@@ -69,7 +73,7 @@
                 else alert("领取失败，请重试");
             };
 
-            const now = new Date();
+            const now = readNow();
             const displayedTasks = isAdminMode
                 ? [...taskList].sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0))
                 : taskList
