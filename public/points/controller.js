@@ -181,23 +181,6 @@
         setHistory([undoEntry, ...filteredHistory]);
     };
 
-    const handleUndoByReasons = ({
-        studentId,
-        reasons,
-        history,
-        handleUndo
-    }) => {
-        const reasonList = Array.isArray(reasons) ? reasons.filter(Boolean) : [reasons].filter(Boolean);
-        if (reasonList.length === 0) return;
-        const record = (Array.isArray(history) ? history : []).find(item => (
-            String(item.studentId) === String(studentId) &&
-            !item.isUndoLog &&
-            reasonList.includes(item.reason)
-        ));
-        if (!record) return alert("未找到对应的加扣分记录");
-        handleUndo(record.id);
-    };
-
     const handleWage = ({
         config,
         students,
@@ -267,7 +250,6 @@
         batchUpdatePoints,
         updatePoints,
         handleUndo,
-        handleUndoByReasons,
         handleWage
     };
 })();

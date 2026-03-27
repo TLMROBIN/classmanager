@@ -20,9 +20,6 @@
         } = deps || {};
 
         const {
-            applyLatePenalty,
-            correctSelectedIssues,
-            settleAbsentItems,
             awardPerfectAttendance
         } = attendancePoints || {};
         const createAttendanceAdminTools = window.createAttendanceAdminTools;
@@ -42,9 +39,6 @@
             !getScheduleConfig ||
             !getWeekendRules ||
             !getPenaltyRules ||
-            !applyLatePenalty ||
-            !correctSelectedIssues ||
-            !settleAbsentItems ||
             !awardPerfectAttendance ||
             !createAttendanceAdminTools
         ) {
@@ -62,10 +56,9 @@
             setTeacherMessages,
             studentMessages,
             setStudentMessages,
-            logs,
             attendanceRecords,
-            handleUndoByReasons,
-            onAttendanceRecordsChange,
+            onAttendanceCheckIn,
+            onAttendanceMaintenance,
             onUpdateAttendanceConfig
         }) {
             const isFrozen = !!(config && config.frozen);
@@ -81,7 +74,6 @@
                 return { start: getDateString(monday), end: getDateString(friday) };
             };
 
-            const [records, setRecords] = useState({});
             const [currentTime, setCurrentTime] = useState(getNow());
             const [view, setView] = useState('checkin');
             const [checkInEffect, setCheckInEffect] = useState(null);
@@ -94,17 +86,7 @@
             const [newTeacherMsg, setNewTeacherMsg] = useState("");
             const [newStudentMsg, setNewStudentMsg] = useState("");
             const [queryStudentName, setQueryStudentName] = useState("");
-
-            const syncAttendanceRecords = (nextRecords, options = {}) => {
-                if (typeof onAttendanceRecordsChange === 'function') {
-                    return onAttendanceRecordsChange(nextRecords || {}, options);
-                }
-                return null;
-            };
-
-            useEffect(() => {
-                setRecords(attendanceRecords || {});
-            }, [attendanceRecords]);
+            const records = attendanceRecords || {};
 
             useEffect(() => {
                 const timer = setInterval(() => {
@@ -152,19 +134,17 @@
             };
 
             const getDisplayRecord = (dateObj, studentName, rule, now, sourceRecords = records) => {
+                void now;
                 const dateStr = getDateString(dateObj);
-                const existingRecord = sourceRecords?.[dateStr]?.[studentName]?.[rule.id] || null;
-                if (existingRecord) return existingRecord;
-                if (isFrozen || !isPeriodEnded(dateObj, rule, now)) return null;
-                return {
-                    status: 'absent',
-                    checkTime: '缺勤',
-                    timestamp: 0,
-                    isDerived: true
-                };
+                return sourceRecords?.[dateStr]?.[studentName]?.[rule.id] || null;
             };
 
-            const todayRules = useMemo(() => getRulesForDate(currentTime), [currentTime.getDate()]);
+            const todayRules = useMemo(() => getRulesForDate(currentTime), [
+                config,
+                currentTime.getFullYear(),
+                currentTime.getMonth(),
+                currentTime.getDate()
+            ]);
 
             const todayQuote = useMemo(() => {
                 const start = new Date(currentTime.getFullYear(), 0, 0);
@@ -186,82 +166,38 @@
                 return null;
             }, [currentTime, todayRules]);
 
-            const usedMorningLateCardYesterday = (name) => {
-                const logList = logs || [];
-                const yesterday = new Date(currentTime);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = getDateString(yesterday);
-                return logList.some(log => {
-                    if (log.action !== '使用' || !log.itemName || log.studentName !== name) return false;
-                    if (String(log.itemName).trim() !== '早读迟到卡') return false;
-                    return getDateString(new Date(log.ts)) === yesterdayStr;
-                });
-            };
-
-            const handleCheckIn = (studentName) => {
-                if (!currentSession) return alert("当前不在打卡时段！");
-                const dateKey = getDateString(currentTime);
-                let result = null;
-
-                setRecords(currentRecords => {
-                    if (currentRecords[dateKey]?.[studentName]?.[currentSession.id]) {
-                        result = { status: 'exists' };
-                        return currentRecords;
-                    }
-
-                    const isLate = currentSession.isLateNow;
-                    const usedLateCardYesterday = currentSession.id === 'morning' && usedMorningLateCardYesterday(studentName);
-
-                    const newRecord = {
-                        status: isLate ? 'late' : 'ok',
-                        checkTime: currentTime.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                        timestamp: getNow().getTime()
-                    };
-
-                    const newRecords = {
-                        ...currentRecords,
-                        [dateKey]: {
-                            ...(currentRecords[dateKey] || {}),
-                            [studentName]: {
-                                ...(currentRecords[dateKey]?.[studentName] || {}),
-                                [currentSession.id]: newRecord
-                            }
-                        }
-                    };
-
-                    result = { status: isLate ? 'late' : 'ok', newRecord, newRecords, usedLateCardYesterday };
-                    return newRecords;
-                });
-
-                if (!result) return;
-                if (result.status === 'exists') return alert("已打卡！");
-                syncAttendanceRecords(result.newRecords, {
-                    persistImmediately: true,
-                    actionLabel: '打卡记录'
-                });
-
-                const student = students.find(stu => stu.name === studentName);
-                if (result.status === 'late' && student && !result.usedLateCardYesterday) {
-                    const penaltyRules = getPenaltyRules(config);
-                    const latePenalty = penaltyRules.late || -1;
-                    applyLatePenalty({
-                        student,
-                        sessionName: currentSession.name,
-                        latePenalty,
-                        updatePoints,
-                        isFrozen
-                    });
+            const handleCheckIn = async (studentName) => {
+                if (typeof onAttendanceCheckIn !== 'function') {
+                    alert("考勤接口未就绪");
+                    return;
                 }
-
-                const streak = calculateStreak(studentName, result.newRecords, currentTime);
-                setCheckInEffect({
-                    show: true,
-                    student: studentName,
-                    streak,
-                    status: result.status,
-                    usedMorningLateCard: result.status === 'late' && result.usedLateCardYesterday
-                });
-                setTimeout(() => setCheckInEffect(null), 3000);
+                try {
+                    const result = await onAttendanceCheckIn(studentName);
+                    const checkIn = result?.checkIn || {};
+                    if (!checkIn?.record) return;
+                    const latestRecords = result?.attendanceRecords || records;
+                    const streak = calculateStreak(studentName, latestRecords, currentTime);
+                    setCheckInEffect({
+                        show: true,
+                        student: studentName,
+                        streak,
+                        status: checkIn.status,
+                        usedMorningLateCard: checkIn.status === 'late' && checkIn.usedMorningLateCard
+                    });
+                    setTimeout(() => setCheckInEffect(null), 3000);
+                } catch (error) {
+                    if (error?.code === 'ATTENDANCE_EXISTS') {
+                        alert("已打卡！");
+                        return;
+                    }
+                    if (error?.code === 'ATTENDANCE_SESSION_CLOSED') {
+                        alert("当前不在打卡时段！");
+                        return;
+                    }
+                    if (error?.code !== 'AUTH_REQUIRED') {
+                        alert(error?.message || '打卡失败');
+                    }
+                }
             };
 
             const handlePostTeacherMsg = () => {
@@ -285,11 +221,12 @@
 
             const handlePostStudentMsg = () => {
                 if (!newStudentMsg.trim()) return;
+                const now = getNow();
                 const msg = {
-                    id: Date.now(),
+                    id: now.getTime(),
                     content: newStudentMsg,
-                    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-                    date: getTodayStr()
+                    time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                    date: getTodayStr(now)
                 };
                 const updatedMessages = [msg, ...(studentMessages || [])].slice(0, 20);
                 setStudentMessages(updatedMessages);
@@ -386,7 +323,7 @@
             }, [records, students, startDate, endDate, currentTime]);
 
             const handleRevokeAuth = async () => {
-                if (await requireAdminAuth("请输入维护密码：")) setView('revoke');
+                if (await requireAdminAuth("请输入维护密码以进入修正模式：")) setView('revoke');
             };
 
             const handleExportAttendanceExcel = () => attendanceAdminTools.exportAttendanceExcel({
@@ -409,7 +346,7 @@
                             const rec = getDisplayRecord(dateObj, student.name, rule, now);
                             if (rec && rec.status === 'late') {
                                 if (filterType !== 'all' && filterType !== 'late') return;
-                                list.push({ id: `${dateStr}-${student.name}-${rule.id}`, date: dateStr, name: student.name, session: rule.name, type: 'late', desc: `迟到 ${rec.checkTime}` });
+                                list.push({ id: `${dateStr}-${student.name}-${rule.id}`, date: dateStr, name: student.name, session: rule.name, sessionId: rule.id, type: 'late', desc: `迟到 ${rec.checkTime}` });
                             } else if (rec && rec.status === 'absent') {
                                 if (filterType !== 'all' && filterType !== 'absent') return;
                                 list.push({
@@ -417,8 +354,10 @@
                                     date: dateStr,
                                     name: student.name,
                                     session: rule.name,
+                                    sessionId: rule.id,
                                     type: 'absent',
-                                    desc: '缺勤'
+                                    settled: rec.checkTime === '已扣分',
+                                    desc: rec.checkTime === '已扣分' ? '缺勤（已结算）' : '缺勤'
                                 });
                             }
                         });
@@ -437,73 +376,63 @@
 
             const isAllSelected = abnormalRecords.length > 0 && selectedIssues.length === abnormalRecords.length;
 
-            const handleBatchCorrect = () => {
+            const handleBatchCorrect = async () => {
                 if (selectedIssues.length === 0) return;
+                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
                 if (!confirm(`确定将选中的 ${selectedIssues.length} 条记录修正为“正常”吗？\n迟到：返还扣分\n缺勤：补录为正常`)) return;
-                const newRec = correctSelectedIssues({
-                    selectedIds: selectedIssues,
-                    abnormalRecords,
-                    students,
-                    records,
-                    nowTs: getNow().getTime(),
-                    handleUndoByReasons
-                });
-                setRecords(newRec);
-                syncAttendanceRecords(newRec, {
-                    persistImmediately: true,
-                    actionLabel: '考勤修正'
-                });
-                setSelectedIssues([]);
-                alert("修正成功");
+                if (!await requireAdminAuth("请输入维护密码：")) return;
+                try {
+                    await onAttendanceMaintenance('correct', selectedIssues.map(id => abnormalRecords.find(item => item.id === id)).filter(Boolean));
+                    setSelectedIssues([]);
+                    alert("修正成功");
+                } catch (error) {
+                    if (error?.code !== 'AUTH_REQUIRED') {
+                        alert(error?.message || '考勤修正失败');
+                    }
+                }
             };
 
-            const handleBatchAbsent = () => {
-                const absentItems = selectedIssues.map(id => abnormalRecords.find(item => item.id === id)).filter(item => item && item.type === 'absent');
+            const handleBatchAbsent = async () => {
+                const absentItems = selectedIssues
+                    .map(id => abnormalRecords.find(item => item.id === id))
+                    .filter(item => item && item.type === 'absent' && !item.settled);
+                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
                 if (isFrozen) return alert("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
                 if (absentItems.length === 0) return alert("请至少选择一条缺勤记录");
                 const penaltyRules = getPenaltyRules(config);
                 const absentPenalty = penaltyRules.absent || -5;
                 if (!confirm(`确定将选中的 ${absentItems.length} 条缺勤记录进行结算扣分吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`)) return;
-                const newRec = settleAbsentItems({
-                    items: absentItems,
-                    students,
-                    records,
-                    nowTs: getNow().getTime(),
-                    absentPenalty,
-                    updatePoints
-                });
-                setRecords(newRec);
-                syncAttendanceRecords(newRec, {
-                    persistImmediately: true,
-                    actionLabel: '缺勤结算'
-                });
-                setSelectedIssues([]);
-                alert("结算成功");
+                if (!await requireAdminAuth("请输入维护密码：")) return;
+                try {
+                    await onAttendanceMaintenance('settleAbsent', absentItems);
+                    setSelectedIssues([]);
+                    alert("结算成功");
+                } catch (error) {
+                    if (error?.code !== 'AUTH_REQUIRED') {
+                        alert(error?.message || '缺勤结算失败');
+                    }
+                }
             };
 
-            const handleSettleAllAbsent = () => {
+            const handleSettleAllAbsent = async () => {
+                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
                 if (isFrozen) return alert("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
-                const allAbsentItems = abnormalRecords.filter(item => item.type === 'absent');
+                const allAbsentItems = abnormalRecords.filter(item => item.type === 'absent' && !item.settled);
                 if (allAbsentItems.length === 0) return alert("当前没有待结算的缺勤记录");
                 const penaltyRules = getPenaltyRules(config);
                 const absentPenalty = penaltyRules.absent || -5;
                 if (!confirm(`确定要一键结算当前列表中的 ${allAbsentItems.length} 条缺勤记录吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`)) return;
-                const newRec = settleAbsentItems({
-                    items: allAbsentItems,
-                    students,
-                    records,
-                    nowTs: getNow().getTime(),
-                    absentPenalty,
-                    updatePoints
-                });
-                setRecords(newRec);
-                syncAttendanceRecords(newRec, {
-                    persistImmediately: true,
-                    actionLabel: '缺勤批量结算'
-                });
-                const settledIds = new Set(allAbsentItems.map(item => item.id));
-                setSelectedIssues(selectedIssues.filter(id => !settledIds.has(id)));
-                alert("批量结算成功");
+                if (!await requireAdminAuth("请输入维护密码：")) return;
+                try {
+                    await onAttendanceMaintenance('settleAbsent', allAbsentItems);
+                    const settledIds = new Set(allAbsentItems.map(item => item.id));
+                    setSelectedIssues(selectedIssues.filter(id => !settledIds.has(id)));
+                    alert("批量结算成功");
+                } catch (error) {
+                    if (error?.code !== 'AUTH_REQUIRED') {
+                        alert(error?.message || '批量结算失败');
+                    }
+                }
             };
 
             const handlePerfectBonus = () => {
@@ -737,7 +666,7 @@
                         )
                     ),
                     view === 'revoke' && h("div", { className: "animate-fade-in" },
-                        h("div", { className: "bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded mb-4 text-xs" }, "管理员模式：勾选异常记录进行修正。"),
+                        h("div", { className: "bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded mb-4 text-xs" }, "维护修正模式：输入维护密码后，可将迟到或缺勤修正为正常。"),
                         h("div", { className: "flex flex-wrap gap-2 justify-between mb-2 items-center" },
                             h("div", { className: "flex flex-wrap gap-3 items-center" },
                                 h("span", { className: "text-sm font-bold" }, `发现 ${abnormalRecords.length} 条异常`),

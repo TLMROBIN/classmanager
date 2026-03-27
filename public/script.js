@@ -529,7 +529,6 @@ const {
     batchUpdatePoints: runBatchUpdatePoints,
     updatePoints: runUpdatePoints,
     handleUndo: runHandleUndo,
-    handleUndoByReasons: runHandleUndoByReasons,
     handleWage: runHandleWage
 } = window.PointsController || {};
 
@@ -829,8 +828,9 @@ const INITIAL_TREASURES = [
     };
     const getTodayStr = (now = getNow()) => {
         const d = new Date(now);
-        if (isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
-        return d.toISOString().split('T')[0];
+        const target = isNaN(d.getTime()) ? new Date() : d;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
     };
     const timeToMinutes = (timeStr) => {
         const parts = timeStr.split(':');
@@ -1001,6 +1001,59 @@ const INITIAL_TREASURES = [
         return data;
     };
 
+    const requestAttendanceJson = async (url, options = {}) => {
+        const includeMaintenanceAuth = options?.includeMaintenanceAuth === true;
+        const fetchOptions = { ...(options || {}) };
+        delete fetchOptions.includeMaintenanceAuth;
+
+        const res = await fetch(url, {
+            ...fetchOptions,
+            headers: {
+                ...window.__getAuthHeaders__(),
+                ...getTestRequestHeaders(),
+                ...(includeMaintenanceAuth ? getAdminAuthHeaders() : {}),
+                ...(fetchOptions.headers || {})
+            }
+        });
+        const { data, text } = await parseApiResponse(res);
+        if (handleTestSessionApiError(res, data)) {
+            const error = new Error(data?.error || '测试会话已失效');
+            error.code = data?.code || 'TEST_SESSION_INVALID';
+            throw error;
+        }
+        const authErrorType = res && res.headers && typeof res.headers.get === 'function'
+            ? res.headers.get('x-auth-error')
+            : '';
+        const isAccessAuthError = res.status === 401 && (
+            authErrorType === 'access-required'
+            || data?.code === 'AUTH_REQUIRED'
+            || data?.error === '未授权，请先登录'
+            || data?.error === 'Token无效或已过期'
+        );
+        if (isAccessAuthError) {
+            if (typeof window.__clearAuthAndRedirect__ === 'function') {
+                window.__clearAuthAndRedirect__();
+            } else if (window.__handleAuthError__(res)) {
+                // no-op: global handler already redirected
+            }
+            const error = new Error('登录已失效，请重新登录');
+            error.code = 'AUTH_REQUIRED';
+            throw error;
+        }
+        if (res.status === 403 && data?.code === 'MAINTENANCE_AUTH_REQUIRED') {
+            clearAdminAuth();
+            const error = new Error(data?.error || '当前操作需要重新验证维护密码');
+            error.code = data?.code || 'MAINTENANCE_AUTH_REQUIRED';
+            throw error;
+        }
+        if (!res.ok) {
+            const error = new Error(data?.error || text || '请求失败');
+            error.code = data?.code || `HTTP_${res.status}`;
+            throw error;
+        }
+        return data;
+    };
+
     const fetchMaintenanceStatus = async () => {
         return requestMaintenanceJson('/api/maintenance/status');
     };
@@ -1053,8 +1106,6 @@ const INITIAL_TREASURES = [
             return false;
         }
     };
-
-    const verifyAdmin = () => requireAdminAuth();
 
     // --- Icon Component ---
     var Icon = ({ name, size = 20, className = "" }) => {
@@ -1146,7 +1197,8 @@ const INITIAL_TREASURES = [
             useState,
             Modal,
             Icon,
-            requireAdminAuth
+            requireAdminAuth,
+            getNow
         });
         return window.__TasksViewComponent__;
     };
@@ -1287,6 +1339,7 @@ const INITIAL_TREASURES = [
             useState,
             useEffect,
             useMemo,
+            useRef,
             Icon,
             requireAdminAuth,
             getNow,
@@ -1683,9 +1736,6 @@ const INITIAL_TREASURES = [
         const initialServerSyncDoneRef = useRef(!getApiUrl());
         const skipMainAutosaveRef = useRef(false);
         const skipBattleAutosaveRef = useRef(false);
-        const pendingAttendanceSaveRef = useRef(null);
-        const attendanceSaveInFlightRef = useRef(false);
-        const attendanceSaveDrainPromiseRef = useRef(Promise.resolve({ skipped: true }));
         const latestSyncStateRef = useRef({
             students: [],
             studentProfiles: buildNormalizedStudentProfiles(),
@@ -1814,6 +1864,23 @@ const INITIAL_TREASURES = [
             if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
         };
 
+        const applyAttendanceServerPayload = useCallback((data, options = {}) => {
+            const safe = data || {};
+            const updatedAt = Number(safe.updatedAt) || Number(safe.__meta?.updatedAt) || 0;
+            if (updatedAt > 0) markServerMeta(updatedAt);
+            const partial = {};
+            if (Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords')) partial.attendanceRecords = safe.attendanceRecords;
+            if (Object.prototype.hasOwnProperty.call(safe, 'students')) partial.students = safe.students;
+            if (Object.prototype.hasOwnProperty.call(safe, 'history')) partial.history = safe.history;
+            if (Object.prototype.hasOwnProperty.call(partial, 'students') || Object.prototype.hasOwnProperty.call(partial, 'history')) {
+                skipMainAutosaveRef.current = true;
+            }
+            applyFullData(partial, {
+                mergeAttendance: options.mergeAttendance === true
+            }, latestSyncStateRef.current);
+            setSyncStatus('saved');
+        }, [applyFullData]);
+
         const enterTestMode = useCallback(async () => {
             if (testMode) return;
             if (!getApiUrl()) {
@@ -1880,9 +1947,6 @@ const INITIAL_TREASURES = [
         }, [testMode, testSessionId]);
 
         const buildCurrentFullData = useCallback((overrides = {}) => {
-            const att = Object.prototype.hasOwnProperty.call(overrides, 'attendanceRecords')
-                ? overrides.attendanceRecords
-                : (attendanceRecords || {});
             const nextStudents = Object.prototype.hasOwnProperty.call(overrides, 'students') ? overrides.students : students;
             const nextStudentProfiles = restoreStudentProfilesFromData(overrides, studentProfiles, nextStudents);
             const rawNextConfig = Object.prototype.hasOwnProperty.call(overrides, 'config') ? overrides.config : config;
@@ -1893,7 +1957,6 @@ const INITIAL_TREASURES = [
                 : (Array.isArray(getLegacyTreasureList(rawNextConfig)) ? migratedTreasures : effectiveTreasures);
             return {
                 history,
-                attendanceRecords: att,
                 storage,
                 logs,
                 quotes,
@@ -1911,7 +1974,7 @@ const INITIAL_TREASURES = [
                 students: nextStudents,
                 studentProfiles: nextStudentProfiles
             };
-        }, [attendanceRecords, students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
+        }, [students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
 
         const fetchFromServerCore = useCallback(async (options = {}) => {
             const normalizedOptions = typeof options === 'boolean' ? { isAuto: options } : (options || {});
@@ -2151,43 +2214,6 @@ const INITIAL_TREASURES = [
             return savePayloadToServer(payload, nowTs);
         }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
-        const flushPendingAttendanceSaves = useCallback(() => {
-            if (attendanceSaveInFlightRef.current) {
-                return attendanceSaveDrainPromiseRef.current;
-            }
-
-            attendanceSaveInFlightRef.current = true;
-            attendanceSaveDrainPromiseRef.current = (async () => {
-                while (pendingAttendanceSaveRef.current) {
-                    const pending = pendingAttendanceSaveRef.current;
-                    pendingAttendanceSaveRef.current = null;
-                    try {
-                        await persistDataPatch({
-                            attendanceRecords: pending.records
-                        });
-                    } catch (err) {
-                        console.error('考勤即时保存失败:', err);
-                        if (err?.message !== 'DATA_CONFLICT') {
-                            alert(`${pending?.options?.actionLabel || '考勤记录'}写入服务器失败，请检查网络后重试。`);
-                        }
-                    }
-                }
-                return { success: true };
-            })().finally(() => {
-                attendanceSaveInFlightRef.current = false;
-            });
-
-            return attendanceSaveDrainPromiseRef.current;
-        }, [persistDataPatch]);
-
-        const queueImmediateAttendanceSave = useCallback((records, options = {}) => {
-            pendingAttendanceSaveRef.current = {
-                records: records || {},
-                options
-            };
-            return flushPendingAttendanceSaves();
-        }, [flushPendingAttendanceSaves]);
-
         /** 统一持久化：将当前完整数据写入服务器。 */
         const persistData = useCallback((fullData) => {
             isSavingRef.current = true;
@@ -2234,6 +2260,44 @@ const INITIAL_TREASURES = [
         const fetchFromServer = useCallback((options = {}) => {
             return fetchFromServerCore(options);
         }, [fetchFromServerCore]);
+
+        const fetchAttendanceData = useCallback(async (options = {}) => {
+            const {
+                silent = true
+            } = options || {};
+            try {
+                const data = await requestAttendanceJson('/api/attendance');
+                applyAttendanceServerPayload(data, { mergeAttendance: false });
+                return data;
+            } catch (error) {
+                console.error('读取考勤接口失败:', error);
+                if (!silent && error?.code !== 'AUTH_REQUIRED') {
+                    alert(error?.message || '读取考勤失败');
+                }
+                throw error;
+            }
+        }, [applyAttendanceServerPayload]);
+
+        const handleAttendanceCheckIn = useCallback(async (studentName) => {
+            const data = await requestAttendanceJson('/api/attendance/check-in', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentName })
+            });
+            applyAttendanceServerPayload(data, { mergeAttendance: false });
+            return data;
+        }, [applyAttendanceServerPayload]);
+
+        const handleAttendanceMaintenance = useCallback(async (action, items) => {
+            const data = await requestAttendanceJson('/api/attendance/maintenance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, items }),
+                includeMaintenanceAuth: true
+            });
+            applyAttendanceServerPayload(data, { mergeAttendance: false });
+            return data;
+        }, [applyAttendanceServerPayload]);
 
         const previousTestContextRef = useRef({
             testMode,
@@ -2299,17 +2363,44 @@ const INITIAL_TREASURES = [
                 
             // 3. Sync on window focus
             const onFocus = () => fetchFromServer(true);
-            window.addEventListener('focus', onFocus);
-            document.addEventListener('visibilitychange', () => {
+            const onVisibilityChange = () => {
                 if (document.visibilityState === 'visible') onFocus();
-            });
+            };
+            window.addEventListener('focus', onFocus);
+            document.addEventListener('visibilitychange', onVisibilityChange);
 
             return () => {
                 clearInterval(interval);
                 window.removeEventListener('focus', onFocus);
-                document.removeEventListener('visibilitychange', onFocus);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
             };
         }, [fetchFromServer]);
+
+        useEffect(() => {
+            if (!localHydrationDone) return undefined;
+
+            fetchAttendanceData({ silent: true }).catch(() => {});
+
+            const interval = setInterval(() => {
+                fetchAttendanceData({ silent: true }).catch(() => {});
+            }, testMode ? 5000 : 30000);
+
+            const onFocus = () => {
+                fetchAttendanceData({ silent: true }).catch(() => {});
+            };
+            const onVisibilityChange = () => {
+                if (document.visibilityState === 'visible') onFocus();
+            };
+
+            window.addEventListener('focus', onFocus);
+            document.addEventListener('visibilitychange', onVisibilityChange);
+
+            return () => {
+                clearInterval(interval);
+                window.removeEventListener('focus', onFocus);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            };
+        }, [localHydrationDone, testMode, testSessionId, fetchAttendanceData]);
 
         // 动态更新页面标题
         useEffect(() => {
@@ -2344,7 +2435,7 @@ const INITIAL_TREASURES = [
 
             const timer = setTimeout(saveData, 1500);
             return () => clearTimeout(timer);
-        }, [localHydrationDone, students, studentProfiles, history, config, attendanceRecords, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData]);
+        }, [localHydrationDone, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistData, buildCurrentFullData]);
 
         useEffect(() => {
             if (!localHydrationDone) return undefined;
@@ -2422,13 +2513,6 @@ const INITIAL_TREASURES = [
             setHistory,
             normalizePointScene,
             normalizePointCategory
-        });
-        
-        const handleUndoByReasons = (studentId, reasons) => runHandleUndoByReasons({
-            studentId,
-            reasons,
-            history,
-            handleUndo
         });
 
         const handleWage = () => runHandleWage({
@@ -2623,35 +2707,13 @@ const INITIAL_TREASURES = [
             setStudents(result.nextStudents);
             setHistory(result.nextHistory);
 
-            const fullData = {
+            persistData(buildCurrentFullData({
                 students: result.nextStudents,
                 history: result.nextHistory,
-                config,
-                attendanceRecords: attendanceRecords || {},
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks: result.nextTasks,
-                battle
-            };
-            persistData(fullData);
+                tasks: result.nextTasks
+            }));
             return true;
         };
-
-        const handleAttendanceRecordsChange = useCallback((nextRecords, options = {}) => {
-            const safeRecords = nextRecords || {};
-            setAttendanceRecords(safeRecords);
-
-            if (options?.persistImmediately !== true) return Promise.resolve({ skipped: true });
-
-            return queueImmediateAttendanceSave(safeRecords, options);
-        }, [queueImmediateAttendanceSave]);
 
         return h("div", { className: "min-h-screen pb-20" },
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
@@ -2660,7 +2722,7 @@ const INITIAL_TREASURES = [
                 activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory, onApplyFixedStudents: handleApplyFixedStudents }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, logs, attendanceRecords, handleUndoByReasons, onAttendanceRecordsChange: handleAttendanceRecordsChange, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, attendanceRecords, onAttendanceCheckIn: handleAttendanceCheckIn, onAttendanceMaintenance: handleAttendanceMaintenance, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
@@ -2733,9 +2795,9 @@ const INITIAL_TREASURES = [
                     settingsModuleStatus === 'ready' && SettingsView
                         ? h(SettingsView, { 
                             students: displayStudents, studentProfiles, history, config,
-                            attendanceRecords, treasures, storage, logs,
+                            treasures, storage, logs,
                             setStudents, setStudentProfiles, setHistory, setConfig,
-                            setAttendanceRecords, setTreasures, setStorage, setLogs,
+                            setTreasures, setStorage, setLogs,
                             quotes, setQuotes,
                             persistData,
                             persistDataPatch,

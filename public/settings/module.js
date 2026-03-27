@@ -83,9 +83,9 @@
         const renderExamArchivesSection = createSettingsExamArchivesSection({ h, Icon });
         const StudentRosterSection = createSettingsStudentRosterSection({ h });
         const renderSystemConfigSection = createSettingsSystemConfigSection({ h, Icon });
-        const renderToolsSection = createSettingsToolsSection({ h });
+        const renderToolsSection = createSettingsToolsSection({ h, useState, getNow, getDateString });
 
-    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, attendanceRecords, setAttendanceRecords, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [setupPassword, setSetupPassword] = useState('');
@@ -338,6 +338,7 @@
                 setScheduleText('');
             }
         };
+
         const historySource = Array.isArray(history) ? history : [];
 
         const STUDENT_IMPORT_HEADERS = ["姓名", "性别", "小组", "职位", "宿舍"];
@@ -705,25 +706,28 @@
         };
 
         const handleSaveConfigChanges = () => {
-            const fullData = {
-                students,
-                history,
-                config,
-                attendanceRecords,
-                treasures,
-                storage,
-                logs,
-                quotes,
-                messages,
-                teacherMessages,
-                redemptionHistory,
-                dailyRedemptionCounts,
-                dailyUsageCounts,
-                tasks,
-                battle
-            };
-            if (typeof persistData === 'function') persistData(fullData);
-            alert("配置已保存！");
+            const saveAction = typeof persistDataPatch === 'function'
+                ? persistDataPatch({
+                    config,
+                    quotes
+                }, {
+                    suppressFollowupAutoSave: true
+                })
+                : (typeof persistData === 'function'
+                    ? persistData({
+                        config,
+                        quotes
+                    })
+                    : Promise.resolve());
+
+            return Promise.resolve(saveAction)
+                .then(() => {
+                    alert("配置已保存！");
+                })
+                .catch(err => {
+                    console.error('配置保存失败:', err);
+                    alert(err?.message || '配置保存失败');
+                });
         };
 
         return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto flex flex-col gap-8" },

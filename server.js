@@ -32,7 +32,6 @@ const TEST_SESSION_HEADER = 'x-test-session';
 const TEST_NOW_HEADER = 'x-test-now';
 const DIRECT_MAINTENANCE_KEYS = ['studentProfiles', 'examArchives'];
 const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿']);
-const PUBLIC_ATTENDANCE_STATUSES = new Set(['ok', 'late']);
 const TEST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const TEST_SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const CSP_REPORT_URI = '/api/security/csp-report';
@@ -548,6 +547,11 @@ const buildAttendanceRecordsForResponse = (data, now = new Date()) => {
     const students = Array.isArray(data?.students) ? data.students : [];
     if (students.length === 0 || data?.config?.frozen) return rawRecords;
 
+    const hasPresentAttendanceActivity = (dateKey, sessionId) => Object.values(rawRecords?.[dateKey] || {}).some((sessionMap) => {
+        const record = sessionMap?.[sessionId];
+        return isPlainObject(record) && (record.status === 'ok' || record.status === 'late');
+    });
+
     const derived = {};
     Object.entries(rawRecords).forEach(([dateKey, studentMap]) => {
         derived[dateKey] = {};
@@ -568,6 +572,7 @@ const buildAttendanceRecordsForResponse = (data, now = new Date()) => {
         const dateKey = getDateKey(targetDate);
         rules.forEach(rule => {
             if (!isPeriodEnded(targetDate, rule, now)) return;
+            if (!hasPresentAttendanceActivity(dateKey, rule.id)) return;
             students.forEach(student => {
                 const studentName = typeof student?.name === 'string' ? student.name : '';
                 if (!studentName) return;
@@ -588,6 +593,337 @@ const buildAttendanceRecordsForResponse = (data, now = new Date()) => {
 
     return derived;
 };
+
+const cloneAttendanceRecords = (records) => {
+    const next = {};
+    Object.entries(stripDerivedAttendanceRecords(records || {})).forEach(([dateKey, studentMap]) => {
+        next[dateKey] = {};
+        Object.entries(studentMap || {}).forEach(([studentName, sessionMap]) => {
+            next[dateKey][studentName] = {};
+            Object.entries(sessionMap || {}).forEach(([sessionId, record]) => {
+                next[dateKey][studentName][sessionId] = isPlainObject(record) ? { ...record } : record;
+            });
+        });
+    });
+    return next;
+};
+
+const getStoredAttendanceRecords = (store) => stripDerivedAttendanceRecords(
+    readStoredJson(store, 'attendanceRecords') || readStoredJson(store, 'attendance_records') || {}
+);
+
+const getStoredStudents = (store) => {
+    const value = readStoredJson(store, 'students');
+    return Array.isArray(value) ? value.map(student => ({ ...student })) : [];
+};
+
+const getStoredHistory = (store) => {
+    const value = readStoredJson(store, 'history');
+    return Array.isArray(value) ? value.map(item => ({ ...item })) : [];
+};
+
+const getStoredLogs = (store) => {
+    const value = readStoredJson(store, 'logs');
+    return Array.isArray(value) ? value : [];
+};
+
+const getStoredConfig = (store) => readStoredJson(store, 'config') || {};
+
+const parseDateKey = (dateKey) => {
+    const [year, month, day] = String(dateKey || '').split('-').map(num => parseInt(num, 10));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+};
+
+const formatAttendanceTime = (dateObj) => {
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+};
+
+const timeToMinutes = (value) => {
+    const parts = String(value || '').split(':');
+    const hour = parseInt(parts[0], 10);
+    const minute = parseInt(parts[1], 10) || 0;
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    return hour * 60 + minute;
+};
+
+const getCurrentAttendanceSession = (config, now) => {
+    const rules = getRulesForDate(config, now);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    for (const session of rules) {
+        const start = timeToMinutes(session.start);
+        const end = timeToMinutes(session.end);
+        const lateTime = timeToMinutes(session.lateTime);
+        if (start == null || end == null || lateTime == null) continue;
+        if (nowMinutes >= start && nowMinutes <= end) {
+            return {
+                ...session,
+                isLateNow: nowMinutes > lateTime
+            };
+        }
+    }
+    return null;
+};
+
+const getAttendancePenaltyRules = (config) => {
+    const penaltyRules = isPlainObject(config?.systemConfig?.attendance?.penaltyRules)
+        ? config.systemConfig.attendance.penaltyRules
+        : {};
+    const late = Number(penaltyRules.late);
+    const absent = Number(penaltyRules.absent);
+    const perfectAttendance = Number(penaltyRules.perfectAttendance);
+    return {
+        late: Number.isFinite(late) ? late : -1,
+        absent: Number.isFinite(absent) ? absent : -5,
+        perfectAttendance: Number.isFinite(perfectAttendance) ? perfectAttendance : 10
+    };
+};
+
+const findStudentByName = (students, studentName) => (
+    (Array.isArray(students) ? students : []).find(student => String(student?.name || '').trim() === String(studentName || '').trim()) || null
+);
+
+const getAttendanceSessionName = (config, dateKey, sessionId) => {
+    const dateObj = parseDateKey(dateKey);
+    const targetId = String(sessionId || '');
+    if (dateObj) {
+        const rule = getRulesForDate(config, dateObj).find(item => String(item?.id || '') === targetId);
+        if (rule?.name) return String(rule.name);
+    }
+    const fallback = getAttendanceConfig(config).schedule.find(item => String(item?.id || '') === targetId);
+    return String(fallback?.name || targetId);
+};
+
+const usedMorningLateCardYesterday = ({ logs, studentName, now }) => {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = getDateKey(yesterday);
+    return (Array.isArray(logs) ? logs : []).some(log => {
+        if (log?.action !== '使用') return false;
+        if (String(log?.studentName || '').trim() !== String(studentName || '').trim()) return false;
+        if (String(log?.itemName || '').trim() !== '早读迟到卡') return false;
+        const logDate = new Date(log?.ts);
+        if (Number.isNaN(logDate.getTime())) return false;
+        return getDateKey(logDate) === yesterdayKey;
+    });
+};
+
+const setAttendanceRecord = (records, dateKey, studentName, sessionId, record) => {
+    if (!records[dateKey]) records[dateKey] = {};
+    if (!records[dateKey][studentName]) records[dateKey][studentName] = {};
+    records[dateKey][studentName][sessionId] = { ...record };
+};
+
+const applyPointChange = ({
+    students,
+    history,
+    studentId,
+    val,
+    reason,
+    type = 'bonus',
+    scene = '班级',
+    category = '出勤',
+    nowTs
+}) => {
+    const nextStudents = Array.isArray(students) ? students.map(student => ({ ...student })) : [];
+    const nextHistory = Array.isArray(history) ? history.map(item => ({ ...item })) : [];
+    const idx = nextStudents.findIndex(student => String(student?.id) === String(studentId));
+    if (idx === -1) {
+        return { students: nextStudents, history: nextHistory, changed: false };
+    }
+
+    const student = nextStudents[idx];
+    student.zizai = Number.isFinite(Number(student.zizai)) ? Number(student.zizai) : 0;
+    student.balance = Number.isFinite(Number(student.balance)) ? Number(student.balance) : 0;
+    student.penalty = Number.isFinite(Number(student.penalty)) ? Number(student.penalty) : 0;
+
+    const numericVal = Number(val);
+    if (!Number.isFinite(numericVal) || numericVal === 0) {
+        return { students: nextStudents, history: nextHistory, changed: false };
+    }
+
+    const snapshot = {
+        zizai: student.zizai,
+        balance: student.balance,
+        penalty: student.penalty
+    };
+
+    if (numericVal > 0) student.zizai += numericVal;
+    student.balance += numericVal;
+    if (numericVal < 0 && type === 'penalty') {
+        student.penalty += Math.abs(numericVal);
+        student.lastPenaltyAt = nowTs;
+    }
+
+    nextHistory.unshift({
+        id: nowTs + Math.random(),
+        ts: nowTs,
+        studentId: student.id,
+        studentName: student.name,
+        val: numericVal,
+        reason,
+        snapshot,
+        type,
+        scene,
+        category
+    });
+
+    return {
+        students: nextStudents,
+        history: nextHistory,
+        changed: true
+    };
+};
+
+const undoPointChangeByReasons = ({
+    students,
+    history,
+    studentId,
+    reasons,
+    nowTs
+}) => {
+    const nextStudents = Array.isArray(students) ? students.map(student => ({ ...student })) : [];
+    const sourceHistory = Array.isArray(history) ? history.map(item => ({ ...item })) : [];
+    const reasonList = Array.isArray(reasons) ? reasons.filter(Boolean) : [reasons].filter(Boolean);
+    if (reasonList.length === 0) {
+        return { students: nextStudents, history: sourceHistory, changed: false };
+    }
+
+    const recordIndex = sourceHistory.findIndex(item => (
+        String(item?.studentId) === String(studentId)
+        && !item?.isUndoLog
+        && reasonList.includes(item?.reason)
+    ));
+    if (recordIndex === -1) {
+        return { students: nextStudents, history: sourceHistory, changed: false };
+    }
+
+    const record = sourceHistory[recordIndex];
+    const studentIndex = nextStudents.findIndex(student => String(student?.id) === String(studentId));
+    let undoSnapshot = null;
+
+    if (studentIndex !== -1) {
+        const student = nextStudents[studentIndex];
+        student.zizai = Number.isFinite(Number(student.zizai)) ? Number(student.zizai) : 0;
+        student.balance = Number.isFinite(Number(student.balance)) ? Number(student.balance) : 0;
+        student.penalty = Number.isFinite(Number(student.penalty)) ? Number(student.penalty) : 0;
+
+        const numericVal = Number(record?.val) || 0;
+        undoSnapshot = {
+            zizai: student.zizai,
+            balance: student.balance,
+            penalty: student.penalty
+        };
+
+        if (numericVal > 0) {
+            student.zizai -= numericVal;
+        }
+        student.balance -= numericVal;
+        if (numericVal < 0 && record?.type === 'penalty') {
+            student.penalty = Math.max(0, student.penalty + numericVal);
+        }
+
+        if (record?.type === 'penalty') {
+            const remainingPenalties = sourceHistory.filter((item, idx) => (
+                idx !== recordIndex
+                && String(item?.studentId) === String(studentId)
+                && item?.type === 'penalty'
+                && !item?.isUndoLog
+            ));
+            if (remainingPenalties.length > 0) {
+                const latest = remainingPenalties.reduce((acc, item) => {
+                    const itemTs = Number(item?.ts) || 0;
+                    const accTs = Number(acc?.ts) || 0;
+                    return itemTs > accTs ? item : acc;
+                }, remainingPenalties[0]);
+                student.lastPenaltyAt = Number(latest?.ts) || 0;
+            } else {
+                student.lastPenaltyAt = 0;
+            }
+        }
+    }
+
+    const filteredHistory = sourceHistory.filter((_, idx) => idx !== recordIndex);
+    filteredHistory.unshift({
+        id: nowTs + Math.random(),
+        ts: nowTs,
+        studentId: record?.studentId,
+        studentName: record?.studentName,
+        val: -(Number(record?.val) || 0),
+        reason: `撤销扣分: ${record?.reason || ''}`,
+        snapshot: undoSnapshot || { zizai: 0, balance: 0, penalty: 0 },
+        type: 'bonus',
+        isUndoLog: true,
+        scene: record?.scene || '班级',
+        category: record?.category || '出勤'
+    });
+
+    return {
+        students: nextStudents,
+        history: filteredHistory,
+        changed: true
+    };
+};
+
+const persistAttendanceMutation = ({
+    store,
+    attendanceRecords,
+    students,
+    history,
+    now
+}) => {
+    const existingMeta = readStoredJson(store, '__meta') || {};
+    const nextMeta = buildNextStoredMeta(existingMeta, now);
+    const transaction = db.transaction(() => {
+        store.upsertDataKey('attendanceRecords', JSON.stringify(stripDerivedAttendanceRecords(attendanceRecords)));
+        if (Array.isArray(students)) {
+            store.upsertDataKey('students', JSON.stringify(students));
+        }
+        if (Array.isArray(history)) {
+            store.upsertDataKey('history', JSON.stringify(history));
+        }
+        store.upsertDataKey('__meta', JSON.stringify(nextMeta));
+    });
+    transaction();
+    return nextMeta;
+};
+
+const buildAttendanceApiPayload = ({
+    config,
+    sourceStudents,
+    attendanceRecords,
+    students,
+    history,
+    updatedAt,
+    now,
+    extra
+}) => {
+    const payload = {
+        success: true,
+        attendanceRecords: buildAttendanceRecordsForResponse({
+            config,
+            students: Array.isArray(sourceStudents) ? sourceStudents : [],
+            attendanceRecords
+        }, now),
+        updatedAt: Number(updatedAt) || null
+    };
+    if (Array.isArray(students)) payload.students = students;
+    if (Array.isArray(history)) payload.history = history;
+    if (isPlainObject(extra)) {
+        Object.assign(payload, extra);
+    }
+    return payload;
+};
+
+const normalizeAttendanceMaintenanceItems = (items) => (
+    Array.isArray(items) ? items : []
+).map(item => ({
+    date: String(item?.date || '').trim(),
+    studentName: String(item?.studentName || item?.name || '').trim(),
+    sessionId: String(item?.sessionId || '').trim()
+})).filter(item => item.date && item.studentName && item.sessionId);
 
 const resolveTestSessionMiddleware = (req, res, next) => {
     cleanupExpiredTestSessions();
@@ -737,32 +1073,6 @@ const getComparableTaskClaims = (task) => {
     return (Array.isArray(task?.claimedBy) ? task.claimedBy : []).map(claimedId => String(claimedId));
 };
 
-const normalizeAttendanceRecordComparable = (record) => {
-    if (!isPlainObject(record)) return null;
-    return {
-        status: String(record.status ?? ''),
-        checkTime: String(record.checkTime ?? ''),
-        timestamp: Number(record.timestamp) || 0
-    };
-};
-
-const isPublicAttendanceCheckTime = (value) => /^\d{2}:\d{2}$/.test(String(value ?? '').trim());
-
-const iterateAttendanceRecords = (records, visitor) => {
-    Object.entries(stripDerivedAttendanceRecords(records || {})).forEach(([dateKey, studentMap]) => {
-        Object.entries(studentMap || {}).forEach(([studentName, sessionMap]) => {
-            Object.entries(sessionMap || {}).forEach(([sessionId, record]) => {
-                visitor({
-                    dateKey,
-                    studentName,
-                    sessionId,
-                    record: normalizeAttendanceRecordComparable(record)
-                });
-            });
-        });
-    });
-};
-
 const getComparableTreasureMeta = (item) => ({
     id: String(item?.id ?? ''),
     name: String(item?.name ?? ''),
@@ -855,43 +1165,6 @@ const hasTaskMaintenanceMutation = (store, payload) => {
     return false;
 };
 
-const hasAttendanceMaintenanceMutation = (store, payload) => {
-    const hasAttendanceKey = Object.prototype.hasOwnProperty.call(payload, 'attendanceRecords')
-        || Object.prototype.hasOwnProperty.call(payload, 'attendance_records');
-    if (!hasAttendanceKey) return false;
-
-    const existingRecords = stripDerivedAttendanceRecords(
-        readStoredJson(store, 'attendanceRecords') || readStoredJson(store, 'attendance_records') || {}
-    );
-    const incomingRecords = stripDerivedAttendanceRecords(payload.attendanceRecords || payload.attendance_records || {});
-    let requiresMaintenance = false;
-
-    iterateAttendanceRecords(existingRecords, ({ dateKey, studentName, sessionId, record }) => {
-        if (requiresMaintenance) return;
-        const incomingRecord = normalizeAttendanceRecordComparable(incomingRecords?.[dateKey]?.[studentName]?.[sessionId]);
-        if (!incomingRecord || stringifyComparable(incomingRecord) !== stringifyComparable(record)) {
-            requiresMaintenance = true;
-        }
-    });
-
-    if (requiresMaintenance) return true;
-
-    iterateAttendanceRecords(incomingRecords, ({ dateKey, studentName, sessionId, record }) => {
-        if (requiresMaintenance) return;
-        const existingRecord = normalizeAttendanceRecordComparable(existingRecords?.[dateKey]?.[studentName]?.[sessionId]);
-        if (existingRecord) return;
-        if (!record || !PUBLIC_ATTENDANCE_STATUSES.has(record.status)) {
-            requiresMaintenance = true;
-            return;
-        }
-        if (record.timestamp <= 0 || !isPublicAttendanceCheckTime(record.checkTime)) {
-            requiresMaintenance = true;
-        }
-    });
-
-    return requiresMaintenance;
-};
-
 const hasTreasureMaintenanceMutation = (store, payload) => {
     const relevantKeys = ['treasures', 'storage', 'logs', 'redemptionHistory', 'dailyRedemptionCounts', 'dailyUsageCounts'];
     if (!relevantKeys.some((key) => Object.prototype.hasOwnProperty.call(payload, key))) return false;
@@ -967,7 +1240,6 @@ const hasMaintenanceProtectedMutation = (store, payload) => {
         || hasDirectMaintenanceKeyMutation(store, payload)
         || hasHistoryMaintenanceMutation(store, payload)
         || hasTaskMaintenanceMutation(store, payload)
-        || hasAttendanceMaintenanceMutation(store, payload)
         || hasTreasureMaintenanceMutation(store, payload);
 };
 
@@ -1321,6 +1593,275 @@ app.post('/api/maintenance/change', authMiddleware, userMiddleware, resolveTestS
     }
 });
 
+app.get('/api/attendance', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    const store = getRequestDataStore(req);
+    try {
+        const now = getRequestNow(req);
+        const students = getStoredStudents(store);
+        const config = getStoredConfig(store);
+        const attendanceRecords = getStoredAttendanceRecords(store);
+        const meta = readStoredJson(store, '__meta') || {};
+        res.json(buildAttendanceApiPayload({
+            config,
+            sourceStudents: students,
+            attendanceRecords,
+            updatedAt: Number(meta?.updatedAt) || null,
+            now
+        }));
+    } catch (err) {
+        console.error('读取考勤数据失败:', err);
+        res.status(500).json({ error: '读取考勤数据失败' });
+    }
+});
+
+app.post(['/api/attendance/check-in', '/api/attendance/checkin'], authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    const store = getRequestDataStore(req);
+    const studentName = typeof req.body?.studentName === 'string' ? req.body.studentName.trim() : '';
+    if (!studentName) {
+        return res.status(400).json({ error: '学生姓名不能为空' });
+    }
+
+    try {
+        const now = getRequestNow(req);
+        const nowTs = now.getTime();
+        const students = getStoredStudents(store);
+        const history = getStoredHistory(store);
+        const logs = getStoredLogs(store);
+        const config = getStoredConfig(store);
+        const student = findStudentByName(students, studentName);
+        if (!student) {
+            return res.status(404).json({ error: '未找到该学生' });
+        }
+
+        const currentSession = getCurrentAttendanceSession(config, now);
+        if (!currentSession) {
+            return res.status(400).json({ error: '当前不在打卡时段', code: 'ATTENDANCE_SESSION_CLOSED' });
+        }
+
+        const attendanceRecords = getStoredAttendanceRecords(store);
+        const dateKey = getDateKey(now);
+        if (attendanceRecords?.[dateKey]?.[studentName]?.[currentSession.id]) {
+            return res.status(409).json({
+                error: '已打卡',
+                code: 'ATTENDANCE_EXISTS'
+            });
+        }
+
+        const nextAttendanceRecords = cloneAttendanceRecords(attendanceRecords);
+        const record = {
+            status: currentSession.isLateNow ? 'late' : 'ok',
+            checkTime: formatAttendanceTime(now),
+            timestamp: nowTs
+        };
+        setAttendanceRecord(nextAttendanceRecords, dateKey, studentName, currentSession.id, record);
+
+        let nextStudents = students;
+        let nextHistory = history;
+        let pointsChanged = false;
+        const penaltyRules = getAttendancePenaltyRules(config);
+        const usedMorningLateCard = currentSession.id === 'morning'
+            ? usedMorningLateCardYesterday({ logs, studentName, now })
+            : false;
+
+        if (record.status === 'late' && !config?.frozen && !usedMorningLateCard) {
+            const penaltyResult = applyPointChange({
+                students: nextStudents,
+                history: nextHistory,
+                studentId: student.id,
+                val: penaltyRules.late,
+                reason: `考勤迟到: ${currentSession.name}`,
+                type: 'penalty',
+                scene: '班级',
+                category: '出勤',
+                nowTs
+            });
+            nextStudents = penaltyResult.students;
+            nextHistory = penaltyResult.history;
+            pointsChanged = penaltyResult.changed === true;
+        }
+
+        const nextMeta = persistAttendanceMutation({
+            store,
+            attendanceRecords: nextAttendanceRecords,
+            students: pointsChanged ? nextStudents : undefined,
+            history: pointsChanged ? nextHistory : undefined,
+            now
+        });
+
+        res.json(buildAttendanceApiPayload({
+            config,
+            sourceStudents: nextStudents,
+            attendanceRecords: nextAttendanceRecords,
+            students: pointsChanged ? nextStudents : undefined,
+            history: pointsChanged ? nextHistory : undefined,
+            updatedAt: nextMeta.updatedAt,
+            now,
+            extra: {
+                checkIn: {
+                    studentName,
+                    sessionId: currentSession.id,
+                    sessionName: currentSession.name,
+                    status: record.status,
+                    record,
+                    usedMorningLateCard
+                }
+            }
+        }));
+    } catch (err) {
+        console.error('考勤打卡失败:', err);
+        res.status(500).json({ error: '考勤打卡失败' });
+    }
+});
+
+app.post('/api/attendance/maintenance', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    const store = getRequestDataStore(req);
+    if (!hasMaintenanceAccess(req)) {
+        return res.status(403).json({
+            error: '当前操作需要维护密码验证',
+            code: 'MAINTENANCE_AUTH_REQUIRED'
+        });
+    }
+
+    const action = String(req.body?.action || '').trim();
+    const items = normalizeAttendanceMaintenanceItems(req.body?.items);
+    if (!action || items.length === 0) {
+        return res.status(400).json({ error: '考勤维护参数无效' });
+    }
+
+    if (!['correct', 'settleAbsent'].includes(action)) {
+        return res.status(400).json({ error: '不支持的考勤维护操作' });
+    }
+
+    try {
+        const now = getRequestNow(req);
+        const nowTs = now.getTime();
+        let students = getStoredStudents(store);
+        let history = getStoredHistory(store);
+        const config = getStoredConfig(store);
+        if (action === 'settleAbsent' && config?.frozen) {
+            return res.status(400).json({
+                error: '假期封存中，无法结算缺勤',
+                code: 'ATTENDANCE_FROZEN'
+            });
+        }
+        const penaltyRules = getAttendancePenaltyRules(config);
+        const attendanceRecords = getStoredAttendanceRecords(store);
+        const nextAttendanceRecords = cloneAttendanceRecords(attendanceRecords);
+        let changed = false;
+        let pointsChanged = false;
+
+        items.forEach((item) => {
+            const currentRecords = buildAttendanceRecordsForResponse({
+                config,
+                students,
+                attendanceRecords: nextAttendanceRecords
+            }, now);
+            const currentRecord = currentRecords?.[item.date]?.[item.studentName]?.[item.sessionId];
+            if (!currentRecord) return;
+
+            const student = findStudentByName(students, item.studentName);
+            const sessionName = getAttendanceSessionName(config, item.date, item.sessionId);
+            const lateReasonCandidates = [`考勤迟到: ${item.date} ${sessionName}`, `考勤迟到: ${sessionName}`];
+            const absentReasonCandidates = [`缺勤扣分: ${item.date} ${sessionName}`];
+
+            if (action === 'correct') {
+                if (currentRecord.status === 'ok') return;
+                const nextCheckTime = currentRecord.status === 'late'
+                    ? `${currentRecord.checkTime} (已撤销)`
+                    : '维护补卡';
+                setAttendanceRecord(nextAttendanceRecords, item.date, item.studentName, item.sessionId, {
+                    status: 'ok',
+                    checkTime: nextCheckTime,
+                    timestamp: nowTs
+                });
+                if (student && currentRecord.status === 'late') {
+                    const undoResult = undoPointChangeByReasons({
+                        students,
+                        history,
+                        studentId: student.id,
+                        reasons: lateReasonCandidates,
+                        nowTs
+                    });
+                    students = undoResult.students;
+                    history = undoResult.history;
+                    pointsChanged = undoResult.changed || pointsChanged;
+                }
+                if (student && currentRecord.status === 'absent') {
+                    const undoResult = undoPointChangeByReasons({
+                        students,
+                        history,
+                        studentId: student.id,
+                        reasons: absentReasonCandidates,
+                        nowTs
+                    });
+                    students = undoResult.students;
+                    history = undoResult.history;
+                    pointsChanged = undoResult.changed || pointsChanged;
+                }
+                changed = true;
+                return;
+            }
+
+            if (currentRecord.status !== 'absent') return;
+            const existingStoredRecord = nextAttendanceRecords?.[item.date]?.[item.studentName]?.[item.sessionId];
+            if (existingStoredRecord?.status === 'absent' && String(existingStoredRecord?.checkTime || '').trim() === '已扣分') {
+                return;
+            }
+
+            setAttendanceRecord(nextAttendanceRecords, item.date, item.studentName, item.sessionId, {
+                status: 'absent',
+                checkTime: '已扣分',
+                timestamp: nowTs
+            });
+
+            if (student) {
+                const penaltyResult = applyPointChange({
+                    students,
+                    history,
+                    studentId: student.id,
+                    val: penaltyRules.absent,
+                    reason: `缺勤扣分: ${item.date} ${sessionName}`,
+                    type: 'penalty',
+                    scene: '班级',
+                    category: '出勤',
+                    nowTs
+                });
+                students = penaltyResult.students;
+                history = penaltyResult.history;
+                pointsChanged = penaltyResult.changed || pointsChanged;
+            }
+            changed = true;
+        });
+
+        const nextMeta = changed
+            ? persistAttendanceMutation({
+                store,
+                attendanceRecords: nextAttendanceRecords,
+                students: pointsChanged ? students : undefined,
+                history: pointsChanged ? history : undefined,
+                now
+            })
+            : (readStoredJson(store, '__meta') || {});
+
+        res.json(buildAttendanceApiPayload({
+            config,
+            sourceStudents: students,
+            attendanceRecords: nextAttendanceRecords,
+            students: pointsChanged ? students : undefined,
+            history: pointsChanged ? history : undefined,
+            updatedAt: nextMeta?.updatedAt,
+            now,
+            extra: {
+                action,
+                changed
+            }
+        }));
+    } catch (err) {
+        console.error('考勤维护失败:', err);
+        res.status(500).json({ error: '考勤维护失败' });
+    }
+});
+
 // ==================== 数据 API ====================
 
 // 获取数据
@@ -1346,7 +1887,8 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
             });
         }
         data.config = stripLegacyAdminPasswordFromConfig(data.config);
-        data.attendanceRecords = buildAttendanceRecordsForResponse(data, now);
+        delete data.attendanceRecords;
+        delete data.attendance_records;
 
         res.json(data);
     } catch (err) {
@@ -1429,7 +1971,7 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
                     }
                 }
                 if (key === 'attendanceRecords' || key === 'attendance_records') {
-                    finalValue = stripDerivedAttendanceRecords(finalValue);
+                    continue;
                 }
                 if (key === 'config') {
                     finalValue = stripLegacyAdminPasswordFromConfig(finalValue);
