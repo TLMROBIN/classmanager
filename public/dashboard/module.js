@@ -132,9 +132,12 @@
                 }
                 return list;
             })();
-            const updateScheduleNote = (dateStr, value) => {
-                setConfig({ ...config, scheduleNotes: { ...scheduleNotes, [dateStr]: value } });
-            };
+            const scheduleDisplayDays = scheduleDays
+                .map(day => ({
+                    ...day,
+                    note: String(scheduleNotes[day.date] || '').trim()
+                }))
+                .filter(day => day.note);
 
             const countdownEvents = Array.isArray(config?.countdownEvents) ? config.countdownEvents : [];
             const countdownList = useMemo(() => {
@@ -245,12 +248,12 @@
                 ),
                 h("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-6" },
                     h("div", { className: "space-y-6" },
-                        h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+                        scheduleDisplayDays.length > 0 && h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
                             h("h3", { className: "font-bold text-gray-800 mb-4 flex items-center gap-2" }, h(Icon, { name: "calendar" }), "日历日程"),
                             h("div", { className: "space-y-2" },
-                                scheduleDays.map(day => h("div", { key: day.date, className: "flex items-start gap-2" },
-                                    h("div", { className: "w-28 text-xs text-gray-500 pt-2" }, day.label),
-                                    h("textarea", { className: "flex-1 border rounded p-2 text-sm bg-gray-50", rows: 2, value: scheduleNotes[day.date] || "", onChange: e => updateScheduleNote(day.date, e.target.value), placeholder: "添加日程" })
+                                scheduleDisplayDays.map(day => h("div", { key: day.date, className: "flex flex-col sm:flex-row items-start gap-2 min-w-0" },
+                                    h("div", { className: "w-full sm:w-28 shrink-0 text-xs text-gray-500 pt-1" }, day.label),
+                                    h("div", { className: "w-full sm:flex-1 sm:min-w-0 border rounded p-2 text-sm bg-gray-50 text-gray-700 whitespace-pre-wrap break-words min-h-[56px]" }, day.note)
                                 ))
                             )
                         ),
