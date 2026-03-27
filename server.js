@@ -434,7 +434,9 @@ const buildPenaltyLastMap = (history) => {
     const lastMap = new Map();
     (Array.isArray(history) ? history : []).forEach(item => {
         if (!item || item.studentId == null) return;
-        if (item.type !== 'penalty' && !(Number(item.val) < 0)) return;
+        if (item.isUndoLog) return;
+        if (item.type !== 'penalty') return;
+        if (!(Number(item.val) < 0)) return;
         const studentKey = String(item.studentId);
         const currentTs = Number(item.ts) || 0;
         const prevTs = lastMap.get(studentKey) || 0;
