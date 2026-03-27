@@ -52,6 +52,7 @@
         const createOperationHandlers = window.createOperationHandlers;
         const createOperationViews = window.createOperationViews;
         const createOperationSettingsSections = window.createOperationSettingsSections;
+        const createOperationHistorySection = window.createOperationHistorySection;
         const createOperationAdminTools = window.createOperationAdminTools;
 
         if (
@@ -96,6 +97,7 @@
             !createOperationHandlers ||
             !createOperationViews ||
             !createOperationSettingsSections ||
+            !createOperationHistorySection ||
             !createOperationAdminTools
         ) {
             throw new Error('OperationView dependencies are missing');
@@ -138,6 +140,14 @@
             POINT_CATEGORIES,
             DEFAULT_POINT_SCENE,
             DEFAULT_POINT_CATEGORY
+        });
+        const OperationHistorySection = createOperationHistorySection({
+            h,
+            useState,
+            Icon,
+            requireAdminAuth,
+            normalizePointScene,
+            normalizePointCategory
         });
         const operationAdminTools = createOperationAdminTools({ getTodayStr });
 
@@ -339,7 +349,7 @@
                                 h(Icon, { name: "settings", size: 18 }),
                                 h("h3", { className: "font-bold text-sm" }, "积分操作区设置")
                             ),
-                            h("p", { className: "text-xs text-gray-500" }, "统一管理积分导出、手动修正、积分理由、课代表和记录属性维护。")
+                            h("p", { className: "text-xs text-gray-500" }, "统一管理积分导出、手动修正、历史核对、积分理由、课代表和记录属性维护。")
                         ),
                         h("button", {
                             onClick: toggleSettingsPanel,
@@ -350,7 +360,7 @@
                         h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-3" },
                             h("div", null,
                                 h("div", { className: "font-bold text-sm text-gray-800" }, "积分导出与修正"),
-                                h("p", { className: "text-xs text-gray-500 mt-1" }, "这里只保留积分导出和手动修正；积分导入与从历史恢复已移除。")
+                                h("p", { className: "text-xs text-gray-500 mt-1" }, "这里只保留积分导出、手动修正和历史核对；积分导入与从历史恢复已移除。")
                             ),
                             h("div", { className: "flex flex-wrap gap-2" },
                                 h("button", {
@@ -366,6 +376,12 @@
                                 }, "手动修正积分")
                             )
                         ),
+                        h(OperationHistorySection, {
+                            students,
+                            history,
+                            onUndo: handleUndo,
+                            embedded: true
+                        }),
                         h(ReasonsConfigSection, {
                             config,
                             setConfig,

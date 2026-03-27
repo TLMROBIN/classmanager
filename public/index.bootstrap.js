@@ -20,6 +20,7 @@
         '/operations/actions.js',
         '/operations/views.js',
         '/operations/settings.js',
+        '/operations/history-section.js',
         '/operations/admin-tools.js',
         '/operations/module.js',
         '/profile/utils.js',
