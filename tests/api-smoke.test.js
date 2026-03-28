@@ -12,6 +12,9 @@ const SERVER_SCRIPT = path.join(ROOT_DIR, 'server.js');
 const BOOTSTRAP_ADMIN_SCRIPT = path.join(ROOT_DIR, 'scripts', 'bootstrap-admin.js');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const buildLocalTimestamp = (year, monthIndex, day, hours, minutes, seconds = 0) => (
+    new Date(year, monthIndex, day, hours, minutes, seconds, 0).getTime()
+);
 
 const getFreePort = () => new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -108,17 +111,31 @@ const waitForServerReady = async (baseUrl, child, logs, timeoutMs = 15000) => {
     ].join('\n\n'));
 };
 
-const stopServer = async (child) => {
+const stopServer = async (child, options = {}) => {
+    const {
+        signal = 'SIGINT',
+        requireGraceful = false
+    } = options;
     if (!child || child.exitCode !== null) return;
 
-    child.kill('SIGINT');
     const exitPromise = once(child, 'exit');
+    child.kill(signal);
     const timeout = sleep(5000).then(() => null);
     const result = await Promise.race([exitPromise, timeout]);
 
     if (!result && child.exitCode === null) {
         child.kill('SIGKILL');
         await once(child, 'exit');
+        if (requireGraceful) {
+            throw new Error(`服务未在 ${signal} 后优雅退出`);
+        }
+        return;
+    }
+
+    if (requireGraceful && result) {
+        const [exitCode, exitSignal] = result;
+        assert.equal(exitSignal, null, `期望通过进程正常退出处理 ${signal}，实际收到退出信号 ${exitSignal}`);
+        assert.equal(exitCode, 0, `期望 ${signal} 优雅停机返回 0，实际为 ${exitCode}`);
     }
 };
 
@@ -255,8 +272,81 @@ test('API smoke flows', async (t) => {
             assert.equal(readResponse.status, 200);
             assert.deepEqual(readResponse.body.messages, payload.messages);
         });
+
+        await t.test('attendance check-in works in simulated test session', async () => {
+            const mondayMorningMs = buildLocalTimestamp(2026, 2, 30, 6, 30, 0);
+            const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
+                method: 'POST',
+                headers: { Cookie: userCookie },
+                body: { simTimeMs: mondayMorningMs }
+            });
+            assert.equal(sessionResponse.status, 200);
+            assert.equal(typeof sessionResponse.body.sessionId, 'string');
+
+            const sessionHeaders = {
+                Cookie: userCookie,
+                'x-test-session': sessionResponse.body.sessionId
+            };
+
+            const scopedUnlockResponse = await requestJson(baseUrl, '/api/maintenance/unlock', {
+                method: 'POST',
+                headers: sessionHeaders,
+                body: { password: 'Maintain123' }
+            });
+            assert.equal(scopedUnlockResponse.status, 200);
+            assert.equal(typeof scopedUnlockResponse.body.token, 'string');
+
+            const sessionWriteHeaders = {
+                ...sessionHeaders,
+                'x-maintenance-token': scopedUnlockResponse.body.token
+            };
+
+            const seedResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: sessionWriteHeaders,
+                body: {
+                    students: [
+                        {
+                            id: 'stu_1',
+                            name: '张三',
+                            zizai: 0,
+                            balance: 0,
+                            penalty: 0
+                        }
+                    ],
+                    history: [],
+                    config: {},
+                    __meta: {
+                        allowServerOverwrite: true
+                    }
+                }
+            });
+            assert.equal(seedResponse.status, 200);
+
+            const checkInResponse = await requestJson(baseUrl, '/api/attendance/check-in', {
+                method: 'POST',
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayMorningMs)
+                },
+                body: { studentName: '张三' }
+            });
+            assert.equal(checkInResponse.status, 200);
+            assert.equal(checkInResponse.body.checkIn.studentName, '张三');
+            assert.equal(checkInResponse.body.checkIn.sessionId, 'morning');
+            assert.equal(checkInResponse.body.checkIn.status, 'ok');
+
+            const attendanceResponse = await requestJson(baseUrl, '/api/attendance', {
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayMorningMs)
+                }
+            });
+            assert.equal(attendanceResponse.status, 200);
+            assert.equal(attendanceResponse.body.attendanceRecords['2026-03-30']['张三'].morning.status, 'ok');
+        });
     } finally {
-        await stopServer(child);
+        await stopServer(child, { signal: 'SIGTERM', requireGraceful: true });
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
 });

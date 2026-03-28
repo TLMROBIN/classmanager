@@ -3,6 +3,7 @@
 
     const APP_SCRIPTS = [
         '/core/runtime.js',
+        '/core/import-guards.js',
         '/core/schema.js',
         '/core/sync.js',
         '/core/store.js',

@@ -95,10 +95,24 @@
             const handleImportQuotesExcel = (e) => {
                 const file = e.target.files && e.target.files[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const wb = XLSX.read(evt.target.result, { type: 'array' });
-                    const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                const importGuards = window.ClassManagerImportGuards;
+                if (!importGuards?.readWorkbookFromFile || !importGuards?.getFirstWorksheet || !importGuards?.assertWorksheetRows) {
+                    alert("导入组件未加载，请刷新后重试");
+                    e.target.value = '';
+                    return;
+                }
+                void importGuards.readWorkbookFromFile({
+                    file,
+                    xlsx: XLSX,
+                    label: "导入励志语录",
+                    maxSheets: 2
+                }).then((wb) => {
+                    const json = XLSX.utils.sheet_to_json(importGuards.getFirstWorksheet(wb, "导入励志语录"));
+                    importGuards.assertWorksheetRows(json, {
+                        label: "导入励志语录",
+                        maxRows: 2000,
+                        emptyMessage: "未解析到有效语录"
+                    });
                     const nextQuotes = json.map(row => row["内容"]).filter(Boolean);
                     if (nextQuotes.length === 0) {
                         alert("未解析到有效语录");
@@ -107,9 +121,11 @@
                     if (!confirm(`解析到 ${nextQuotes.length} 条语录，确定覆盖现有语录吗？`)) return;
                     updateQuotes(() => nextQuotes);
                     alert("语录更新成功");
-                };
-                reader.readAsArrayBuffer(file);
-                e.target.value = '';
+                }).catch((error) => {
+                    alert(error?.message || "导入失败，请检查 Excel 文件");
+                }).finally(() => {
+                    e.target.value = '';
+                });
             };
 
             return h("div", { className: "space-y-4" },

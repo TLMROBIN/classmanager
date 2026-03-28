@@ -123,116 +123,122 @@
             }
 
             const xlsx = window.XLSX;
-            if (!xlsx?.utils || typeof xlsx.read !== 'function') {
+            const importGuards = window.ClassManagerImportGuards;
+            if (!xlsx?.utils || typeof xlsx.read !== 'function' || !importGuards?.readWorkbookFromFile || !importGuards?.assertWorksheetRows) {
                 alert("导入组件未加载，请刷新后重试");
                 event.target.value = '';
                 return;
             }
-
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                try {
-                    const workbook = xlsx.read(evt.target.result, { type: 'array' });
-                    if (!workbook.SheetNames.includes("宝物库存")) {
-                        throw new Error('缺少“宝物库存”工作表');
-                    }
-
-                    const rawTreasureRows = xlsx.utils.sheet_to_json(workbook.Sheets["宝物库存"], { defval: "" });
-                    const importedTreasures = rawTreasureRows.map((row, index) => {
-                        const idCell = getCell(row, ["宝物ID", "物品ID", "id", "ID"]);
-                        const priceCell = getCell(row, ["基础价格", "价格", "price"]);
-                        const stockCell = getCell(row, ["库存", "stock"]);
-                        const dailyLimitCell = getCell(row, ["单日使用上限", "dailyLimit"]);
-                        const descCell = getCell(row, ["描述", "desc"]);
-                        const ladderPricesCell = getCell(row, ["阶梯价格", "ladderPrices"]);
-                        const name = String(getCell(row, ["名称", "name"]) || "").trim();
-                        const rarity = String(getCell(row, ["稀有度", "rarity"]) || "N").trim() || "N";
-                        const price = toNumber(priceCell, 0);
-                        const stock = toInteger(stockCell, 0);
-                        const dailyLimit = toInteger(dailyLimitCell, 0);
-                        const desc = String(descCell || "").trim();
-                        const ladderPrices = parseLadderPrices(ladderPricesCell);
-                        const isBlankRow = !name && !hasValue(idCell) && !hasValue(priceCell) && !hasValue(stockCell) && !hasValue(dailyLimitCell) && !hasValue(descCell) && !hasValue(ladderPricesCell);
-                        if (isBlankRow) return null;
-
-                        return {
-                            id: hasValue(idCell) ? idCell : `${Date.now()}_${index}`,
-                            name,
-                            rarity,
-                            price,
-                            stock,
-                            desc,
-                            ladderPrices,
-                            dailyLimit
-                        };
-                    }).filter(item => item && item.name);
-
-                    if (importedTreasures.length === 0) {
-                        throw new Error('未解析到有效的宝物记录');
-                    }
-
-                    const rawStorageRows = workbook.SheetNames.includes("学生储物箱")
-                        ? xlsx.utils.sheet_to_json(workbook.Sheets["学生储物箱"], { defval: "" })
-                        : [];
-                    const nextStorage = {};
-                    let skippedStorageRows = 0;
-
-                    rawStorageRows.forEach((row) => {
-                        const count = toInteger(getCell(row, ["数量", "count"]), 0);
-                        if (count <= 0) return;
-
-                        const studentIdCell = getCell(row, ["学生ID", "studentId"]);
-                        const studentName = String(getCell(row, ["学生", "student", "studentName", "姓名"]) || "").trim();
-                        const student = (students || []).find(item => {
-                            if (hasValue(studentIdCell) && sameId(item.id, studentIdCell)) return true;
-                            return studentName && item.name === studentName;
-                        });
-                        if (!student) {
-                            skippedStorageRows += 1;
-                            return;
-                        }
-
-                        const itemIdCell = getCell(row, ["宝物ID", "物品ID", "itemId", "id"]);
-                        const itemName = String(getCell(row, ["物品", "名称", "itemName", "name"]) || "").trim();
-                        let treasure = null;
-                        if (hasValue(itemIdCell)) {
-                            treasure = importedTreasures.find(item => sameId(item.id, itemIdCell)) || null;
-                        }
-                        if (!treasure && itemName) {
-                            treasure = importedTreasures.find(item => item.name === itemName) || null;
-                        }
-                        if (!treasure) {
-                            skippedStorageRows += 1;
-                            return;
-                        }
-
-                        if (!nextStorage[student.id]) nextStorage[student.id] = {};
-                        nextStorage[student.id][treasure.id] = (nextStorage[student.id][treasure.id] || 0) + count;
-                    });
-
-                    const result = onImportTreasureData({
-                        treasures: importedTreasures,
-                        storage: nextStorage
-                    });
-                    if (!result?.ok) {
-                        throw new Error(result?.message || '藏宝阁数据导入失败');
-                    }
-
-                    const storageStudentCount = Object.keys(nextStorage).length;
-                    const skipSuffix = skippedStorageRows > 0 ? `，跳过 ${skippedStorageRows} 条无法匹配学生或宝物的储物箱记录` : "";
-                    alert(`已导入 ${importedTreasures.length} 条宝物记录，更新 ${storageStudentCount} 名学生的储物箱${skipSuffix}`);
-                } catch (err) {
-                    console.error('导入藏宝阁数据失败:', err);
-                    alert(err?.message || '导入失败，请检查 Excel 格式');
-                } finally {
-                    event.target.value = '';
+            void importGuards.readWorkbookFromFile({
+                file,
+                xlsx,
+                label: "导入藏宝阁数据",
+                maxSheets: 4
+            }).then((workbook) => {
+                if (!workbook.SheetNames.includes("宝物库存")) {
+                    throw new Error('缺少“宝物库存”工作表');
                 }
-            };
-            reader.onerror = () => {
-                alert("读取文件失败，请重试");
+
+                const rawTreasureRows = xlsx.utils.sheet_to_json(workbook.Sheets["宝物库存"], { defval: "" });
+                importGuards.assertWorksheetRows(rawTreasureRows, {
+                    label: "导入藏宝阁数据",
+                    maxRows: 1000,
+                    emptyMessage: "未解析到有效的宝物记录"
+                });
+                const importedTreasures = rawTreasureRows.map((row, index) => {
+                    const idCell = getCell(row, ["宝物ID", "物品ID", "id", "ID"]);
+                    const priceCell = getCell(row, ["基础价格", "价格", "price"]);
+                    const stockCell = getCell(row, ["库存", "stock"]);
+                    const dailyLimitCell = getCell(row, ["单日使用上限", "dailyLimit"]);
+                    const descCell = getCell(row, ["描述", "desc"]);
+                    const ladderPricesCell = getCell(row, ["阶梯价格", "ladderPrices"]);
+                    const name = String(getCell(row, ["名称", "name"]) || "").trim();
+                    const rarity = String(getCell(row, ["稀有度", "rarity"]) || "N").trim() || "N";
+                    const price = toNumber(priceCell, 0);
+                    const stock = toInteger(stockCell, 0);
+                    const dailyLimit = toInteger(dailyLimitCell, 0);
+                    const desc = String(descCell || "").trim();
+                    const ladderPrices = parseLadderPrices(ladderPricesCell);
+                    const isBlankRow = !name && !hasValue(idCell) && !hasValue(priceCell) && !hasValue(stockCell) && !hasValue(dailyLimitCell) && !hasValue(descCell) && !hasValue(ladderPricesCell);
+                    if (isBlankRow) return null;
+
+                    return {
+                        id: hasValue(idCell) ? idCell : `${Date.now()}_${index}`,
+                        name,
+                        rarity,
+                        price,
+                        stock,
+                        desc,
+                        ladderPrices,
+                        dailyLimit
+                    };
+                }).filter(item => item && item.name);
+
+                if (importedTreasures.length === 0) {
+                    throw new Error('未解析到有效的宝物记录');
+                }
+
+                const rawStorageRows = workbook.SheetNames.includes("学生储物箱")
+                    ? xlsx.utils.sheet_to_json(workbook.Sheets["学生储物箱"], { defval: "" })
+                    : [];
+                importGuards.assertWorksheetRows(rawStorageRows, {
+                    label: "导入藏宝阁数据",
+                    maxRows: 3000,
+                    allowEmpty: true
+                });
+                const nextStorage = {};
+                let skippedStorageRows = 0;
+
+                rawStorageRows.forEach((row) => {
+                    const count = toInteger(getCell(row, ["数量", "count"]), 0);
+                    if (count <= 0) return;
+
+                    const studentIdCell = getCell(row, ["学生ID", "studentId"]);
+                    const studentName = String(getCell(row, ["学生", "student", "studentName", "姓名"]) || "").trim();
+                    const student = (students || []).find(item => {
+                        if (hasValue(studentIdCell) && sameId(item.id, studentIdCell)) return true;
+                        return studentName && item.name === studentName;
+                    });
+                    if (!student) {
+                        skippedStorageRows += 1;
+                        return;
+                    }
+
+                    const itemIdCell = getCell(row, ["宝物ID", "物品ID", "itemId", "id"]);
+                    const itemName = String(getCell(row, ["物品", "名称", "itemName", "name"]) || "").trim();
+                    let treasure = null;
+                    if (hasValue(itemIdCell)) {
+                        treasure = importedTreasures.find(item => sameId(item.id, itemIdCell)) || null;
+                    }
+                    if (!treasure && itemName) {
+                        treasure = importedTreasures.find(item => item.name === itemName) || null;
+                    }
+                    if (!treasure) {
+                        skippedStorageRows += 1;
+                        return;
+                    }
+
+                    if (!nextStorage[student.id]) nextStorage[student.id] = {};
+                    nextStorage[student.id][treasure.id] = (nextStorage[student.id][treasure.id] || 0) + count;
+                });
+
+                const result = onImportTreasureData({
+                    treasures: importedTreasures,
+                    storage: nextStorage
+                });
+                if (!result?.ok) {
+                    throw new Error(result?.message || '藏宝阁数据导入失败');
+                }
+
+                const storageStudentCount = Object.keys(nextStorage).length;
+                const skipSuffix = skippedStorageRows > 0 ? `，跳过 ${skippedStorageRows} 条无法匹配学生或宝物的储物箱记录` : "";
+                alert(`已导入 ${importedTreasures.length} 条宝物记录，更新 ${storageStudentCount} 名学生的储物箱${skipSuffix}`);
+            }).catch((err) => {
+                console.error('导入藏宝阁数据失败:', err);
+                alert(err?.message || '导入失败，请检查 Excel 格式');
+            }).finally(() => {
                 event.target.value = '';
-            };
-            reader.readAsArrayBuffer(file);
+            });
         };
 
         return {

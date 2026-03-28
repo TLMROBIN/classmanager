@@ -24,6 +24,8 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const HOST = process.env.CLASSMANAGER_HOST || '0.0.0.0';
 const startedAtMs = Date.now();
+const SHUTDOWN_TIMEOUT_MS = 10 * 1000;
+const REQUEST_BODY_LIMIT = process.env.CLASSMANAGER_REQUEST_BODY_LIMIT || '10mb';
 
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
@@ -1489,8 +1491,8 @@ app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', CSP_POLICY);
     next();
 });
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 
 app.get('/api/health', (req, res) => {
     const report = buildHealthReport({
@@ -2381,9 +2383,46 @@ const server = app.listen(PORT, HOST, () => {
     console.log('=====================================================');
 });
 
-process.on('SIGINT', () => {
+let shutdownStarted = false;
+let shutdownTimer = null;
+const finishShutdown = (exitCode) => {
+    if (shutdownTimer) {
+        clearTimeout(shutdownTimer);
+        shutdownTimer = null;
+    }
+    try {
+        db.close();
+    } catch (err) {
+        console.error('关闭 SQLite 连接失败:', err);
+        process.exit(1);
+        return;
+    }
+    process.exit(exitCode);
+};
+const shutdown = (signal) => {
+    if (shutdownStarted) {
+        console.warn(`已收到停机信号，忽略重复的 ${signal}`);
+        return;
+    }
+    shutdownStarted = true;
+    console.log(`收到 ${signal}，正在优雅停止服务...`);
     clearInterval(testSessionCleanupTimer);
-    server.close();
-    db.close();
-    process.exit();
-});
+    shutdownTimer = setTimeout(() => {
+        console.error(`优雅停机超时（>${SHUTDOWN_TIMEOUT_MS}ms），强制退出`);
+        finishShutdown(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+    if (typeof shutdownTimer.unref === 'function') {
+        shutdownTimer.unref();
+    }
+    server.close((err) => {
+        if (err) {
+            console.error('关闭 HTTP 服务失败:', err);
+            finishShutdown(1);
+            return;
+        }
+        finishShutdown(0);
+    });
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

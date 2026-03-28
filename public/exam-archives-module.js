@@ -176,75 +176,88 @@
             const handleImportExam = (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const workbook = XLSX.read(evt.target.result, { type: 'array' });
-                        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-                        if (rows.length === 0) return alert('Excel为空');
+                const importGuards = window.ClassManagerImportGuards;
+                if (!importGuards?.readWorkbookFromFile || !importGuards?.getFirstWorksheet || !importGuards?.assertWorksheetRows) {
+                    alert('导入组件未加载，请刷新后重试');
+                    e.target.value = '';
+                    return;
+                }
+                void importGuards.readWorkbookFromFile({
+                    file,
+                    xlsx: XLSX,
+                    label: '导入考试成绩',
+                    maxSheets: 3
+                }).then((workbook) => {
+                    const sheet = importGuards.getFirstWorksheet(workbook, '导入考试成绩');
+                    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                    importGuards.assertWorksheetRows(rows, {
+                        label: '导入考试成绩',
+                        maxRows: 500,
+                        emptyMessage: 'Excel为空'
+                    });
 
-                        const firstRow = rows[0] || {};
-                        const missingHeaders = EXAM_IMPORT_HEADERS.filter(header => !Object.prototype.hasOwnProperty.call(firstRow, header));
-                        if (missingHeaders.length > 0) {
-                            return alert(`表头不完整，缺少：${missingHeaders.join('、')}`);
-                        }
-
-                        const records = {};
-                        const ranks = {};
-                        const missingNames = [];
-
-                        rows.forEach(row => {
-                            const studentName = String(row['姓名'] || '').trim();
-                            if (!studentName) return;
-                            const student = (Array.isArray(students) ? students : []).find(item => item.name === studentName);
-                            if (!student) {
-                                missingNames.push(studentName);
-                                return;
-                            }
-                            const record = buildRecordFromRow(row);
-                            records[student.id] = record;
-                            ranks[student.id] = {
-                                c: record.totalClassRank,
-                                g: record.totalGradeRank
-                            };
-                        });
-
-                        const importedCount = Object.keys(records).length;
-                        if (importedCount === 0) {
-                            return alert('没有匹配到任何学生，请确认姓名列与系统学生名单一致。');
-                        }
-
-                        const defaultName = file.name ? file.name.replace(/\.[^/.]+$/, '') : `考试${getTodayStr()}`;
-                        const name = prompt('请输入考试名称', defaultName) || defaultName;
-                        const examId = `ex${Date.now()}`;
-                        const nextExam = {
-                            id: examId,
-                            name,
-                            ts: getNow().getTime(),
-                            records,
-                            ranks
-                        };
-                        const nextExams = [nextExam, ...exams];
-                        const { nextBattle, nextExamArchives } = buildNextExamState(nextExams, examId);
-                        setSelectedExamId(examId);
-
-                        const suffix = missingNames.length > 0
-                            ? `\n未匹配学生：${Array.from(new Set(missingNames)).join('、')}`
-                            : '';
-                        persistChanges({
-                            nextBattle,
-                            nextExamArchives,
-                            successMessage: `已导入 ${importedCount} 条成绩并保存成功${suffix}`,
-                            failureMessage: `已导入 ${importedCount} 条成绩，但保存失败，请手动刷新确认${suffix}`
-                        });
-                    } catch (err) {
-                        console.error('导入考试成绩失败:', err);
-                        alert(`导入失败：${err.message || '文件格式错误'}`);
+                    const firstRow = rows[0] || {};
+                    const missingHeaders = EXAM_IMPORT_HEADERS.filter(header => !Object.prototype.hasOwnProperty.call(firstRow, header));
+                    if (missingHeaders.length > 0) {
+                        alert(`表头不完整，缺少：${missingHeaders.join('、')}`);
+                        return;
                     }
-                };
-                reader.readAsArrayBuffer(file);
-                e.target.value = '';
+
+                    const records = {};
+                    const ranks = {};
+                    const missingNames = [];
+
+                    rows.forEach(row => {
+                        const studentName = String(row['姓名'] || '').trim();
+                        if (!studentName) return;
+                        const student = (Array.isArray(students) ? students : []).find(item => item.name === studentName);
+                        if (!student) {
+                            missingNames.push(studentName);
+                            return;
+                        }
+                        const record = buildRecordFromRow(row);
+                        records[student.id] = record;
+                        ranks[student.id] = {
+                            c: record.totalClassRank,
+                            g: record.totalGradeRank
+                        };
+                    });
+
+                    const importedCount = Object.keys(records).length;
+                    if (importedCount === 0) {
+                        alert('没有匹配到任何学生，请确认姓名列与系统学生名单一致。');
+                        return;
+                    }
+
+                    const defaultName = file.name ? file.name.replace(/\.[^/.]+$/, '') : `考试${getTodayStr()}`;
+                    const name = prompt('请输入考试名称', defaultName) || defaultName;
+                    const examId = `ex${Date.now()}`;
+                    const nextExam = {
+                        id: examId,
+                        name,
+                        ts: getNow().getTime(),
+                        records,
+                        ranks
+                    };
+                    const nextExams = [nextExam, ...exams];
+                    const { nextBattle, nextExamArchives } = buildNextExamState(nextExams, examId);
+                    setSelectedExamId(examId);
+
+                    const suffix = missingNames.length > 0
+                        ? `\n未匹配学生：${Array.from(new Set(missingNames)).join('、')}`
+                        : '';
+                    persistChanges({
+                        nextBattle,
+                        nextExamArchives,
+                        successMessage: `已导入 ${importedCount} 条成绩并保存成功${suffix}`,
+                        failureMessage: `已导入 ${importedCount} 条成绩，但保存失败，请手动刷新确认${suffix}`
+                    });
+                }).catch((err) => {
+                    console.error('导入考试成绩失败:', err);
+                    alert(`导入失败：${err?.message || '文件格式错误'}`);
+                }).finally(() => {
+                    e.target.value = '';
+                });
             };
 
             const handleDeleteExam = (examId) => {

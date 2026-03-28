@@ -503,15 +503,28 @@
                 e.target.value = '';
                 return;
             }
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const wb = XLSX.read(evt.target.result, { type: 'array' });
-                const sheetName = wb.SheetNames[0];
-                const parsedWorkbook = parseStudentImportWorkbook(wb.Sheets[sheetName]);
+            const importGuards = window.ClassManagerImportGuards;
+            if (!importGuards?.readWorkbookFromFile || !importGuards?.getFirstWorksheet || !importGuards?.assertWorksheetRows) {
+                alert("导入组件未加载，请刷新后重试");
+                e.target.value = '';
+                return;
+            }
+            void importGuards.readWorkbookFromFile({
+                file,
+                xlsx: XLSX,
+                label: "导入学生名单",
+                maxSheets: 2
+            }).then((wb) => {
+                const parsedWorkbook = parseStudentImportWorkbook(importGuards.getFirstWorksheet(wb, "导入学生名单"));
                 if (!parsedWorkbook.ok) {
                     alert(parsedWorkbook.error);
                     return;
                 }
+                importGuards.assertWorksheetRows(parsedWorkbook.rows, {
+                    label: "导入学生名单",
+                    maxRows: 500,
+                    emptyMessage: "导入文件中没有可用的学生数据"
+                });
                 const validation = validateStudentImportRows(parsedWorkbook.rows, architecture);
                 if (validation.errors.length > 0) {
                     const visibleErrors = validation.errors.slice(0, 12);
@@ -561,9 +574,11 @@
                     setStudentProfiles(remapStudentProfilesToStudentsByName(students, newStudents, studentProfiles));
                     alert("学生名单已更新");
                 }
-            };
-            reader.readAsArrayBuffer(file);
-            e.target.value = '';
+            }).catch((error) => {
+                alert(error?.message || "导入失败，请检查 Excel 文件");
+            }).finally(() => {
+                e.target.value = '';
+            });
         };
         const updateStudent = (id, patch) => {
             setStudents(prev => (Array.isArray(prev) ? prev : []).map(s => s.id === id ? { ...s, ...patch } : s));
