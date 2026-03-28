@@ -10,8 +10,8 @@
 
 适用于这套系统的 SQLite 主库恢复：
 
-- 主库：`database/classmanager.db`
-- 备份目录：`backups/sqlite/`
+- 主库：`.env.runtime` 中的 `CLASSMANAGER_DB_PATH`
+- 备份目录：`.env.runtime` 中的 `CLASSMANAGER_BACKUP_DIR`
 
 不适用于：
 
@@ -35,14 +35,15 @@ npm run restore:sqlite:dry-run
 
 运行后，脚本会按这个顺序处理：
 
-1. 列出 `backups/sqlite/` 中可恢复的备份文件
+1. 列出当前备份目录中的可恢复备份文件
 2. 让你选择其中一份
 3. 对所选备份先做完整性校验
 4. 调用 `./stop.sh` 停服务
-5. 将当前 `database/classmanager.db`、`-wal`、`-shm` 封存到：
-   - `database/recovery-safety/`
+5. 将当前主库、`-wal`、`-shm` 封存到安全目录：
+   - 默认是 `${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi/recovery`
+   - 也可由 `CLASSMANAGER_RECOVERY_DIR` 或 `--recovery-dir` 覆盖
 6. 用所选备份覆盖主库
-7. 删除旧的 `database/classmanager.db-wal` / `database/classmanager.db-shm`
+7. 删除旧的主库 `-wal` / `-shm`
 8. 对恢复后的主库再次做完整性校验
 9. 询问是否调用 `./start.sh` 重新启动服务
 
@@ -142,11 +143,11 @@ npm run restore:sqlite:dry-run
 如果脚本中途失败：
 
 - 优先查看终端输出
-- 现场副本一般已经保存在 `database/recovery-safety/`
+- 现场副本一般已经保存在当前恢复安全目录
 - 如果主库已被替换但服务未启动，可以手动执行：
 
 ```bash
-sqlite3 database/classmanager.db "PRAGMA integrity_check;"
+sqlite3 "${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}" "PRAGMA integrity_check;"
 ./start.sh
 ```
 

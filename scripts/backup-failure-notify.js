@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const path = require('path');
 const { execFileSync } = require('child_process');
 const {
     ROOT_DIR,
+    DEFAULT_ALERT_DIR,
     ensureDir,
     formatTimestamp,
     parseArgs,
+    resolveInputPath,
     toRelativePath
 } = require('./backup-utils');
-
-const ALERT_DIR = path.join(ROOT_DIR, 'backups', 'alerts');
 
 const runCommand = (command, args) => {
     try {
@@ -34,15 +33,16 @@ const main = () => {
     const unit = args.unit || 'unknown';
     const reason = args.reason || 'service-failure';
     const isManualTest = reason === 'manual-test' || unit === 'manual-test';
+    const alertDir = resolveInputPath(args['alert-dir'], DEFAULT_ALERT_DIR);
 
-    ensureDir(ALERT_DIR);
+    ensureDir(alertDir);
 
     const createdAt = new Date();
     const timestamp = formatTimestamp(createdAt);
     const safeUnit = escapeUnitForFile(unit);
-    const jsonPath = path.join(ALERT_DIR, `${timestamp}_${safeUnit}.json`);
-    const latestPath = path.join(ALERT_DIR, 'latest-failure.json');
-    const logPath = path.join(ALERT_DIR, 'failures.log');
+    const jsonPath = require('path').join(alertDir, `${timestamp}_${safeUnit}.json`);
+    const latestPath = require('path').join(alertDir, 'latest-failure.json');
+    const logPath = require('path').join(alertDir, 'failures.log');
 
     const systemctlShow = isManualTest
         ? 'manual-test'
@@ -69,6 +69,7 @@ const main = () => {
         unit,
         reason,
         cwd: ROOT_DIR,
+        alertDir: toRelativePath(alertDir),
         systemctlShow,
         recentJournal
     };

@@ -208,9 +208,13 @@ systemctl --user list-timers | rg classmanager
 
 告警会做三件事：
 
-- 写入 `backups/alerts/failures.log`
-- 刷新 `backups/alerts/latest-failure.json`
+- 写入 `CLASSMANAGER_ALERT_DIR/failures.log`
+- 刷新 `CLASSMANAGER_ALERT_DIR/latest-failure.json`
 - 生成一份带时间戳的明细 JSON
+
+如果未显式配置 `CLASSMANAGER_ALERT_DIR`，默认会落到：
+
+- `${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi/alerts`
 
 如果桌面会话可用，还会尝试发送 `notify-send` 弹窗。
 
@@ -223,13 +227,13 @@ npm run backup:alert:test
 ### 查看最近一次告警
 
 ```bash
-cat backups/alerts/latest-failure.json
+cat "${CLASSMANAGER_ALERT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi/alerts}/latest-failure.json"
 ```
 
 ### 查看告警汇总
 
 ```bash
-tail -n 20 backups/alerts/failures.log
+tail -n 20 "${CLASSMANAGER_ALERT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi/alerts}/failures.log"
 ```
 
 ## 备份过期告警
@@ -246,8 +250,8 @@ tail -n 20 backups/alerts/failures.log
 
 过期告警文件位置：
 
-- `backups/alerts/latest-stale-backup.json`
-- `backups/alerts/stale-backups.log`
+- `CLASSMANAGER_ALERT_DIR/latest-stale-backup.json`
+- `CLASSMANAGER_ALERT_DIR/stale-backups.log`
 
 ### 手动检查一次
 
@@ -258,7 +262,7 @@ npm run backup:check-freshness
 ### 查看最近一次过期告警
 
 ```bash
-cat backups/alerts/latest-stale-backup.json
+cat "${CLASSMANAGER_ALERT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi/alerts}/latest-stale-backup.json"
 ```
 
 ## 恢复流程
@@ -276,10 +280,14 @@ cat backups/alerts/latest-stale-backup.json
 即使当前库疑似损坏，也先保留一份现场：
 
 ```bash
-mkdir -p database/recovery-safety
-cp database/classmanager.db database/recovery-safety/classmanager.db.$(date +%Y%m%d_%H%M%S)
-test -f database/classmanager.db-wal && cp database/classmanager.db-wal database/recovery-safety/classmanager.db-wal.$(date +%Y%m%d_%H%M%S)
-test -f database/classmanager.db-shm && cp database/classmanager.db-shm database/recovery-safety/classmanager.db-shm.$(date +%Y%m%d_%H%M%S)
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi"
+DB_PATH="${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}"
+RECOVERY_DIR="${CLASSMANAGER_RECOVERY_DIR:-$STATE_ROOT/recovery}"
+
+mkdir -p "$RECOVERY_DIR"
+cp "$DB_PATH" "$RECOVERY_DIR/classmanager.db.$(date +%Y%m%d_%H%M%S)"
+test -f "$DB_PATH-wal" && cp "$DB_PATH-wal" "$RECOVERY_DIR/classmanager.db-wal.$(date +%Y%m%d_%H%M%S)"
+test -f "$DB_PATH-shm" && cp "$DB_PATH-shm" "$RECOVERY_DIR/classmanager.db-shm.$(date +%Y%m%d_%H%M%S)"
 ```
 
 ### 3. 选择一个已校验通过的备份
@@ -287,26 +295,26 @@ test -f database/classmanager.db-shm && cp database/classmanager.db-shm database
 建议先查看：
 
 ```bash
-ls -lh backups/sqlite
+ls -lh "${CLASSMANAGER_BACKUP_DIR:-$PWD/backups/sqlite}"
 ```
 
 必要时再次校验：
 
 ```bash
-node scripts/verify-backup.js --file backups/sqlite/你的备份文件.db
+node scripts/verify-backup.js --file "${CLASSMANAGER_BACKUP_DIR:-$PWD/backups/sqlite}/你的备份文件.db"
 ```
 
 ### 4. 替换主库
 
 ```bash
-cp backups/sqlite/你的备份文件.db database/classmanager.db
-rm -f database/classmanager.db-wal database/classmanager.db-shm
+cp "${CLASSMANAGER_BACKUP_DIR:-$PWD/backups/sqlite}/你的备份文件.db" "${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}"
+rm -f "${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}-wal" "${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}-shm"
 ```
 
 ### 5. 启动前再做一次完整性检查
 
 ```bash
-sqlite3 database/classmanager.db "PRAGMA integrity_check;"
+sqlite3 "${CLASSMANAGER_DB_PATH:-$PWD/database/classmanager.db}" "PRAGMA integrity_check;"
 ```
 
 结果应为：

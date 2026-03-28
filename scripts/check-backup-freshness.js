@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const path = require('path');
 const { execFileSync } = require('child_process');
 const {
     ROOT_DIR,
     DEFAULT_BACKUP_DIR,
+    DEFAULT_ALERT_DIR,
     ensureDir,
     formatTimestamp,
     parseArgs,
@@ -15,7 +15,6 @@ const {
 } = require('./backup-utils');
 
 const DEFAULT_MAX_AGE_HOURS = 36;
-const DEFAULT_ALERT_DIR = path.join(ROOT_DIR, 'backups', 'alerts');
 
 const roundHours = (hours) => Math.round(hours * 100) / 100;
 

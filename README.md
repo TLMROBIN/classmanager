@@ -45,16 +45,26 @@ cp .env.example .env.runtime
 
 ```bash
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi"
-mkdir -p "$STATE_ROOT/database" "$STATE_ROOT/backups/sqlite"
+mkdir -p \
+  "$STATE_ROOT/database" \
+  "$STATE_ROOT/backups/sqlite" \
+  "$STATE_ROOT/runtime" \
+  "$STATE_ROOT/alerts" \
+  "$STATE_ROOT/recovery"
 
 cat > .env.runtime <<EOF
 JWT_SECRET=请替换为至少32位的随机字符串
 CLASSMANAGER_DB_PATH=$STATE_ROOT/database/classmanager.db
 CLASSMANAGER_BACKUP_DIR=$STATE_ROOT/backups/sqlite
+CLASSMANAGER_RUNTIME_DIR=$STATE_ROOT/runtime
+CLASSMANAGER_ALERT_DIR=$STATE_ROOT/alerts
+CLASSMANAGER_RECOVERY_DIR=$STATE_ROOT/recovery
 EOF
 ```
 
-如果你是从仓库内旧库迁移过来，请先手动复制旧数据，再切换这两个路径变量。当前项目不会自动搬迁现有数据库和备份。
+如果你是从仓库内旧库迁移过来，请先手动复制旧数据，再切换这些路径变量。当前项目不会自动搬迁现有数据库和备份。
+
+手工使用 `start.sh` / `stop.sh` 时，`server.log` 和 `server.pid` 也会写入 `CLASSMANAGER_RUNTIME_DIR`。备份失败告警、备份过期告警、恢复前现场封存则分别使用 `CLASSMANAGER_ALERT_DIR` 和 `CLASSMANAGER_RECOVERY_DIR`。如果你通过 `systemd --user` 跑主服务，主日志仍然在 `journalctl --user -u classmanager-app.service`。
 
 首次部署还需要先创建首个管理员：
 
@@ -92,7 +102,7 @@ systemctl --user status classmanager-app.service
 sudo loginctl enable-linger $USER
 ```
 
-`classmanager-app.service` 和备份相关的 `systemd` 单元都会读取项目根目录的 `.env.runtime`，所以数据库路径、备份目录和 `JWT_SECRET` 可以统一在这一个文件里维护。
+`classmanager-app.service` 和备份相关的 `systemd` 单元都会读取项目根目录的 `.env.runtime`，所以数据库路径、备份目录、运行时目录和 `JWT_SECRET` 可以统一在这一个文件里维护。
 
 ### 6. 配置 SQLite 定时备份
 

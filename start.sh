@@ -14,8 +14,20 @@ if [ -f ".env.runtime" ]; then
     set +a
 fi
 
+if [ -n "${XDG_STATE_HOME:-}" ]; then
+    DEFAULT_STATE_ROOT="$XDG_STATE_HOME/classmanager-multi"
+elif [ -n "${HOME:-}" ]; then
+    DEFAULT_STATE_ROOT="$HOME/.local/state/classmanager-multi"
+else
+    DEFAULT_STATE_ROOT="$(pwd)/.runtime"
+fi
+
+STATE_ROOT="${CLASSMANAGER_STATE_ROOT:-$DEFAULT_STATE_ROOT}"
 DB_PATH="${CLASSMANAGER_DB_PATH:-$(pwd)/database/classmanager.db}"
 BACKUP_DIR="${CLASSMANAGER_BACKUP_DIR:-$(pwd)/backups/sqlite}"
+RUNTIME_DIR="${CLASSMANAGER_RUNTIME_DIR:-$STATE_ROOT/runtime}"
+PID_FILE="${CLASSMANAGER_PID_FILE:-$RUNTIME_DIR/server.pid}"
+LOG_FILE="${CLASSMANAGER_LOG_FILE:-$RUNTIME_DIR/server.log}"
 PORT="${PORT:-3002}"
 
 # 检查 Node.js
@@ -37,6 +49,7 @@ fi
 # 检查数据库是否存在，不存在则初始化
 mkdir -p "$(dirname "$DB_PATH")"
 mkdir -p "$BACKUP_DIR"
+mkdir -p "$RUNTIME_DIR"
 
 if [ ! -f "$DB_PATH" ]; then
     echo "🗄️  初始化数据库..."
@@ -50,9 +63,9 @@ if [ -z "${JWT_SECRET:-}" ]; then
 fi
 
 # 检查是否已在运行
-if [ -f "server.pid" ]; then
-    PID=$(cat server.pid)
-    if ps -p $PID > /dev/null 2>&1; then
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
         echo "⚠️  服务器已在运行中 (PID: $PID)"
         echo "   如需重启，请先运行 stop.sh"
         exit 0
@@ -61,14 +74,14 @@ fi
 
 # 启动服务器
 echo "🚀 启动服务器..."
-nohup node server.js > server.log 2>&1 &
+nohup node server.js > "$LOG_FILE" 2>&1 &
 PID=$!
-echo $PID > server.pid
+echo "$PID" > "$PID_FILE"
 
 sleep 2
 
 # 检查是否启动成功
-if ps -p $PID > /dev/null 2>&1; then
+if ps -p "$PID" > /dev/null 2>&1; then
     echo ""
     echo "✅ 服务器启动成功！"
     echo ""
@@ -77,14 +90,16 @@ if ps -p $PID > /dev/null 2>&1; then
     echo "   首个管理员请使用: npm run bootstrap-admin"
     echo "   数据库文件: $DB_PATH"
     echo "   备份目录: $BACKUP_DIR"
+    echo "   运行目录: $RUNTIME_DIR"
     echo ""
-    echo "   日志文件: $(pwd)/server.log"
+    echo "   日志文件: $LOG_FILE"
+    echo "   PID 文件: $PID_FILE"
     echo "   进程 PID: $PID"
     echo ""
     echo "   停止服务: ./stop.sh"
     echo "=========================================="
 else
-    echo "❌ 服务器启动失败，请查看 server.log"
-    rm -f server.pid
+    echo "❌ 服务器启动失败，请查看 $LOG_FILE"
+    rm -f "$PID_FILE"
     exit 1
 fi

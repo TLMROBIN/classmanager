@@ -4,12 +4,73 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
+const RUNTIME_ENV_PATH = path.join(ROOT_DIR, '.env.runtime');
+
+const stripWrappingQuotes = (value) => {
+    if (!value) return value;
+    if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+    ) {
+        return value.slice(1, -1);
+    }
+    return value;
+};
+
+const loadRuntimeEnv = () => {
+    if (!fs.existsSync(RUNTIME_ENV_PATH)) return;
+
+    const content = fs.readFileSync(RUNTIME_ENV_PATH, 'utf8');
+    for (const rawLine of content.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+
+        const normalized = line.startsWith('export ') ? line.slice(7).trim() : line;
+        const separatorIndex = normalized.indexOf('=');
+        if (separatorIndex <= 0) continue;
+
+        const key = normalized.slice(0, separatorIndex).trim();
+        if (!key || process.env[key] != null) continue;
+
+        const value = normalized.slice(separatorIndex + 1).trim();
+        process.env[key] = stripWrappingQuotes(value);
+    }
+};
+
+loadRuntimeEnv();
+
 const resolveConfiguredPath = (configuredPath, fallbackPath) => {
     if (!configuredPath) return fallbackPath;
     return path.isAbsolute(configuredPath)
         ? configuredPath
         : path.resolve(process.cwd(), configuredPath);
 };
+const inferStateRootFromDbPath = (configuredDbPath) => {
+    if (!configuredDbPath) return null;
+    const dbDir = path.dirname(configuredDbPath);
+    return path.basename(dbDir) === 'database' ? path.dirname(dbDir) : null;
+};
+const inferStateRootFromBackupDir = (configuredBackupDir) => {
+    if (!configuredBackupDir) return null;
+    const parentDir = path.dirname(configuredBackupDir);
+    return path.basename(configuredBackupDir) === 'sqlite' && path.basename(parentDir) === 'backups'
+        ? path.dirname(parentDir)
+        : null;
+};
+const defaultStateHome = process.env.XDG_STATE_HOME
+    || (process.env.HOME ? path.join(process.env.HOME, '.local', 'state') : null);
+const configuredDbPath = process.env.CLASSMANAGER_DB_PATH
+    ? resolveConfiguredPath(process.env.CLASSMANAGER_DB_PATH, path.join(ROOT_DIR, 'database', 'classmanager.db'))
+    : null;
+const configuredBackupDir = process.env.CLASSMANAGER_BACKUP_DIR
+    ? resolveConfiguredPath(process.env.CLASSMANAGER_BACKUP_DIR, path.join(ROOT_DIR, 'backups', 'sqlite'))
+    : null;
+const DEFAULT_STATE_ROOT = resolveConfiguredPath(
+    process.env.CLASSMANAGER_STATE_ROOT,
+    inferStateRootFromDbPath(configuredDbPath)
+        || inferStateRootFromBackupDir(configuredBackupDir)
+        || (defaultStateHome ? path.join(defaultStateHome, 'classmanager-multi') : path.join(ROOT_DIR, '.runtime'))
+);
 const DEFAULT_DB_PATH = resolveConfiguredPath(
     process.env.CLASSMANAGER_DB_PATH,
     path.join(ROOT_DIR, 'database', 'classmanager.db')
@@ -17,6 +78,18 @@ const DEFAULT_DB_PATH = resolveConfiguredPath(
 const DEFAULT_BACKUP_DIR = resolveConfiguredPath(
     process.env.CLASSMANAGER_BACKUP_DIR,
     path.join(ROOT_DIR, 'backups', 'sqlite')
+);
+const DEFAULT_RUNTIME_DIR = resolveConfiguredPath(
+    process.env.CLASSMANAGER_RUNTIME_DIR,
+    path.join(DEFAULT_STATE_ROOT, 'runtime')
+);
+const DEFAULT_ALERT_DIR = resolveConfiguredPath(
+    process.env.CLASSMANAGER_ALERT_DIR,
+    path.join(DEFAULT_STATE_ROOT, 'alerts')
+);
+const DEFAULT_RECOVERY_DIR = resolveConfiguredPath(
+    process.env.CLASSMANAGER_RECOVERY_DIR,
+    path.join(DEFAULT_STATE_ROOT, 'recovery')
 );
 
 const pad2 = (value) => String(value).padStart(2, '0');
@@ -238,8 +311,12 @@ const readSourceSidecarStats = (dbPath) => {
 
 module.exports = {
     ROOT_DIR,
+    DEFAULT_STATE_ROOT,
     DEFAULT_DB_PATH,
     DEFAULT_BACKUP_DIR,
+    DEFAULT_RUNTIME_DIR,
+    DEFAULT_ALERT_DIR,
+    DEFAULT_RECOVERY_DIR,
     ensureDir,
     parseArgs,
     fileExists,

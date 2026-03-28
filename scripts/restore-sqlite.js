@@ -8,6 +8,7 @@ const {
     ROOT_DIR,
     DEFAULT_DB_PATH,
     DEFAULT_BACKUP_DIR,
+    DEFAULT_RECOVERY_DIR,
     ensureDir,
     parseArgs,
     fileExists,
@@ -18,8 +19,6 @@ const {
     runIntegrityCheck,
     readBackupEntries
 } = require('./backup-utils');
-
-const DEFAULT_RECOVERY_DIR = path.join(ROOT_DIR, 'database', 'recovery-safety');
 const isWindows = process.platform === 'win32';
 
 const formatBytes = (bytes) => {
