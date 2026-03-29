@@ -147,7 +147,7 @@
     };
 
     const handleChangePassword = async () => {
-        const username = document.getElementById('changeUsername').value.trim();
+        const username = document.getElementById('changeUsername').value.trim() || document.getElementById('username').value.trim();
         const currentPassword = document.getElementById('changeCurrentPassword').value;
         const newPassword = document.getElementById('changeNewPassword').value;
         const confirmPassword = document.getElementById('changeConfirmPassword').value;

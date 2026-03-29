@@ -300,13 +300,30 @@
             runningExercisePresentBonus,
             onToggleRunningExerciseSelection,
             onSubmit
-        }) => h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+        }) => {
+            const primaryButtonStyle = {
+                backgroundColor: '#ea580c',
+                color: '#ffffff',
+                boxShadow: '0 8px 18px rgba(234, 88, 12, 0.18)'
+            };
+            const selectedDateStyle = {
+                backgroundColor: '#ea580c',
+                borderColor: '#ea580c',
+                color: '#ffffff'
+            };
+            const defaultDateStyle = {
+                backgroundColor: '#f9fafb',
+                borderColor: '#e5e7eb',
+                color: '#374151'
+            };
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
             h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
             h("div", { className: "flex flex-wrap gap-2 mb-3" },
                 runningExerciseDates.map(date => h("button", {
                     key: date,
                     onClick: () => setRunDate(date),
-                    className: `px-3 py-1 rounded-full text-xs font-bold border ${((runDate || runningExerciseDates[0]) === date) ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    className: "px-3 py-1 rounded-full text-xs font-bold border",
+                    style: ((runDate || runningExerciseDates[0]) === date) ? selectedDateStyle : defaultDateStyle
                 }, date))
             ),
             h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3 leading-5" },
@@ -335,10 +352,12 @@
             h("div", { className: "pt-3 flex justify-end gap-2" },
                 h("button", {
                     onClick: onSubmit,
-                    className: "px-4 py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700"
+                    className: "px-4 py-2 rounded text-sm",
+                    style: primaryButtonStyle
                 }, runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size}人缺勤)`)
             )
         );
+        };
 
         const RecentHistoryPanel = ({ recentHistory, onUndo }) => h("div", {
             className: "bg-white p-4 rounded-xl shadow-sm mt-6"

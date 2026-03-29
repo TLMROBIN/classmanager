@@ -84,6 +84,17 @@
         const StudentRosterSection = createSettingsStudentRosterSection({ h });
         const renderSystemConfigSection = createSettingsSystemConfigSection({ h, Icon });
         const renderToolsSection = createSettingsToolsSection({ h, useState, getNow, getDateString });
+        const isValidScheduleDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+        const normalizeScheduleNotes = (value) => {
+            if (!value || typeof value !== 'object') return {};
+            return Object.entries(value).reduce((acc, [date, note]) => {
+                const safeDate = String(date || '').trim();
+                const safeNote = String(note || '').trim();
+                if (!isValidScheduleDate(safeDate) || !safeNote) return acc;
+                acc[safeDate] = safeNote;
+                return acc;
+            }, {});
+        };
 
     const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
@@ -300,21 +311,25 @@
             URL.revokeObjectURL(url);
         };
 
-        const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
-            ? config.scheduleNotes
-            : {};
+        const scheduleNotes = normalizeScheduleNotes(config?.scheduleNotes);
         const handleScheduleDateChange = (value) => {
-            setScheduleDate(value);
-            setScheduleText(String(scheduleNotes[value] || ''));
+            const nextDate = String(value || '').trim();
+            setScheduleDate(nextDate);
+            setScheduleText(isValidScheduleDate(nextDate) ? String(scheduleNotes[nextDate] || '') : '');
+        };
+        const handleScheduleEdit = (date, note = '') => {
+            const nextDate = String(date || '').trim();
+            if (!isValidScheduleDate(nextDate)) return;
+            setScheduleDate(nextDate);
+            setScheduleText(String(note || '').trim());
         };
         const handleSaveSchedule = (nextDateInput = scheduleDate, nextTextInput = scheduleText) => {
             const nextDate = String(nextDateInput || '').trim();
             const nextText = String(nextTextInput || '').trim();
             if (!nextDate) return alert('请选择日程日期');
+            if (!isValidScheduleDate(nextDate)) return alert('日程日期格式无效，请重新选择');
             setConfigSafe(prev => {
-                const nextScheduleNotes = prev?.scheduleNotes && typeof prev.scheduleNotes === 'object'
-                    ? { ...prev.scheduleNotes }
-                    : {};
+                const nextScheduleNotes = normalizeScheduleNotes(prev?.scheduleNotes);
                 if (nextText) {
                     nextScheduleNotes[nextDate] = nextText;
                 } else {
@@ -328,10 +343,8 @@
         const handleDeleteSchedule = (date) => {
             if (!date) return;
             setConfigSafe(prev => {
-                const nextScheduleNotes = prev?.scheduleNotes && typeof prev.scheduleNotes === 'object'
-                    ? { ...prev.scheduleNotes }
-                    : {};
-                delete nextScheduleNotes[date];
+                const nextScheduleNotes = normalizeScheduleNotes(prev?.scheduleNotes);
+                delete nextScheduleNotes[String(date).trim()];
                 return { ...prev, scheduleNotes: nextScheduleNotes };
             });
             if (date === scheduleDate) {
@@ -845,6 +858,7 @@
                 scheduleText,
                 setScheduleText,
                 handleScheduleDateChange,
+                handleScheduleEdit,
                 handleSaveSchedule,
                 handleDeleteSchedule,
                 countdownName,

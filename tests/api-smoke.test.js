@@ -263,6 +263,37 @@ test('API smoke flows', async (t) => {
             assert.ok(newLoginResponse.cookie);
         });
 
+        await t.test('access password change supports usernames with spaces and case-insensitive lookup', async () => {
+            const username = 'Haiyan Lu';
+            const loginUsername = 'haiyan lu';
+            const password = 'Space123456';
+            const newPassword = 'Space654321';
+
+            const registerResponse = await requestJson(baseUrl, '/api/auth/register', {
+                method: 'POST',
+                body: { username, password }
+            });
+            assert.equal(registerResponse.status, 200);
+
+            const changePasswordResponse = await requestJson(baseUrl, '/api/auth/change-password', {
+                method: 'POST',
+                body: {
+                    username: loginUsername,
+                    currentPassword: password,
+                    newPassword
+                }
+            });
+            assert.equal(changePasswordResponse.status, 200);
+            assert.equal(changePasswordResponse.body.success, true);
+
+            const loginResponse = await requestJson(baseUrl, '/api/auth/login', {
+                method: 'POST',
+                body: { username: loginUsername, password: newPassword }
+            });
+            assert.equal(loginResponse.status, 200);
+            assert.ok(loginResponse.cookie);
+        });
+
         await t.test('maintenance password can be setup and unlocked', async () => {
             const statusResponse = await requestJson(baseUrl, '/api/maintenance/status', {
                 headers: { Cookie: userCookie }

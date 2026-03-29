@@ -119,7 +119,15 @@
             aggregatedHistory.sort((a, b) => b.ts - a.ts);
             const recentHistory = aggregatedHistory.slice(0, 100);
 
-            const scheduleNotes = (config && config.scheduleNotes) ? config.scheduleNotes : {};
+            const isValidScheduleDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+            const scheduleNotes = Object.entries((config && config.scheduleNotes) ? config.scheduleNotes : {})
+                .reduce((acc, [date, note]) => {
+                    const safeDate = String(date || '').trim();
+                    const safeNote = String(note || '').trim();
+                    if (!isValidScheduleDate(safeDate) || !safeNote) return acc;
+                    acc[safeDate] = safeNote;
+                    return acc;
+                }, {});
             const scheduleDays = (() => {
                 const now = getNow();
                 const list = [];

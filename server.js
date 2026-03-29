@@ -1533,9 +1533,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ==================== 认证 API ====================
 
+const normalizeUsername = (value) => String(value || '').trim();
+const selectUserIdByUsername = db.prepare('SELECT id FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
+const selectUserByUsername = db.prepare('SELECT * FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
+const selectUserPasswordByUsername = db.prepare('SELECT id, username, password_hash FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
+
 // 注册
 app.post('/api/auth/register', (req, res) => {
-    const { username, password, email } = req.body;
+    const username = normalizeUsername(req.body?.username);
+    const password = String(req.body?.password || '');
+    const email = String(req.body?.email || '').trim();
     
     if (!username || !password) {
         return res.status(400).json({ error: '用户名和密码不能为空' });
@@ -1549,7 +1556,7 @@ app.post('/api/auth/register', (req, res) => {
         return res.status(400).json({ error: '密码长度至少6个字符' });
     }
     
-    const existingUser = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const existingUser = selectUserIdByUsername.get(username);
     if (existingUser) {
         return res.status(400).json({ error: '用户名已存在' });
     }
@@ -1575,13 +1582,14 @@ app.post('/api/auth/register', (req, res) => {
 
 // 登录
 app.post('/api/auth/login', (req, res) => {
-    const { username, password } = req.body;
+    const username = normalizeUsername(req.body?.username);
+    const password = String(req.body?.password || '');
     
     if (!username || !password) {
         return res.status(400).json({ error: '用户名和密码不能为空' });
     }
     
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = selectUserByUsername.get(username);
     
     if (!user) {
         return res.status(401).json({ error: '用户名或密码错误' });
@@ -1600,7 +1608,7 @@ app.post('/api/auth/login', (req, res) => {
 
 // 修改密码
 app.post('/api/auth/change-password', (req, res) => {
-    const username = String(req.body?.username || '').trim();
+    const username = normalizeUsername(req.body?.username);
     const currentPassword = String(req.body?.currentPassword || '');
     const newPassword = String(req.body?.newPassword || '');
 
@@ -1612,7 +1620,7 @@ app.post('/api/auth/change-password', (req, res) => {
         return res.status(400).json({ error: '新密码长度至少6个字符' });
     }
 
-    const user = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?').get(username);
+    const user = selectUserPasswordByUsername.get(username);
     if (!user || !verifyPassword(currentPassword, user.password_hash)) {
         return res.status(401).json({ error: '用户名或当前密码错误' });
     }

@@ -31,6 +31,7 @@
                 scheduleText,
                 setScheduleText,
                 handleScheduleDateChange,
+                handleScheduleEdit,
                 handleSaveSchedule,
                 handleDeleteSchedule,
                 countdownName,
@@ -49,12 +50,13 @@
 
             const studentList = Array.isArray(students) ? students : [];
             const countdownEvents = Array.isArray(config?.countdownEvents) ? config.countdownEvents : [];
+            const isValidScheduleDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
             const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
                 ? config.scheduleNotes
                 : {};
             const scheduleNoteList = Object.entries(scheduleNotes)
-                .map(([date, note]) => ({ date, note: String(note || '').trim() }))
-                .filter(item => item.date && item.note)
+                .map(([date, note]) => ({ date: String(date || '').trim(), note: String(note || '').trim() }))
+                .filter(item => isValidScheduleDate(item.date) && item.note)
                 .sort((a, b) => a.date.localeCompare(b.date));
 
             return h("div", { className: "border-t pt-6" },
@@ -171,7 +173,14 @@
                                         h("div", { className: "text-sm text-gray-600 whitespace-pre-wrap break-words" }, item.note),
                                         h("div", { className: "flex gap-2" },
                                             h("button", {
-                                                onClick: () => handleScheduleDateChange(item.date),
+                                                onClick: () => {
+                                                    if (typeof handleScheduleEdit === 'function') {
+                                                        handleScheduleEdit(item.date, item.note);
+                                                        return;
+                                                    }
+                                                    handleScheduleDateChange(item.date);
+                                                    setScheduleText(item.note);
+                                                },
                                                 className: "px-2 py-1 text-xs bg-white border text-gray-700 rounded"
                                             }, "编辑"),
                                             h("button", {
