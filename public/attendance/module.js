@@ -463,7 +463,10 @@
                             ? (
                                 checkInEffect.usedMorningLateCard
                                     ? h("div", { className: "bg-amber-100 text-amber-800 px-4 py-2 rounded-full font-bold text-center" }, "早读迟到卡已抵扣，不扣分；但迟到仍会中断连胜")
-                                    : h("div", { className: "bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold" }, "本次迟到，连胜已中断")
+                                    : h("div", { className: "space-y-3 flex flex-col items-center" },
+                                        h("div", { className: "bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold" }, "本次迟到，连胜已中断"),
+                                        checkInEffect.pointsDelta < 0 && h("div", { className: "bg-red-50 text-red-700 px-4 py-2 rounded-full font-bold border border-red-200" }, `迟到扣分 ${checkInEffect.pointsDelta} 分`)
+                                    )
                             )
                             : h("div", { className: "space-y-3 flex flex-col items-center" },
                                 checkInEffect.pointsDelta > 0 && h("div", { className: "bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold" }, `准点打卡 +${checkInEffect.pointsDelta} 分`),

@@ -381,6 +381,85 @@ test('API smoke flows', async (t) => {
             assert.equal(attendanceResponse.status, 200);
             assert.equal(attendanceResponse.body.attendanceRecords['2026-03-30']['张三'].morning.status, 'ok');
         });
+
+        await t.test('attendance late check-in deducts configured late penalty', async () => {
+            const mondayLateMs = buildLocalTimestamp(2026, 2, 30, 7, 5, 0);
+            const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
+                method: 'POST',
+                headers: { Cookie: userCookie },
+                body: { simTimeMs: mondayLateMs }
+            });
+            assert.equal(sessionResponse.status, 200);
+            assert.equal(typeof sessionResponse.body.sessionId, 'string');
+
+            const sessionHeaders = {
+                Cookie: userCookie,
+                'x-test-session': sessionResponse.body.sessionId
+            };
+
+            const scopedUnlockResponse = await requestJson(baseUrl, '/api/maintenance/unlock', {
+                method: 'POST',
+                headers: sessionHeaders,
+                body: { password: 'Maintain123' }
+            });
+            assert.equal(scopedUnlockResponse.status, 200);
+            assert.equal(typeof scopedUnlockResponse.body.token, 'string');
+
+            const sessionWriteHeaders = {
+                ...sessionHeaders,
+                'x-maintenance-token': scopedUnlockResponse.body.token
+            };
+
+            const seedResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: sessionWriteHeaders,
+                body: {
+                    students: [
+                        {
+                            id: 'stu_late_1',
+                            name: '李四',
+                            zizai: 10,
+                            balance: 10,
+                            penalty: 0
+                        }
+                    ],
+                    history: [],
+                    config: {},
+                    __meta: {
+                        allowServerOverwrite: true
+                    }
+                }
+            });
+            assert.equal(seedResponse.status, 200);
+
+            const checkInResponse = await requestJson(baseUrl, '/api/attendance/check-in', {
+                method: 'POST',
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayLateMs)
+                },
+                body: { studentName: '李四' }
+            });
+            assert.equal(checkInResponse.status, 200);
+            assert.equal(checkInResponse.body.checkIn.studentName, '李四');
+            assert.equal(checkInResponse.body.checkIn.sessionId, 'morning');
+            assert.equal(checkInResponse.body.checkIn.status, 'late');
+            assert.equal(checkInResponse.body.checkIn.pointsDelta, -1);
+            assert.equal(checkInResponse.body.students[0].zizai, 10);
+            assert.equal(checkInResponse.body.students[0].balance, 9);
+            assert.equal(checkInResponse.body.students[0].penalty, 1);
+            assert.equal(checkInResponse.body.history[0].reason, '考勤迟到: 早读');
+            assert.equal(checkInResponse.body.history[0].val, -1);
+
+            const attendanceResponse = await requestJson(baseUrl, '/api/attendance', {
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayLateMs)
+                }
+            });
+            assert.equal(attendanceResponse.status, 200);
+            assert.equal(attendanceResponse.body.attendanceRecords['2026-03-30']['李四'].morning.status, 'late');
+        });
     } finally {
         await stopServer(child, { signal: 'SIGTERM', requireGraceful: true });
         fs.rmSync(tempDir, { recursive: true, force: true });
