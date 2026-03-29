@@ -47,7 +47,9 @@
             buildModalStudents,
             buildBatchUpdates,
             buildHomeworkUpdates,
-            buildHomeworkConfirmMessage
+            buildHomeworkConfirmMessage,
+            buildRunningExerciseUpdates,
+            buildRunningExerciseConfirmMessage
         } = builders;
         const createOperationHandlers = window.createOperationHandlers;
         const createOperationViews = window.createOperationViews;
@@ -94,6 +96,8 @@
             !buildBatchUpdates ||
             !buildHomeworkUpdates ||
             !buildHomeworkConfirmMessage ||
+            !buildRunningExerciseUpdates ||
+            !buildRunningExerciseConfirmMessage ||
             !createOperationHandlers ||
             !createOperationViews ||
             !createOperationSettingsSections ||
@@ -108,6 +112,7 @@
             StudentSelectionGrid,
             ReasonToolbar,
             HomeworkPanel,
+            RunningExercisePanel,
             RecentHistoryPanel,
             BatchAdjustModalView
         } = createOperationViews({
@@ -126,6 +131,7 @@
             SubjectConfigSection,
             ReasonsConfigSection,
             PenaltyDecaySection,
+            RunningExerciseSettingsSection,
             RecordAttributesSection
         } = createOperationSettingsSections({
             h,
@@ -183,6 +189,8 @@
             const [hwSubject, setHwSubject] = useState("");
             const [hwDate, setHwDate] = useState("");
             const [hwSelectedIds, setHwSelectedIds] = useState(new Set());
+            const [runDate, setRunDate] = useState("");
+            const [runSelectedAbsentIds, setRunSelectedAbsentIds] = useState(new Set());
 
             const setSelectedIds = (next) => {
                 setSelectedIdsState(prev => {
@@ -259,6 +267,10 @@
                     const next = sanitizeIdSetByStudents(prev, students);
                     return setsAreEqual(prev, next) ? prev : next;
                 });
+                setRunSelectedAbsentIds(prev => {
+                    const next = sanitizeIdSetByStudents(prev, students);
+                    return setsAreEqual(prev, next) ? prev : next;
+                });
                 if (filterGroupState !== DEFAULT_UI_STATE.filterGroup && !Object.prototype.hasOwnProperty.call(groupsConfig, filterGroupState)) {
                     setFilterGroup(DEFAULT_UI_STATE.filterGroup);
                 }
@@ -286,7 +298,9 @@
                 updateAllBatchValues,
                 handleBatchConfirm,
                 toggleHomeworkSelection,
-                handleHomeworkSubmit
+                handleHomeworkSubmit,
+                toggleRunningExerciseSelection,
+                handleRunningExerciseSubmit
             } = createOperationHandlers({
                 selectedIdsState,
                 setSelectedIds,
@@ -311,7 +325,15 @@
                 buildHomeworkUpdates,
                 buildHomeworkConfirmMessage,
                 setHwSelectedIds,
-                setHwSubject
+                setHwSubject,
+                students,
+                runDate,
+                runSelectedAbsentIds,
+                buildRunningExerciseUpdates,
+                buildRunningExerciseConfirmMessage,
+                setRunSelectedAbsentIds,
+                runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
+                runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus
             });
 
             return h("div", { className: "space-y-6 animate-fade-in" },
@@ -349,7 +371,7 @@
                                 h(Icon, { name: "settings", size: 18 }),
                                 h("h3", { className: "font-bold text-sm" }, "积分操作区设置")
                             ),
-                            h("p", { className: "text-xs text-gray-500" }, "统一管理积分导出、手动修正、历史核对、积分理由、课代表和记录属性维护。")
+                            h("p", { className: "text-xs text-gray-500" }, "统一管理积分导出、手动修正、历史核对、积分理由、跑操分值、课代表和记录属性维护。")
                         ),
                         h("button", {
                             onClick: toggleSettingsPanel,
@@ -392,6 +414,11 @@
                             setConfig,
                             embedded: true
                         }),
+                        h(RunningExerciseSettingsSection, {
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
                         h(SubjectConfigSection, {
                             students,
                             config,
@@ -419,6 +446,18 @@
                     setHwSelectedIds,
                     onToggleHomeworkSelection: toggleHomeworkSelection,
                     onSubmit: handleHomeworkSubmit
+                }),
+                h(RunningExercisePanel, {
+                    students: Array.isArray(students) ? students : [],
+                    runningExerciseDates: homeworkDates,
+                    runDate,
+                    setRunDate,
+                    runSelectedAbsentIds,
+                    setRunSelectedAbsentIds,
+                    runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
+                    runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
+                    onToggleRunningExerciseSelection: toggleRunningExerciseSelection,
+                    onSubmit: handleRunningExerciseSubmit
                 }),
                 h(RecentHistoryPanel, {
                     recentHistory,

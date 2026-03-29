@@ -40,7 +40,15 @@
             buildHomeworkUpdates,
             buildHomeworkConfirmMessage,
             setHwSelectedIds,
-            setHwSubject
+            setHwSubject,
+            students,
+            runDate,
+            runSelectedAbsentIds,
+            buildRunningExerciseUpdates,
+            buildRunningExerciseConfirmMessage,
+            setRunSelectedAbsentIds,
+            runningExerciseAbsentPenalty,
+            runningExercisePresentBonus
         } = deps || {};
 
         if (
@@ -57,7 +65,10 @@
             !buildHomeworkUpdates ||
             !buildHomeworkConfirmMessage ||
             typeof setHwSelectedIds !== 'function' ||
-            typeof setHwSubject !== 'function'
+            typeof setHwSubject !== 'function' ||
+            !buildRunningExerciseUpdates ||
+            !buildRunningExerciseConfirmMessage ||
+            typeof setRunSelectedAbsentIds !== 'function'
         ) {
             throw new Error('Operation action dependencies are missing');
         }
@@ -195,6 +206,46 @@
             setHwSubject("");
         };
 
+        const toggleRunningExerciseSelection = (id) => {
+            setRunSelectedAbsentIds(prev => toggleIdInSet(prev, id));
+        };
+
+        const handleRunningExerciseSubmit = () => {
+            const dateVal = runDate || homeworkDates[0];
+            if (!dateVal) return alert("请选择日期");
+
+            const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
+                item.reason && item.reason.includes(dateVal) && item.reason.includes('跑操')
+            ));
+            if (alreadySubmitted) {
+                return alert(`${dateVal} 已完成跑操登记，每天只能登记一次`);
+            }
+
+            const updates = buildRunningExerciseUpdates({
+                students,
+                dateVal,
+                absentIds: runSelectedAbsentIds,
+                absentPenalty: runningExerciseAbsentPenalty,
+                presentBonus: runningExercisePresentBonus
+            });
+            if (updates.length === 0) {
+                return alert("当前跑操登记不会产生积分变动，请先在积分操作设置里调整跑操分值。");
+            }
+
+            const confirmMsg = buildRunningExerciseConfirmMessage({
+                students,
+                dateVal,
+                absentIds: runSelectedAbsentIds,
+                studentMap,
+                absentPenalty: runningExerciseAbsentPenalty,
+                presentBonus: runningExercisePresentBonus
+            });
+            if (!confirm(confirmMsg)) return;
+
+            batchUpdatePoints(updates);
+            setRunSelectedAbsentIds(new Set());
+        };
+
         return {
             toggleSelection,
             toggleSelectAll,
@@ -204,7 +255,9 @@
             updateAllBatchValues,
             handleBatchConfirm,
             toggleHomeworkSelection,
-            handleHomeworkSubmit
+            handleHomeworkSubmit,
+            toggleRunningExerciseSelection,
+            handleRunningExerciseSubmit
         };
     };
 })();

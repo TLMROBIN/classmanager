@@ -409,6 +409,78 @@
             );
         };
 
+        const RunningExerciseSettingsSection = ({ config, setConfig, embedded = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const systemConfig = getSystemConfig(config);
+            const pointsConfig = (systemConfig && systemConfig.points) || {};
+            const isVisible = isOpen;
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", { className: "space-y-1" },
+                        h("div", { className: "flex items-center gap-2 text-gray-800" },
+                            h(Icon, { name: "tasks", size: 18 }),
+                            h("h3", { className: "font-bold text-sm" }, "跑操考勤设置")
+                        ),
+                        h("p", { className: "text-xs text-gray-500" }, "配置跑操登记时，缺勤学生扣多少分，以及正常出勤学生加多少分。")
+                    ),
+                    h("button", {
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入维护密码以打开跑操考勤设置："
+                            });
+                        },
+                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                    }, isOpen ? "收起跑操设置" : "打开跑操设置")
+                ),
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "跑操缺勤扣分"),
+                            h("input", {
+                                type: "number",
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: pointsConfig.runningExerciseAbsentPenalty ?? 1,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        runningExerciseAbsentPenalty: Number(e.target.value) || 0
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "登记为缺勤的学生会按这个值扣分，实际记分时会自动按扣分处理。")
+                        ),
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "跑操正常加分"),
+                            h("input", {
+                                type: "number",
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: pointsConfig.runningExercisePresentBonus ?? 1,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        runningExercisePresentBonus: Number(e.target.value) || 0
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "未被勾为缺勤的其余学生都会获得这个加分。填 0 表示只登记不加分。")
+                        )
+                    ),
+                    h("div", { className: "rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600 leading-5" }, "跑操登记每天只能提交一次，提交后会同时写入缺勤扣分和正常出勤加分记录。")
+                )
+            );
+        };
+
         const RecordAttributesSection = ({ history, setHistory, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const [recordSearch, setRecordSearch] = useState("");
@@ -574,6 +646,7 @@
             SubjectConfigSection,
             ReasonsConfigSection,
             PenaltyDecaySection,
+            RunningExerciseSettingsSection,
             RecordAttributesSection
         };
     };

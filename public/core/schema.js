@@ -164,6 +164,8 @@
             dailyWageGroups: ['discipline', 'hygiene'],
             penaltyDecayDays: 7,
             penaltyDecayAmount: 10,
+            runningExerciseAbsentPenalty: 1,
+            runningExercisePresentBonus: 1,
             reasons: [
                 { name: '每日工资', val: 5, type: 'bonus', note: '组长+6', scene: '班级', category: '班务' },
                 { name: '宣传组装饰', val: 100, type: 'bonus', note: '组长+120', scene: '班级', category: '纪律' },
@@ -362,6 +364,14 @@
             if (userConfig.points.penaltyDecayAmount !== undefined) {
                 const decayAmount = Number(userConfig.points.penaltyDecayAmount);
                 if (Number.isFinite(decayAmount)) merged.points.penaltyDecayAmount = decayAmount;
+            }
+            if (userConfig.points.runningExerciseAbsentPenalty !== undefined) {
+                const absentPenalty = Number(userConfig.points.runningExerciseAbsentPenalty);
+                if (Number.isFinite(absentPenalty)) merged.points.runningExerciseAbsentPenalty = absentPenalty;
+            }
+            if (userConfig.points.runningExercisePresentBonus !== undefined) {
+                const presentBonus = Number(userConfig.points.runningExercisePresentBonus);
+                if (Number.isFinite(presentBonus)) merged.points.runningExercisePresentBonus = presentBonus;
             }
             if (userConfig.points.reasons) {
                 merged.points.reasons = userConfig.points.reasons;

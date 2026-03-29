@@ -89,10 +89,97 @@
         return confirmMsg;
     };
 
+    const buildRunningExerciseUpdates = ({
+        students,
+        dateVal,
+        absentIds,
+        absentPenalty,
+        presentBonus
+    }) => {
+        const studentList = Array.isArray(students) ? students : [];
+        const absentIdSet = absentIds instanceof Set ? absentIds : new Set(absentIds || []);
+        const updates = [];
+        const normalizedAbsentPenalty = Math.abs(Number(absentPenalty) || 0);
+        const normalizedPresentBonus = Math.abs(Number(presentBonus) || 0);
+
+        studentList.forEach(student => {
+            if (!student || student.id == null) return;
+            if (absentIdSet.has(student.id)) {
+                if (normalizedAbsentPenalty === 0) return;
+                updates.push({
+                    id: student.id,
+                    val: -normalizedAbsentPenalty,
+                    reason: `${dateVal} 跑操缺勤`,
+                    type: 'penalty',
+                    scene: '班级',
+                    category: '出勤'
+                });
+                return;
+            }
+
+            if (normalizedPresentBonus === 0) return;
+            updates.push({
+                id: student.id,
+                val: normalizedPresentBonus,
+                reason: `${dateVal} 跑操出勤`,
+                type: 'bonus',
+                scene: '班级',
+                category: '出勤'
+            });
+        });
+
+        return updates;
+    };
+
+    const buildRunningExerciseConfirmMessage = ({
+        students,
+        dateVal,
+        absentIds,
+        studentMap,
+        absentPenalty,
+        presentBonus
+    }) => {
+        const studentList = Array.isArray(students) ? students : [];
+        const absentIdSet = absentIds instanceof Set ? absentIds : new Set(absentIds || []);
+        const absentStudents = Array.from(absentIdSet)
+            .map(id => studentMap.get(String(id))?.name || '')
+            .filter(Boolean);
+        const presentCount = studentList.reduce((count, student) => (
+            absentIdSet.has(student.id) ? count : count + 1
+        ), 0);
+        const normalizedAbsentPenalty = Math.abs(Number(absentPenalty) || 0);
+        const normalizedPresentBonus = Math.abs(Number(presentBonus) || 0);
+
+        let confirmMsg = `确认提交 ${dateVal} 的跑操考勤登记？\n\n`;
+        confirmMsg += "⚠️ 提醒：每天只能登记一次，请确认缺勤名单后再提交。\n\n";
+
+        if (absentStudents.length > 0) {
+            confirmMsg += `缺勤学生 (${absentStudents.length}人)：\n${absentStudents.join('、')}\n`;
+        } else {
+            confirmMsg += "缺勤学生：无\n";
+        }
+
+        if (normalizedAbsentPenalty > 0) {
+            confirmMsg += `缺勤扣分：每人 -${normalizedAbsentPenalty} 分\n`;
+        } else {
+            confirmMsg += "缺勤扣分：已关闭\n";
+        }
+
+        if (normalizedPresentBonus > 0) {
+            confirmMsg += `正常出勤加分：其余 ${presentCount} 人，每人 +${normalizedPresentBonus} 分`;
+        } else {
+            confirmMsg += `正常出勤加分：已关闭（${presentCount} 人不加分）`;
+        }
+
+        return confirmMsg;
+    };
+
     window.OperationBuilders = {
         buildModalStudents,
         buildBatchUpdates,
         buildHomeworkUpdates,
-        buildHomeworkConfirmMessage
+        buildHomeworkConfirmMessage,
+        buildRunningExerciseUpdates,
+        buildRunningExerciseConfirmMessage
     };
 })();

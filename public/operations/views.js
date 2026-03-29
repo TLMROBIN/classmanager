@@ -289,6 +289,57 @@
             )
         );
 
+        const RunningExercisePanel = ({
+            students,
+            runningExerciseDates,
+            runDate,
+            setRunDate,
+            runSelectedAbsentIds,
+            setRunSelectedAbsentIds,
+            runningExerciseAbsentPenalty,
+            runningExercisePresentBonus,
+            onToggleRunningExerciseSelection,
+            onSubmit
+        }) => h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+            h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
+            h("div", { className: "flex flex-wrap gap-2 mb-3" },
+                runningExerciseDates.map(date => h("button", {
+                    key: date,
+                    onClick: () => setRunDate(date),
+                    className: `px-3 py-1 rounded-full text-xs font-bold border ${((runDate || runningExerciseDates[0]) === date) ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                }, date))
+            ),
+            h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3 leading-5" },
+                `缺勤扣分 ${Math.abs(Number(runningExerciseAbsentPenalty) || 0)} 分，正常出勤加分 ${Math.abs(Number(runningExercisePresentBonus) || 0)} 分。填 0 的一侧将不会记分。`
+            ),
+            h("div", { className: "flex justify-between items-center mb-2" },
+                h("div", { className: "text-sm text-gray-600" }, "选择缺勤学生"),
+                h("div", { className: "flex gap-2" },
+                    h("button", { onClick: () => setRunSelectedAbsentIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
+                    h("button", {
+                        onClick: () => setRunSelectedAbsentIds(new Set(students.map(student => student.id))),
+                        className: "text-xs text-blue-600"
+                    }, "全选缺勤")
+                )
+            ),
+            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-56 overflow-y-auto border rounded p-2" },
+                students.map(student => {
+                    const chosen = runSelectedAbsentIds.has(student.id);
+                    return h("button", {
+                        key: student.id,
+                        onClick: () => onToggleRunningExerciseSelection(student.id),
+                        className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                    }, student.name);
+                })
+            ),
+            h("div", { className: "pt-3 flex justify-end gap-2" },
+                h("button", {
+                    onClick: onSubmit,
+                    className: "px-4 py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700"
+                }, runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size}人缺勤)`)
+            )
+        );
+
         const RecentHistoryPanel = ({ recentHistory, onUndo }) => h("div", {
             className: "bg-white p-4 rounded-xl shadow-sm mt-6"
         },
@@ -421,6 +472,7 @@
             StudentSelectionGrid,
             ReasonToolbar,
             HomeworkPanel,
+            RunningExercisePanel,
             RecentHistoryPanel,
             BatchAdjustModalView
         };
