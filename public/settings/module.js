@@ -494,6 +494,34 @@
             XLSX.utils.book_append_sheet(wb, ws, "学生名单");
             XLSX.writeFile(wb, `学生名单_${getTodayStr()}.xlsx`);
         };
+
+        const persistStudentRosterChanges = ({ nextStudents, nextStudentProfiles, successMessage }) => {
+            setStudents(nextStudents);
+            if (typeof setStudentProfiles === 'function') {
+                setStudentProfiles(nextStudentProfiles);
+            }
+            if (isDirtyRef) isDirtyRef.current = true;
+            if (typeof persistDataPatch !== 'function') {
+                if (isDirtyRef) isDirtyRef.current = false;
+                if (successMessage) alert(successMessage);
+                return Promise.resolve();
+            }
+            return persistDataPatch({
+                students: nextStudents,
+                studentProfiles: nextStudentProfiles
+            }, {
+                suppressFollowupAutoSave: true
+            }).then(() => {
+                if (isDirtyRef) isDirtyRef.current = false;
+                if (successMessage) alert(successMessage);
+            }).catch(err => {
+                if (isDirtyRef) isDirtyRef.current = false;
+                console.error('学生名单保存失败:', err);
+                alert(err?.message || '学生名单已导入，但保存失败，请先不要退出登录并重试');
+                if (err && typeof err === 'object') err.__studentRosterSaveAlerted = true;
+                throw err;
+            });
+        };
         
         const handleImportStudentsExcel = (e, mode = 'overwrite') => {
             const file = e.target.files[0];
@@ -540,23 +568,26 @@
                 if (mode === 'merge') {
                     if (!confirm(`解析到 ${validation.normalizedRows.length} 条学生记录，确定【增量导入】吗？将更新同名学生并新增不存在学生。`)) return;
                     const incoming = validation.normalizedRows.map(({ excelRow, ...student }) => student).filter(s => s.name);
-                    setStudents(prev => {
-                        const list = Array.isArray(prev) ? prev : [];
-                        const byName = new Map(list.map(s => [normalizeName(s.name), s]));
-                        const updates = new Map(incoming.map(s => [normalizeName(s.name), s]));
-                        const updated = list.map(s => {
-                            const key = normalizeName(s.name);
-                            const patch = updates.get(key);
-                            if (!patch) return s;
-                            return { ...s, ...patch };
-                        });
-                        const now = Date.now();
-                        const additions = incoming
-                            .filter(s => !byName.has(normalizeName(s.name)))
-                            .map((s, idx) => ({ id: now + idx, ...s, zizai: 0, balance: 0, penalty: 0 }));
-                        return [...updated, ...additions];
+                    const list = Array.isArray(students) ? students : [];
+                    const byName = new Map(list.map(s => [normalizeName(s.name), s]));
+                    const updates = new Map(incoming.map(s => [normalizeName(s.name), s]));
+                    const updated = list.map(s => {
+                        const key = normalizeName(s.name);
+                        const patch = updates.get(key);
+                        if (!patch) return s;
+                        return { ...s, ...patch };
                     });
-                    alert("学生名单已增量导入");
+                    const now = Date.now();
+                    const additions = incoming
+                        .filter(s => !byName.has(normalizeName(s.name)))
+                        .map((s, idx) => ({ id: now + idx, ...s, zizai: 0, balance: 0, penalty: 0 }));
+                    const nextStudents = [...updated, ...additions];
+                    const nextStudentProfiles = restoreStudentProfilesFromData({ students: nextStudents }, studentProfiles, list);
+                    return persistStudentRosterChanges({
+                        nextStudents,
+                        nextStudentProfiles,
+                        successMessage: "学生名单已增量导入并保存"
+                    });
                 } else {
                     if (!confirm(`解析到 ${validation.normalizedRows.length} 条学生记录，确定覆盖现有名单吗？`)) return;
                     const now = Date.now();
@@ -570,11 +601,15 @@
                             penalty: 0
                         };
                     });
-                    setStudents(newStudents);
-                    setStudentProfiles(remapStudentProfilesToStudentsByName(students, newStudents, studentProfiles));
-                    alert("学生名单已更新");
+                    const nextStudentProfiles = remapStudentProfilesToStudentsByName(students, newStudents, studentProfiles);
+                    return persistStudentRosterChanges({
+                        nextStudents: newStudents,
+                        nextStudentProfiles,
+                        successMessage: "学生名单已更新并保存"
+                    });
                 }
             }).catch((error) => {
+                if (error?.__studentRosterSaveAlerted) return;
                 alert(error?.message || "导入失败，请检查 Excel 文件");
             }).finally(() => {
                 e.target.value = '';
