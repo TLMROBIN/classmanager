@@ -1,25 +1,49 @@
 (function () {
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
+    const changePasswordForm = document.getElementById('changePasswordForm');
     const loading = document.getElementById('loading');
     const loginButton = document.getElementById('loginButton');
     const registerButton = document.getElementById('registerButton');
+    const changePasswordButton = document.getElementById('changePasswordButton');
     const showRegisterButton = document.getElementById('showRegisterButton');
     const showLoginButton = document.getElementById('showLoginButton');
+    const showChangePasswordButton = document.getElementById('showChangePasswordButton');
+    const showLoginFromChangeButton = document.getElementById('showLoginFromChangeButton');
+    let activeView = 'login';
+
+    const showOnly = (target) => {
+        activeView = target;
+        loginForm.classList.toggle('hidden', target !== 'login');
+        registerForm.classList.toggle('hidden', target !== 'register');
+        changePasswordForm.classList.toggle('hidden', target !== 'changePassword');
+    };
 
     const showRegister = () => {
-        loginForm.classList.add('hidden');
-        registerForm.classList.remove('hidden');
+        showOnly('register');
     };
 
     const showLogin = () => {
-        registerForm.classList.add('hidden');
-        loginForm.classList.remove('hidden');
+        showOnly('login');
+    };
+
+    const showChangePassword = () => {
+        const loginUsername = document.getElementById('username').value.trim();
+        const changeUsername = document.getElementById('changeUsername');
+        if (loginUsername && changeUsername && !changeUsername.value.trim()) {
+            changeUsername.value = loginUsername;
+        }
+        showOnly('changePassword');
     };
 
     const showLoading = (show) => {
-        loginForm.classList.toggle('hidden', show);
-        registerForm.classList.toggle('hidden', show);
+        if (show) {
+            loginForm.classList.add('hidden');
+            registerForm.classList.add('hidden');
+            changePasswordForm.classList.add('hidden');
+        } else {
+            showOnly(activeView);
+        }
         loading.classList.toggle('hidden', !show);
     };
 
@@ -122,10 +146,65 @@
         showLoading(false);
     };
 
+    const handleChangePassword = async () => {
+        const username = document.getElementById('changeUsername').value.trim();
+        const currentPassword = document.getElementById('changeCurrentPassword').value;
+        const newPassword = document.getElementById('changeNewPassword').value;
+        const confirmPassword = document.getElementById('changeConfirmPassword').value;
+
+        if (!username || !currentPassword || !newPassword) {
+            alert('请填写用户名、当前密码和新密码');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            alert('新密码长度至少6个字符');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            alert('两次输入的新密码不一致');
+            return;
+        }
+
+        showLoading(true);
+
+        try {
+            const res = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, currentPassword, newPassword })
+            });
+            const data = await parseJsonResponse(res);
+
+            if (res.ok && data && data.success) {
+                alert(data.message || '密码修改成功');
+                document.getElementById('username').value = username;
+                document.getElementById('password').value = '';
+                document.getElementById('changeCurrentPassword').value = '';
+                document.getElementById('changeNewPassword').value = '';
+                document.getElementById('changeConfirmPassword').value = '';
+                showLoading(false);
+                showLogin();
+                return;
+            }
+
+            alert((data && data.error) || '修改密码失败');
+        } catch (error) {
+            console.error('修改密码失败:', error);
+            alert('网络错误，请重试');
+        }
+
+        showLoading(false);
+    };
+
     loginButton.addEventListener('click', handleLogin);
     registerButton.addEventListener('click', handleRegister);
+    changePasswordButton.addEventListener('click', handleChangePassword);
     showRegisterButton.addEventListener('click', showRegister);
     showLoginButton.addEventListener('click', showLogin);
+    showChangePasswordButton.addEventListener('click', showChangePassword);
+    showLoginFromChangeButton.addEventListener('click', showLogin);
 
     document.addEventListener('keypress', (event) => {
         if (event.key !== 'Enter') return;
@@ -137,6 +216,11 @@
 
         if (!registerForm.classList.contains('hidden')) {
             void handleRegister();
+            return;
+        }
+
+        if (!changePasswordForm.classList.contains('hidden')) {
+            void handleChangePassword();
         }
     });
 

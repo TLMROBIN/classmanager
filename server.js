@@ -1598,6 +1598,39 @@ app.post('/api/auth/login', (req, res) => {
     sendAuthSuccess(req, res, user, token);
 });
 
+// 修改密码
+app.post('/api/auth/change-password', (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!username || !currentPassword || !newPassword) {
+        return res.status(400).json({ error: '用户名、当前密码和新密码不能为空' });
+    }
+
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: '新密码长度至少6个字符' });
+    }
+
+    const user = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?').get(username);
+    if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+        return res.status(401).json({ error: '用户名或当前密码错误' });
+    }
+
+    if (verifyPassword(newPassword, user.password_hash)) {
+        return res.status(400).json({ error: '新密码不能与当前密码相同' });
+    }
+
+    try {
+        const passwordHash = hashPassword(newPassword);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+        res.json({ success: true, message: '密码修改成功，请使用新密码登录' });
+    } catch (err) {
+        console.error('修改密码失败:', err);
+        res.status(500).json({ error: '修改密码失败，请重试' });
+    }
+});
+
 // 验证token
 app.get('/api/auth/verify', authMiddleware, (req, res) => {
     res.set('Cache-Control', 'no-store');

@@ -227,6 +227,42 @@ test('API smoke flows', async (t) => {
             assert.equal(verifyResponse.body.user.role, 'user');
         });
 
+        await t.test('access password can be changed from login flow', async () => {
+            const username = `uc${Date.now()}`;
+            const password = 'User123456';
+            const newPassword = 'User654321';
+
+            const registerResponse = await requestJson(baseUrl, '/api/auth/register', {
+                method: 'POST',
+                body: { username, password }
+            });
+            assert.equal(registerResponse.status, 200);
+
+            const changePasswordResponse = await requestJson(baseUrl, '/api/auth/change-password', {
+                method: 'POST',
+                body: {
+                    username,
+                    currentPassword: password,
+                    newPassword
+                }
+            });
+            assert.equal(changePasswordResponse.status, 200);
+            assert.equal(changePasswordResponse.body.success, true);
+
+            const oldLoginResponse = await requestJson(baseUrl, '/api/auth/login', {
+                method: 'POST',
+                body: { username, password }
+            });
+            assert.equal(oldLoginResponse.status, 401);
+
+            const newLoginResponse = await requestJson(baseUrl, '/api/auth/login', {
+                method: 'POST',
+                body: { username, password: newPassword }
+            });
+            assert.equal(newLoginResponse.status, 200);
+            assert.ok(newLoginResponse.cookie);
+        });
+
         await t.test('maintenance password can be setup and unlocked', async () => {
             const statusResponse = await requestJson(baseUrl, '/api/maintenance/status', {
                 headers: { Cookie: userCookie }
