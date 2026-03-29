@@ -51,9 +51,23 @@ if (
     !window.PointsController ||
     !window.AttendancePoints ||
     !window.TreasurePoints ||
-    !window.TreasureActions
+    !window.TreasureActions ||
+    !window.ClassPetState ||
+    !window.ClassPetData
 ) {
-    throw new Error('Points helpers are missing');
+    throw new Error('Core helpers are missing');
+}
+
+const petState = window.ClassPetState || {};
+const {
+    reconcilePetDomain,
+    renamePet,
+    purchasePetItem,
+    hatchPet,
+    resetPetSystem
+} = petState;
+if (!reconcilePetDomain || !renamePet || !purchasePetItem || !hatchPet || !resetPetSystem) {
+    throw new Error('Pet state helpers are missing');
 }
 
 const {
@@ -259,6 +273,7 @@ const INITIAL_TREASURES = [
             swords: h("g", null, h("path", { d: "M14.5 17.5L3 6V3h3l11.5 11.5" }), h("path", { d: "M13 19l6-6" }), h("path", { d: "M16 16l4 4" }), h("path", { d: "M19 21l2-2" })),
             excel: h("g", null, h("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }), h("polyline", { points: "14 2 14 8 20 8" }), h("line", { x1: "8", y1: "13", x2: "16", y2: "13" }), h("line", { x1: "8", y1: "17", x2: "16", y2: "17" }), h("line", { x1: "10", y1: "9", x2: "8", y2: "9" })),
             gift: h("g", null, h("polyline", { points: "20 12 20 22 4 22 4 12" }), h("rect", { width: "20", height: "5", x: "2", y: "7" }), h("line", { x1: "12", y1: "22", x2: "12", y2: "7" }), h("path", { d: "M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" }), h("path", { d: "M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" })),
+            heart: h("path", { d: "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" }),
             lock: h("g", null, h("rect", { x: "3", y: "11", width: "18", height: "11", rx: "2", ry: "2" }), h("path", { d: "M7 11V7a5 5 0 0 1 10 0v4" })),
             cloud: h("g", null, h("path", { d: "M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" })),
             wifi: h("g", null, h("path", { d: "M5 12.55a11 11 0 0 1 14.08 0" }), h("path", { d: "M1.42 9a16 16 0 0 1 21.16 0" }), h("path", { d: "M8.53 16.11a6 6 0 0 1 6.95 0" }), h("line", { x1: "12", y1: "20", x2: "12.01", y2: "20" })),
@@ -497,6 +512,20 @@ const INITIAL_TREASURES = [
         return window.__TreasureViewComponent__;
     };
 
+    const getPetView = () => {
+        if (window.__PetViewComponent__) return window.__PetViewComponent__;
+        if (typeof window.createPetView !== 'function') return null;
+        window.__PetViewComponent__ = window.createPetView({
+            h,
+            useState,
+            useEffect,
+            Icon,
+            Modal,
+            requireAdminAuth
+        });
+        return window.__PetViewComponent__;
+    };
+
     const getSettingsView = () => {
         if (window.__SettingsViewComponent__) return window.__SettingsViewComponent__;
         if (
@@ -722,6 +751,8 @@ const INITIAL_TREASURES = [
             setHistory,
             attendanceRecords,
             setAttendanceRecords,
+            pets,
+            setPets,
             treasures,
             setTreasures,
             storage,
@@ -752,6 +783,8 @@ const INITIAL_TREASURES = [
             setTasksModuleStatus,
             battleModuleStatus,
             setBattleModuleStatus,
+            petModuleStatus,
+            setPetModuleStatus,
             settingsModuleStatus,
             setSettingsModuleStatus,
             displayStudents,
@@ -779,10 +812,12 @@ const INITIAL_TREASURES = [
         const OperationView = getOperationView();
         const AttendanceView = getAttendanceView();
         const TreasureView = getTreasureView();
+        const PetView = petModuleStatus === 'ready' ? getPetView() : null;
         const SettingsView = settingsModuleStatus === 'ready' ? getSettingsView() : null;
         const ProfileView = profileModuleStatus === 'ready' ? getProfileView() : null;
         const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
         const BattleView = battleModuleStatus === 'ready' ? getBattleView() : null;
+        const petFeatureEnabled = getSystemConfig(config).enabledFeatures?.pet === true;
 
         useEffect(() => {
             if (activeTab !== 'profile' || profileModuleStatus === 'ready' || profileModuleStatus === 'loading') return;
@@ -841,6 +876,30 @@ const INITIAL_TREASURES = [
                     setBattleModuleStatus('error');
                 });
         }, [activeTab, battleModuleStatus]);
+
+        useEffect(() => {
+            if (activeTab !== 'pet' || petModuleStatus === 'ready' || petModuleStatus === 'loading') return;
+            setPetModuleStatus('loading');
+            loadScriptOnce('pet/module.js')
+                .then(() => {
+                    if (typeof window.createPetView === 'function') {
+                        getPetView();
+                        setPetModuleStatus('ready');
+                    } else {
+                        setPetModuleStatus('error');
+                    }
+                })
+                .catch(err => {
+                    console.error('加载宠物模块失败:', err);
+                    setPetModuleStatus('error');
+                });
+        }, [activeTab, petModuleStatus]);
+
+        useEffect(() => {
+            if (activeTab === 'pet' && !petFeatureEnabled) {
+                setActiveTab('dashboard');
+            }
+        }, [activeTab, petFeatureEnabled, setActiveTab]);
 
         useEffect(() => {
             if (activeTab !== 'settings' || settingsModuleStatus === 'ready' || settingsModuleStatus === 'loading') return;
@@ -913,6 +972,7 @@ const INITIAL_TREASURES = [
             history,
             config,
             attendanceRecords,
+            pets,
             treasures,
             storage,
             logs,
@@ -931,6 +991,7 @@ const INITIAL_TREASURES = [
             setHistory,
             setConfig,
             setAttendanceRecords,
+            setPets,
             setTreasures,
             setStorage,
             setLogs,
@@ -961,6 +1022,25 @@ const INITIAL_TREASURES = [
             const className = systemConfig.className || "班级自在管理系统";
             document.title = className;
         }, [config]);
+
+        useEffect(() => {
+            if (!localHydrationDone) return;
+            const hasPetData = Object.keys((pets && pets.pets) || {}).length > 0;
+            if (!petFeatureEnabled && !hasPetData) return;
+            const result = reconcilePetDomain({
+                domain: pets,
+                students,
+                history,
+                attendanceRecords,
+                nowTs: getNow().getTime()
+            });
+            if (result.changed) {
+                setPets(result.domain);
+                persistManagedPatch({ pets: result.domain }).catch((error) => {
+                    console.error('自动同步宠物域失败:', error);
+                });
+            }
+        }, [localHydrationDone, petFeatureEnabled, pets, students, history, attendanceRecords, setPets, persistManagedPatch]);
 
 
         // NEW Batch Update Function
@@ -1211,6 +1291,77 @@ const INITIAL_TREASURES = [
             return { ok: true };
         };
 
+        const handleRenamePet = (studentId, nickname) => {
+            const result = renamePet({
+                domain: pets,
+                studentId,
+                nickname
+            });
+            if (!result?.ok) return result || { ok: false, message: "宠物改名失败" };
+            setPets(result.domain);
+            persistManagedPatch({ pets: result.domain });
+            return { ok: true };
+        };
+
+        const handleHatchPet = (studentId) => {
+            const student = students.find((entry) => String(entry.id) === String(studentId));
+            const result = hatchPet({
+                domain: pets,
+                studentId,
+                student,
+                nowTs: getNow().getTime()
+            });
+            if (!result?.ok) return result || { ok: false, message: "宠物孵化失败" };
+            const reconciled = reconcilePetDomain({
+                domain: result.domain,
+                students,
+                history,
+                attendanceRecords,
+                nowTs: getNow().getTime()
+            });
+            setPets(reconciled.domain);
+            persistManagedPatch({ pets: reconciled.domain });
+            return { ok: true };
+        };
+
+        const handleBuyPetItem = (studentId, itemId) => {
+            const purchaseResult = purchasePetItem({
+                domain: pets,
+                students,
+                history,
+                studentId,
+                itemId,
+                nowTs: getNow().getTime()
+            });
+            if (!purchaseResult?.ok) return purchaseResult || { ok: false, message: "宠物商城购买失败" };
+            const reconciled = reconcilePetDomain({
+                domain: purchaseResult.domain,
+                students: purchaseResult.students,
+                history: purchaseResult.history,
+                attendanceRecords,
+                nowTs: getNow().getTime()
+            });
+            setStudents(purchaseResult.students);
+            setHistory(purchaseResult.history);
+            setPets(reconciled.domain);
+            persistManagedPatch({
+                students: purchaseResult.students,
+                history: purchaseResult.history,
+                pets: reconciled.domain
+            });
+            return { ok: true };
+        };
+
+        const handleResetPetSystem = () => {
+            const nextDomain = resetPetSystem({
+                students,
+                nowTs: getNow().getTime()
+            });
+            setPets(nextDomain);
+            persistManagedPatch({ pets: nextDomain });
+            return { ok: true };
+        };
+
         const handleClaimTask = (taskId, studentId) => {
             const tasksPoints = window.TasksPoints || {};
             if (typeof tasksPoints.buildTaskClaimState !== 'function') return false;
@@ -1296,6 +1447,29 @@ const INITIAL_TREASURES = [
                     onDeleteItem: handleDeleteTreasureItem,
                     onImportTreasureData: handleImportTreasureData
                 }),
+                activeTab === 'pet' && (
+                    petModuleStatus === 'ready' && PetView
+                        ? h(PetView, {
+                            students,
+                            pets,
+                            onRenamePet: handleRenamePet,
+                            onBuyPetItem: handleBuyPetItem,
+                            onHatchPet: handleHatchPet,
+                            onResetPetSystem: handleResetPetSystem
+                        })
+                        : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
+                            h("div", { className: "text-lg font-bold text-gray-800" },
+                                petModuleStatus === 'error' ? "宠物模块加载失败" : "宠物模块加载中"
+                            ),
+                            h("div", { className: "text-sm text-gray-500" },
+                                petModuleStatus === 'error' ? "请重试加载宠物模块。" : "首次打开宠物页时会按需加载模块。"
+                            ),
+                            petModuleStatus === 'error' && h("button", {
+                                onClick: () => setPetModuleStatus('idle'),
+                                className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            }, "重试")
+                        )
+                ),
                 activeTab === 'profile' && (
                     profileModuleStatus === 'ready' && ProfileView
                         ? h(ProfileView, { students: displayStudents, studentProfiles, setStudentProfiles, history })

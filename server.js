@@ -53,6 +53,7 @@ const DATA_DOMAIN_RULES = Object.freeze({
     history: { kind: 'array', maxBytes: 2 * MB },
     config: { kind: 'object', maxBytes: 512 * KB },
     attendanceRecords: { kind: 'object', maxBytes: 2 * MB },
+    pets: { kind: 'object', maxBytes: 1 * MB },
     treasures: { kind: 'array', maxBytes: 512 * KB },
     storage: { kind: 'object', maxBytes: 512 * KB },
     logs: { kind: 'array', maxBytes: 1 * MB },
@@ -722,10 +723,12 @@ const getAttendancePenaltyRules = (config) => {
     const penaltyRules = isPlainObject(config?.systemConfig?.attendance?.penaltyRules)
         ? config.systemConfig.attendance.penaltyRules
         : {};
+    const punctual = Number(penaltyRules.punctual);
     const late = Number(penaltyRules.late);
     const absent = Number(penaltyRules.absent);
     const perfectAttendance = Number(penaltyRules.perfectAttendance);
     return {
+        punctual: Number.isFinite(punctual) ? punctual : 0,
         late: Number.isFinite(late) ? late : -1,
         absent: Number.isFinite(absent) ? absent : -5,
         perfectAttendance: Number.isFinite(perfectAttendance) ? perfectAttendance : 10
@@ -1890,26 +1893,46 @@ app.post(['/api/attendance/check-in', '/api/attendance/checkin'], authMiddleware
         let nextStudents = students;
         let nextHistory = history;
         let pointsChanged = false;
+        let pointsDelta = 0;
         const penaltyRules = getAttendancePenaltyRules(config);
         const usedMorningLateCard = currentSession.id === 'morning'
             ? usedMorningLateCardYesterday({ logs, studentName, now })
             : false;
 
-        if (record.status === 'late' && !config?.frozen && !usedMorningLateCard) {
-            const penaltyResult = applyPointChange({
-                students: nextStudents,
-                history: nextHistory,
-                studentId: student.id,
-                val: penaltyRules.late,
-                reason: `考勤迟到: ${currentSession.name}`,
-                type: 'penalty',
-                scene: '班级',
-                category: '出勤',
-                nowTs
-            });
-            nextStudents = penaltyResult.students;
-            nextHistory = penaltyResult.history;
-            pointsChanged = penaltyResult.changed === true;
+        if (!config?.frozen) {
+            if (record.status === 'late' && !usedMorningLateCard) {
+                const penaltyResult = applyPointChange({
+                    students: nextStudents,
+                    history: nextHistory,
+                    studentId: student.id,
+                    val: penaltyRules.late,
+                    reason: `考勤迟到: ${currentSession.name}`,
+                    type: 'penalty',
+                    scene: '班级',
+                    category: '出勤',
+                    nowTs
+                });
+                nextStudents = penaltyResult.students;
+                nextHistory = penaltyResult.history;
+                pointsChanged = penaltyResult.changed === true;
+                pointsDelta = Number(penaltyRules.late) || 0;
+            } else if (record.status === 'ok' && Number(penaltyRules.punctual) !== 0) {
+                const bonusResult = applyPointChange({
+                    students: nextStudents,
+                    history: nextHistory,
+                    studentId: student.id,
+                    val: penaltyRules.punctual,
+                    reason: `考勤准点: ${currentSession.name}`,
+                    type: Number(penaltyRules.punctual) > 0 ? 'bonus' : 'penalty',
+                    scene: '班级',
+                    category: '出勤',
+                    nowTs
+                });
+                nextStudents = bonusResult.students;
+                nextHistory = bonusResult.history;
+                pointsChanged = bonusResult.changed === true;
+                pointsDelta = Number(penaltyRules.punctual) || 0;
+            }
         }
 
         const nextMeta = persistAttendanceMutation({
@@ -1935,7 +1958,8 @@ app.post(['/api/attendance/check-in', '/api/attendance/checkin'], authMiddleware
                     sessionName: currentSession.name,
                     status: record.status,
                     record,
-                    usedMorningLateCard
+                    usedMorningLateCard,
+                    pointsDelta
                 }
             }
         }));

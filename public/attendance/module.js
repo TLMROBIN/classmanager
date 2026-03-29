@@ -182,7 +182,8 @@
                         student: studentName,
                         streak,
                         status: checkIn.status,
-                        usedMorningLateCard: checkIn.status === 'late' && checkIn.usedMorningLateCard
+                        usedMorningLateCard: checkIn.status === 'late' && checkIn.usedMorningLateCard,
+                        pointsDelta: Number(checkIn.pointsDelta) || 0
                     });
                     setTimeout(() => setCheckInEffect(null), 3000);
                 } catch (error) {
@@ -464,9 +465,12 @@
                                     ? h("div", { className: "bg-amber-100 text-amber-800 px-4 py-2 rounded-full font-bold text-center" }, "早读迟到卡已抵扣，不扣分；但迟到仍会中断连胜")
                                     : h("div", { className: "bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold" }, "本次迟到，连胜已中断")
                             )
-                            : checkInEffect.streak > 0
-                                ? h("div", { className: "bg-orange-100 text-orange-700 px-4 py-2 rounded-full font-bold animate-pulse" }, `🔥 已连续全勤 ${checkInEffect.streak} 天！`)
-                                : h("div", { className: "text-blue-600 font-medium" }, "好的开始，继续保持！")
+                            : h("div", { className: "space-y-3 flex flex-col items-center" },
+                                checkInEffect.pointsDelta > 0 && h("div", { className: "bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold" }, `准点打卡 +${checkInEffect.pointsDelta} 分`),
+                                checkInEffect.streak > 0
+                                    ? h("div", { className: "bg-orange-100 text-orange-700 px-4 py-2 rounded-full font-bold animate-pulse" }, `🔥 已连续全勤 ${checkInEffect.streak} 天！`)
+                                    : h("div", { className: "text-blue-600 font-medium" }, "好的开始，继续保持！")
+                            )
                     )
                 ),
                 h("div", { className: "bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white flex justify-between items-center" },

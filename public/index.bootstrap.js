@@ -32,6 +32,9 @@
         '/profile/utils.js',
         '/profile/avatar-ui.js',
         '/profile/persistence.js',
+        '/pet/art-manifest.js',
+        '/pet/species.js',
+        '/pet/state.js',
         '/script.js'
     ];
 

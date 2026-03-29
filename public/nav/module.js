@@ -15,6 +15,7 @@
         return function Nav({ activeTab, setActiveTab, syncStatus, config }) {
             const systemConfig = getSystemConfig(config);
             const battleEnabled = systemConfig.enabledFeatures?.battle ?? true;
+            const petEnabled = systemConfig.enabledFeatures?.pet === true;
             const currentUser = getCurrentUser();
             const tabs = [
                 { id: 'dashboard', label: '仪表盘', icon: 'chart' },
@@ -22,11 +23,13 @@
                 { id: 'attendance', label: '考勤', icon: 'clock' },
                 { id: 'tasks', label: '任务', icon: 'tasks' },
                 { id: 'battle', label: '双子星', icon: 'swords', requiresFeature: 'battle' },
+                { id: 'pet', label: '宠物', icon: 'heart', requiresFeature: 'pet' },
                 { id: 'treasure', label: '藏宝阁', icon: 'gift' },
                 { id: 'profile', label: '头像', icon: 'smile' },
                 { id: 'settings', label: '维护', icon: 'menu' }
             ].filter(item => {
                 if (item.requiresFeature === 'battle') return battleEnabled;
+                if (item.requiresFeature === 'pet') return petEnabled;
                 return true;
             });
 

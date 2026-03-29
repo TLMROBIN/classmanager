@@ -111,7 +111,8 @@
         quotes: [...DEFAULT_QUOTES],
         recordCategoryPendingMigrated: false,
         enabledFeatures: {
-            battle: true
+            battle: true,
+            pet: false
         },
         attendance: {
             schedule: [...SCHEDULE_CONFIG],
@@ -128,6 +129,7 @@
                 evening: '19:00'
             },
             penaltyRules: {
+                punctual: 0,
                 late: -1,
                 absent: -5,
                 perfectAttendance: 10

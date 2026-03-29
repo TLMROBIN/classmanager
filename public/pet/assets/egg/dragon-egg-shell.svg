@@ -1,0 +1,46 @@
+<svg width="640" height="720" viewBox="0 0 640 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="eggBody" x1="320" y1="76" x2="320" y2="654" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#312E81"/>
+      <stop offset="0.42" stop-color="#5B21B6"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <radialGradient id="eggCore" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(320 248) rotate(90) scale(254 220)">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="0.38" stop-color="#FB7185" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(320 350) rotate(90) scale(330 300)">
+      <stop stop-color="#81ECFF" stop-opacity="0.32"/>
+      <stop offset="0.58" stop-color="#A855F7" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blurGlow" x="28" y="52" width="584" height="620" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#blurGlow)">
+    <ellipse cx="320" cy="360" rx="216" ry="244" fill="url(#halo)"/>
+  </g>
+
+  <path d="M320 86C247 86 164 154 148 287C132 421 204 566 320 644C436 566 508 421 492 287C476 154 393 86 320 86Z" fill="url(#eggBody)" stroke="#FBBF24" stroke-opacity="0.48" stroke-width="10"/>
+  <path d="M320 126C265 126 202 182 190 286C178 389 227 496 320 558C413 496 462 389 450 286C438 182 375 126 320 126Z" fill="url(#eggCore)" fill-opacity="0.92"/>
+
+  <path d="M226 140L186 96L224 82L252 126L226 140Z" fill="#FBBF24" fill-opacity="0.86"/>
+  <path d="M414 140L454 96L416 82L388 126L414 140Z" fill="#FBBF24" fill-opacity="0.86"/>
+
+  <circle cx="320" cy="186" r="42" fill="#FDE68A" fill-opacity="0.86"/>
+  <circle cx="320" cy="186" r="24" fill="#F97316" fill-opacity="0.8"/>
+
+  <path d="M212 250L430 206" stroke="white" stroke-opacity="0.18" stroke-width="8" stroke-linecap="round"/>
+  <path d="M236 334L404 300" stroke="#F9A8D4" stroke-opacity="0.16" stroke-width="8" stroke-linecap="round"/>
+  <path d="M220 430L412 478" stroke="#93C5FD" stroke-opacity="0.14" stroke-width="8" stroke-linecap="round"/>
+
+  <circle cx="238" cy="252" r="8" fill="#FDE68A" fill-opacity="0.8"/>
+  <circle cx="398" cy="288" r="8" fill="#FDE68A" fill-opacity="0.8"/>
+  <circle cx="272" cy="374" r="7" fill="#FBBF24" fill-opacity="0.8"/>
+  <circle cx="374" cy="408" r="7" fill="#FBBF24" fill-opacity="0.8"/>
+
+  <text x="320" y="584" text-anchor="middle" fill="#FDE68A" fill-opacity="0.9" font-size="42" font-weight="900" letter-spacing="14">DRAGON</text>
+</svg>

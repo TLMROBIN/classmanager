@@ -16,20 +16,34 @@
             onClose,
             onConfirm,
             confirmText = '确定',
-            type = 'info'
+            type = 'info',
+            panelClassName = '',
+            headerClassName = '',
+            bodyClassName = '',
+            footerClassName = '',
+            titleClassName = '',
+            closeButtonClassName = '',
+            overlayClassName = '',
+            cancelButtonClassName = '',
+            confirmButtonClassName = '',
+            overlayStyle = null,
+            panelStyle = null,
+            headerStyle = null,
+            bodyStyle = null,
+            footerStyle = null
         }) {
             if (!isOpen) return null;
             const colorClass = type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700';
-            return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in' },
-                h('div', { className: 'bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-bounce-in flex flex-col max-h-[90vh]' },
-                    h('div', { className: 'p-4 border-b flex justify-between items-center flex-shrink-0' },
-                        h('h3', { className: 'font-bold text-lg' }, title),
-                        h('button', { onClick: onClose, className: 'text-gray-400 hover:text-gray-600' }, h(Icon, { name: 'x' }))
+            return h('div', { className: `fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in ${overlayClassName}`.trim(), style: overlayStyle || undefined },
+                h('div', { className: `bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-bounce-in flex flex-col max-h-[90vh] ${panelClassName}`.trim(), style: panelStyle || undefined },
+                    h('div', { className: `p-4 border-b flex justify-between items-center flex-shrink-0 ${headerClassName}`.trim(), style: headerStyle || undefined },
+                        h('h3', { className: `font-bold text-lg ${titleClassName}`.trim() }, title),
+                        h('button', { onClick: onClose, className: `text-gray-400 hover:text-gray-600 ${closeButtonClassName}`.trim() }, h(Icon, { name: 'x' }))
                     ),
-                    h('div', { className: 'p-6 overflow-y-auto flex-1' }, children),
-                    h('div', { className: 'p-4 bg-gray-50 flex justify-end gap-3 flex-shrink-0' },
-                        h('button', { onClick: onClose, className: 'px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg' }, '取消'),
-                        onConfirm && h('button', { onClick: onConfirm, className: `px-4 py-2 text-white rounded-lg shadow-sm transition ${colorClass}` }, confirmText)
+                    h('div', { className: `p-6 overflow-y-auto flex-1 ${bodyClassName}`.trim(), style: bodyStyle || undefined }, children),
+                    h('div', { className: `p-4 bg-gray-50 flex justify-end gap-3 flex-shrink-0 ${footerClassName}`.trim(), style: footerStyle || undefined },
+                        h('button', { onClick: onClose, className: `px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg ${cancelButtonClassName}`.trim() }, '取消'),
+                        onConfirm && h('button', { onClick: onConfirm, className: `px-4 py-2 text-white rounded-lg shadow-sm transition ${colorClass} ${confirmButtonClassName}`.trim() }, confirmText)
                     )
                 )
             );

@@ -76,6 +76,22 @@
                                         }),
                                         h("span", { className: "text-sm text-gray-700" }, "启用双子星对战系统"),
                                         h("span", { className: "text-xs text-gray-500" }, "（关闭后导航栏将隐藏此功能）")
+                                    ),
+                                    h("label", { className: "flex items-center gap-3 cursor-pointer" },
+                                        h("input", {
+                                            type: "checkbox",
+                                            checked: systemConfig.enabledFeatures?.pet === true,
+                                            onChange: (e) => updateSystemConfig(sc => ({
+                                                ...sc,
+                                                enabledFeatures: {
+                                                    ...(sc.enabledFeatures || {}),
+                                                    pet: e.target.checked
+                                                }
+                                            })),
+                                            className: "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        }),
+                                        h("span", { className: "text-sm text-gray-700" }, "启用班级宠物系统"),
+                                        h("span", { className: "text-xs text-gray-500" }, "（关闭后隐藏宠物页，但保留数据）")
                                     )
                                 )
                             )

@@ -272,8 +272,23 @@
                             )
                         ),
                         h("div", null,
-                            h("div", { className: "text-sm font-medium text-gray-700 mb-2" }, "扣分规则"),
-                            h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-3" },
+                            h("div", { className: "text-sm font-medium text-gray-700 mb-2" }, "奖惩规则"),
+                            h("div", { className: "grid grid-cols-1 md:grid-cols-4 gap-3" },
+                                h("div", null,
+                                    h("label", { className: "block text-xs text-gray-500 mb-1" }, "准点加分"),
+                                    h("input", {
+                                        type: "number",
+                                        className: "w-full border rounded p-2 text-sm",
+                                        value: penaltyRules.punctual ?? 0,
+                                        onChange: e => updateAttendance(currentAttendance => ({
+                                            ...currentAttendance,
+                                            penaltyRules: {
+                                                ...(currentAttendance.penaltyRules || {}),
+                                                punctual: Number(e.target.value)
+                                            }
+                                        }))
+                                    })
+                                ),
                                 h("div", null,
                                     h("label", { className: "block text-xs text-gray-500 mb-1" }, "迟到扣分"),
                                     h("input", {

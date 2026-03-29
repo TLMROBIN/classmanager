@@ -84,6 +84,7 @@
 
             markChanged('history');
             markChanged('config');
+            markChanged('pets');
             markChanged('treasures');
             markChanged('storage');
             markChanged('logs');
@@ -105,6 +106,7 @@
                 history,
                 config,
                 attendanceRecords,
+                pets,
                 treasures,
                 storage,
                 logs,
@@ -123,6 +125,7 @@
                 setHistory,
                 setConfig,
                 setAttendanceRecords,
+                setPets,
                 setTreasures,
                 setStorage,
                 setLogs,
@@ -160,7 +163,8 @@
                 studentProfiles: buildNormalizedStudentProfiles(),
                 history: [],
                 config: {},
-                attendanceRecords: {}
+                attendanceRecords: {},
+                pets: { version: 1, pets: {} }
             });
             const previousTestContextRef = useRef({
                 testMode,
@@ -172,7 +176,8 @@
                 studentProfiles,
                 history,
                 config,
-                attendanceRecords
+                attendanceRecords,
+                pets
             };
 
             const getDeviceId = () => {
@@ -205,6 +210,7 @@
                     history: safe.history,
                     config: sanitizeStoredConfig(safe.config),
                     attendanceRecords: safe.attendanceRecords || safe.attendance_records,
+                    pets: safe.pets,
                     treasures: safe.treasures,
                     storage: safe.storage,
                     logs: safe.logs,
@@ -224,6 +230,7 @@
                         history: Object.prototype.hasOwnProperty.call(safe, 'history'),
                         config: Object.prototype.hasOwnProperty.call(safe, 'config'),
                         attendanceRecords: Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords') || Object.prototype.hasOwnProperty.call(safe, 'attendance_records'),
+                        pets: Object.prototype.hasOwnProperty.call(safe, 'pets'),
                         treasures: Object.prototype.hasOwnProperty.call(safe, 'treasures'),
                         storage: Object.prototype.hasOwnProperty.call(safe, 'storage'),
                         logs: Object.prototype.hasOwnProperty.call(safe, 'logs'),
@@ -248,6 +255,7 @@
                 const latestHistory = Array.isArray(latestState.history) ? latestState.history : history;
                 const latestConfig = latestState.config || config;
                 const latestAttendanceRecords = latestState.attendanceRecords || attendanceRecords;
+                const latestPets = latestState.pets || pets;
                 const use = (flag) => options.force || flag;
                 const incomingTreasures = resolveTreasuresData(normalized.treasures, normalized.config || latestConfig);
                 const hasIncomingLegacyTreasureConfig = Array.isArray(getLegacyTreasureList(normalized.config));
@@ -269,6 +277,7 @@
                         : (normalized.attendanceRecords || {});
                     setAttendanceRecords(att);
                 }
+                if (use(normalized.flags.pets)) setPets(normalized.pets || latestPets || { version: 1, pets: {} });
 
                 if (use(normalized.flags.treasures) || hasIncomingLegacyTreasureConfig) {
                     setTreasures(Array.isArray(incomingTreasures) ? incomingTreasures : []);
@@ -388,6 +397,7 @@
                     dailyRedemptionCounts,
                     dailyUsageCounts,
                     tasks,
+                    pets,
                     battle,
                     examArchives,
                     ...overrides,
@@ -396,7 +406,7 @@
                     students: nextStudents,
                     studentProfiles: nextStudentProfiles
                 };
-            }, [students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, battle, examArchives]);
+            }, [students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, pets, battle, examArchives]);
 
             const fetchFromServerCore = useCallback(async (options = {}) => {
                 const normalizedOptions = typeof options === 'boolean' ? { isAuto: options } : (options || {});
@@ -639,6 +649,9 @@
                 if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'logs')) {
                     payload.logs = safeTreasureDomain.logs;
                 }
+                if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'pets')) {
+                    payload.pets = fullDataWithMeta.pets;
+                }
                 if (partialData && Object.prototype.hasOwnProperty.call(partialData, 'battle')) {
                     payload.battle = fullDataWithMeta.battle;
                 }
@@ -651,15 +664,16 @@
             const persistData = useCallback((fullData) => {
                 isSavingRef.current = true;
                 const nowTs = getNow().getTime();
-                const normalizedInput = normalizeFullData(fullData);
+                const mergedFullData = buildCurrentFullData(fullData || {});
+                const normalizedInput = normalizeFullData(mergedFullData);
                 const safeTreasureDomain = protectTreasureDomainForPersistence({
-                    treasures: fullData?.treasures,
-                    storage: fullData?.storage,
-                    logs: fullData?.logs
+                    treasures: mergedFullData?.treasures,
+                    storage: mergedFullData?.storage,
+                    logs: mergedFullData?.logs
                 });
-                const nextStudentProfiles = restoreStudentProfilesFromData(fullData, studentProfiles, fullData?.students || students);
-                const hasExplicitExamArchives = !!(fullData && Object.prototype.hasOwnProperty.call(fullData, 'examArchives'));
-                const incomingExamArchives = normalizeExamArchives(fullData?.examArchives || examArchives, normalizedInput.battle || battle);
+                const nextStudentProfiles = restoreStudentProfilesFromData(mergedFullData, studentProfiles, mergedFullData?.students || students);
+                const hasExplicitExamArchives = !!(mergedFullData && Object.prototype.hasOwnProperty.call(mergedFullData, 'examArchives'));
+                const incomingExamArchives = normalizeExamArchives(mergedFullData?.examArchives || examArchives, normalizedInput.battle || battle);
                 const currentExamArchives = normalizeExamArchives(examArchives, battle);
                 const allowEmptyExamArchives = hasExplicitExamArchives &&
                     Array.isArray(incomingExamArchives.exams) &&
@@ -672,8 +686,8 @@
                     currentExamArchives.exams.length > 0
                 ) ? currentExamArchives : incomingExamArchives;
                 const fullDataWithMeta = {
-                    ...fullData,
-                    config: sanitizeStoredConfig(fullData?.config),
+                    ...mergedFullData,
+                    config: sanitizeStoredConfig(mergedFullData?.config),
                     treasures: safeTreasureDomain.treasures,
                     storage: safeTreasureDomain.storage,
                     logs: safeTreasureDomain.logs,
@@ -688,7 +702,7 @@
                     }
                 };
                 return savePayloadToServer(fullDataWithMeta, nowTs);
-            }, [students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
+            }, [buildCurrentFullData, students, studentProfiles, battle, examArchives, savePayloadToServer, protectTreasureDomainForPersistence]);
 
             const fetchFromServer = useCallback((options = {}) => {
                 return fetchFromServerCore(options);
@@ -840,6 +854,7 @@
                     studentProfiles,
                     history,
                     config,
+                    pets,
                     treasures,
                     storage,
                     logs,
@@ -884,7 +899,7 @@
 
                 const timer = setTimeout(saveData, 1500);
                 return () => clearTimeout(timer);
-            }, [localHydrationDone, students, studentProfiles, history, config, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistDataPatch]);
+            }, [localHydrationDone, students, studentProfiles, history, config, pets, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistDataPatch]);
 
             useEffect(() => {
                 if (!localHydrationDone) return undefined;

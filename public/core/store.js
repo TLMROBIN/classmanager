@@ -77,6 +77,7 @@
             const [studentProfiles, setStudentProfiles] = useState(() => buildNormalizedStudentProfiles());
             const [history, setHistory] = useState([]);
             const [attendanceRecords, setAttendanceRecords] = useState({});
+            const [pets, setPets] = useState(() => ({ version: 1, pets: {} }));
             const [treasures, setTreasures] = useState(() => resolveTreasuresData(undefined, {}));
             const [storage, setStorage] = useState({});
             const [logs, setLogs] = useState([]);
@@ -92,6 +93,7 @@
             const [profileModuleStatus, setProfileModuleStatus] = useState(() => getInitialModuleStatus('createProfileView'));
             const [tasksModuleStatus, setTasksModuleStatus] = useState(() => getInitialModuleStatus('createTasksView'));
             const [battleModuleStatus, setBattleModuleStatus] = useState(() => getInitialModuleStatus('createBattleView'));
+            const [petModuleStatus, setPetModuleStatus] = useState(() => getInitialModuleStatus('createPetView'));
             const [settingsModuleStatus, setSettingsModuleStatus] = useState(getInitialSettingsModuleStatus);
             const [testSessionId, setTestSessionId] = useState(initialTestSessionState.sessionId || '');
             const [testMode, setTestMode] = useState(Boolean(initialTestSessionState.sessionId));
@@ -117,6 +119,8 @@
                 setHistory,
                 attendanceRecords,
                 setAttendanceRecords,
+                pets,
+                setPets,
                 treasures,
                 setTreasures,
                 storage,
@@ -147,6 +151,8 @@
                 setTasksModuleStatus,
                 battleModuleStatus,
                 setBattleModuleStatus,
+                petModuleStatus,
+                setPetModuleStatus,
                 settingsModuleStatus,
                 setSettingsModuleStatus,
                 displayStudents,
