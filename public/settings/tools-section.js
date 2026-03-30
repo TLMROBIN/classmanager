@@ -153,7 +153,7 @@
                                 }),
                                 h("div", { className: "flex gap-2" },
                                     h("button", {
-                                        onClick: handleSaveSchedule,
+                                        onClick: () => handleSaveSchedule(),
                                         className: "flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm"
                                     }, "保存日程"),
                                     h("button", {

@@ -324,6 +324,12 @@
             setScheduleText(String(note || '').trim());
         };
         const handleSaveSchedule = (nextDateInput = scheduleDate, nextTextInput = scheduleText) => {
+            if (nextDateInput && typeof nextDateInput === 'object' && nextDateInput.target) {
+                nextDateInput = scheduleDate;
+            }
+            if (nextTextInput && typeof nextTextInput === 'object' && nextTextInput.target) {
+                nextTextInput = scheduleText;
+            }
             const nextDate = String(nextDateInput || '').trim();
             const nextText = String(nextTextInput || '').trim();
             if (!nextDate) return alert('请选择日程日期');
