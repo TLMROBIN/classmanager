@@ -409,10 +409,11 @@
             );
         };
 
-        const RunningExerciseSettingsSection = ({ config, setConfig, embedded = false }) => {
+        const RunningExerciseSettingsSection = ({ students, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const systemConfig = getSystemConfig(config);
             const pointsConfig = (systemConfig && systemConfig.points) || {};
+            const studentList = Array.isArray(students) ? students : [];
             const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
@@ -474,9 +475,44 @@
                                 }))
                             }),
                             h("p", { className: "text-xs text-gray-500" }, "未被勾为缺勤的其余学生都会获得这个加分。填 0 表示只登记不加分。")
+                        ),
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "跑操体委"),
+                            h("select", {
+                                className: "w-full border rounded-lg p-2 text-sm bg-white",
+                                value: pointsConfig.runningExerciseCommissionerStudentId ?? '',
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        runningExerciseCommissionerStudentId: e.target.value || null
+                                    }
+                                }))
+                            },
+                                h("option", { value: "" }, "不设置"),
+                                studentList.map(student => h("option", { key: student.id, value: student.id }, student.name || `学生${student.id}`))
+                            ),
+                            h("p", { className: "text-xs text-gray-500" }, "每次提交跑操登记后，会额外给这里设置的体委发放下面设置的奖励分。")
+                        ),
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "体委提交奖励分"),
+                            h("input", {
+                                type: "number",
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: pointsConfig.runningExerciseCommissionerBonus ?? 1,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        runningExerciseCommissionerBonus: Number(e.target.value) || 0
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "只在提交跑操登记时发给体委。填 0 表示不额外加分。")
                         )
                     ),
-                    h("div", { className: "rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600 leading-5" }, "跑操登记每天只能提交一次，提交后会同时写入缺勤扣分和正常出勤加分记录。")
+                    h("div", { className: "rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600 leading-5" }, "跑操登记每天只能提交一次，提交后会同时写入缺勤扣分、正常出勤加分，以及体委提交奖励分记录。")
                 )
             );
         };

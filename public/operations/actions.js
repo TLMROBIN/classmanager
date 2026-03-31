@@ -48,7 +48,9 @@
             buildRunningExerciseConfirmMessage,
             setRunSelectedAbsentIds,
             runningExerciseAbsentPenalty,
-            runningExercisePresentBonus
+            runningExercisePresentBonus,
+            runningExerciseCommissionerStudentId,
+            runningExerciseCommissionerBonus
         } = deps || {};
 
         if (
@@ -226,7 +228,9 @@
                 dateVal,
                 absentIds: runSelectedAbsentIds,
                 absentPenalty: runningExerciseAbsentPenalty,
-                presentBonus: runningExercisePresentBonus
+                presentBonus: runningExercisePresentBonus,
+                commissionerId: runningExerciseCommissionerStudentId,
+                commissionerBonus: runningExerciseCommissionerBonus
             });
             if (updates.length === 0) {
                 return alert("当前跑操登记不会产生积分变动，请先在积分操作设置里调整跑操分值。");
@@ -238,7 +242,9 @@
                 absentIds: runSelectedAbsentIds,
                 studentMap,
                 absentPenalty: runningExerciseAbsentPenalty,
-                presentBonus: runningExercisePresentBonus
+                presentBonus: runningExercisePresentBonus,
+                commissionerId: runningExerciseCommissionerStudentId,
+                commissionerBonus: runningExerciseCommissionerBonus
             });
             if (!confirm(confirmMsg)) return;
 

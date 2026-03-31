@@ -94,13 +94,19 @@
         dateVal,
         absentIds,
         absentPenalty,
-        presentBonus
+        presentBonus,
+        commissionerId,
+        commissionerBonus
     }) => {
         const studentList = Array.isArray(students) ? students : [];
         const absentIdSet = absentIds instanceof Set ? absentIds : new Set(absentIds || []);
         const updates = [];
         const normalizedAbsentPenalty = Math.abs(Number(absentPenalty) || 0);
         const normalizedPresentBonus = Math.abs(Number(presentBonus) || 0);
+        const normalizedCommissionerId = commissionerId == null || commissionerId === ''
+            ? null
+            : String(commissionerId);
+        const normalizedCommissionerBonus = Math.abs(Number(commissionerBonus) || 0);
 
         studentList.forEach(student => {
             if (!student || student.id == null) return;
@@ -128,6 +134,20 @@
             });
         });
 
+        if (normalizedCommissionerId != null && normalizedCommissionerBonus > 0) {
+            const commissioner = studentList.find(student => String(student?.id) === normalizedCommissionerId);
+            if (commissioner) {
+                updates.push({
+                    id: commissioner.id,
+                    val: normalizedCommissionerBonus,
+                    reason: `${dateVal} 跑操体委登记`,
+                    type: 'bonus',
+                    scene: '班级',
+                    category: '班务'
+                });
+            }
+        }
+
         return updates;
     };
 
@@ -137,7 +157,9 @@
         absentIds,
         studentMap,
         absentPenalty,
-        presentBonus
+        presentBonus,
+        commissionerId,
+        commissionerBonus
     }) => {
         const studentList = Array.isArray(students) ? students : [];
         const absentIdSet = absentIds instanceof Set ? absentIds : new Set(absentIds || []);
@@ -149,6 +171,10 @@
         ), 0);
         const normalizedAbsentPenalty = Math.abs(Number(absentPenalty) || 0);
         const normalizedPresentBonus = Math.abs(Number(presentBonus) || 0);
+        const commissionerName = commissionerId == null || commissionerId === ''
+            ? ''
+            : (studentMap.get(String(commissionerId))?.name || '');
+        const normalizedCommissionerBonus = Math.abs(Number(commissionerBonus) || 0);
 
         let confirmMsg = `确认提交 ${dateVal} 的跑操考勤登记？\n\n`;
         confirmMsg += "⚠️ 提醒：每天只能登记一次，请确认缺勤名单后再提交。\n\n";
@@ -166,9 +192,15 @@
         }
 
         if (normalizedPresentBonus > 0) {
-            confirmMsg += `正常出勤加分：其余 ${presentCount} 人，每人 +${normalizedPresentBonus} 分`;
+            confirmMsg += `正常出勤加分：其余 ${presentCount} 人，每人 +${normalizedPresentBonus} 分\n`;
         } else {
-            confirmMsg += `正常出勤加分：已关闭（${presentCount} 人不加分）`;
+            confirmMsg += `正常出勤加分：已关闭（${presentCount} 人不加分）\n`;
+        }
+
+        if (commissionerName && normalizedCommissionerBonus > 0) {
+            confirmMsg += `体委额外加分：${commissionerName} +${normalizedCommissionerBonus} 分`;
+        } else {
+            confirmMsg += commissionerName ? '体委额外加分：已关闭' : '体委额外加分：未设置';
         }
 
         return confirmMsg;

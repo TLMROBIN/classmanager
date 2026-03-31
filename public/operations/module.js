@@ -333,7 +333,9 @@
                 buildRunningExerciseConfirmMessage,
                 setRunSelectedAbsentIds,
                 runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
-                runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus
+                runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
+                runningExerciseCommissionerStudentId: (systemConfig.points || {}).runningExerciseCommissionerStudentId,
+                runningExerciseCommissionerBonus: (systemConfig.points || {}).runningExerciseCommissionerBonus
             });
 
             return h("div", { className: "space-y-6 animate-fade-in" },
@@ -415,6 +417,7 @@
                             embedded: true
                         }),
                         h(RunningExerciseSettingsSection, {
+                            students,
                             config,
                             setConfig,
                             embedded: true
