@@ -775,6 +775,8 @@ const INITIAL_TREASURES = [
             setDailyRedemptionCounts,
             dailyUsageCounts,
             setDailyUsageCounts,
+            liquidatedTreasures,
+            setLiquidatedTreasures,
             tasks,
             setTasks,
             profileModuleStatus,
@@ -1001,6 +1003,7 @@ const INITIAL_TREASURES = [
             setRedemptionHistory,
             setDailyRedemptionCounts,
             setDailyUsageCounts,
+            setLiquidatedTreasures,
             setTasks,
             setBattle,
             setExamArchives,
@@ -1257,6 +1260,47 @@ const INITIAL_TREASURES = [
             getNow
         }));
 
+        const handleRedeemLiquidatedItem = (studentId, itemId) => {
+            const liquidationLib = window.TreasureLiquidation || {};
+            if (typeof liquidationLib.buildLiquidatedRedeemState !== 'function') return { ok: false, message: '清算模块未加载' };
+            const result = liquidationLib.buildLiquidatedRedeemState({
+                studentId,
+                itemId,
+                students,
+                liquidatedTreasures,
+                storage,
+                history,
+                logs,
+                getNow
+            });
+            if (!result || !result.ok) return result || { ok: false, message: '兑换失败' };
+
+            setStudents(result.newStudents);
+            setHistory(result.newHistory);
+            setLiquidatedTreasures(result.newLiquidatedTreasures);
+            setLogs(result.newLogs);
+            persistManagedPatch({
+                students: result.newStudents,
+                history: result.newHistory,
+                liquidatedTreasures: result.newLiquidatedTreasures,
+                logs: result.newLogs
+            });
+            return { ok: true };
+        };
+
+        const handleToggleLiquidation = (enabled) => {
+            const nextSystemConfig = {
+                ...getSystemConfig(config),
+                treasureLiquidation: { enabled }
+            };
+            const nextConfig = sanitizeStoredConfig({
+                ...config,
+                systemConfig: stripSystemConfigTreasures(nextSystemConfig)
+            });
+            setConfig(nextConfig);
+            persistManagedPatch({ config: nextConfig });
+        };
+
         const handleApplyFixedStudents = (nextStudents) => {
             setStudents(nextStudents);
             persistManagedPatch({ students: nextStudents });
@@ -1438,6 +1482,8 @@ const INITIAL_TREASURES = [
                     gachaConfig: treasureGachaConfig,
                     defaultGachaConfig: normalizeTreasureGachaConfig(DEFAULT_SYSTEM_CONFIG.treasureGacha),
                     redemptionHistory, dailyUsageCounts,
+                    liquidatedTreasures,
+                    liquidationEnabled: getSystemConfig(config).treasureLiquidation?.enabled === true,
                     onReturnItem: handleReturnItem,
                     onRedeemTreasure: handleRedeemTreasure,
                     onUseItem: handleUseItem,
@@ -1445,7 +1491,9 @@ const INITIAL_TREASURES = [
                     onUpdateGachaConfig: handleUpdateTreasureGachaConfig,
                     onSaveItem: handleSaveTreasureItem,
                     onDeleteItem: handleDeleteTreasureItem,
-                    onImportTreasureData: handleImportTreasureData
+                    onImportTreasureData: handleImportTreasureData,
+                    onRedeemLiquidatedItem: handleRedeemLiquidatedItem,
+                    onToggleLiquidation: handleToggleLiquidation
                 }),
                 activeTab === 'pet' && (
                     petModuleStatus === 'ready' && PetView
@@ -1497,7 +1545,7 @@ const INITIAL_TREASURES = [
                             persistData,
                             persistDataPatch,
                             tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
-                            redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts,
+                            redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, liquidatedTreasures, setLiquidatedTreasures,
                             battle, setBattle, examArchives, setExamArchives, isDirtyRef,
                             testMode, enterTestMode, exitTestMode,
                             simTime, setSimTime, timeSpeed, setTimeSpeed
