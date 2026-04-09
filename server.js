@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { hashPassword, verifyPassword } = require('./utils/password');
 const { buildHealthReport } = require('./utils/health');
+const { applyBankruptcyLiquidation } = require('./utils/liquidation');
 const {
     generateToken,
     generateMaintenanceToken,
@@ -36,7 +37,7 @@ const MAINTENANCE_TOKEN_HEADER = 'x-maintenance-token';
 const TEST_SESSION_HEADER = 'x-test-session';
 const TEST_NOW_HEADER = 'x-test-now';
 const DIRECT_MAINTENANCE_KEYS = ['studentProfiles', 'examArchives'];
-const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿']);
+const PUBLIC_TREASURE_LOG_ACTIONS = new Set(['兑换', '使用', '祈愿', '清算']);
 const TEST_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const TEST_SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const KB = 1024;
@@ -63,6 +64,7 @@ const DATA_DOMAIN_RULES = Object.freeze({
     redemptionHistory: { kind: 'object', maxBytes: 256 * KB },
     dailyRedemptionCounts: { kind: 'object', maxBytes: 256 * KB },
     dailyUsageCounts: { kind: 'object', maxBytes: 256 * KB },
+    liquidatedTreasures: { kind: 'array', maxBytes: 512 * KB },
     tasks: { kind: 'array', maxBytes: 512 * KB },
     battle: { kind: 'object', maxBytes: 1 * MB },
     examArchives: { kind: 'object', maxBytes: 2 * MB },
@@ -1456,6 +1458,9 @@ const hasTreasureMaintenanceMutation = (store, payload) => {
     if (logAppendAction === '祈愿') {
         return !hasStockDecrease || redemptionChanged || dailyUsageChanged;
     }
+    if (logAppendAction === '清算') {
+        return false;
+    }
 
     return true;
 };
@@ -2183,6 +2188,33 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
                 __meta: data.__meta
             });
         }
+        const liquidationInput = {
+            students: data.students,
+            storage: data.storage,
+            treasures: data.treasures,
+            liquidatedTreasures: data.liquidatedTreasures,
+            history: data.history,
+            logs: data.logs,
+            config: data.config,
+            now
+        };
+        const liquidationResult = applyBankruptcyLiquidation(liquidationInput);
+        if (liquidationResult.changed) {
+            data.students = liquidationResult.students;
+            data.storage = liquidationResult.storage;
+            data.liquidatedTreasures = liquidationResult.liquidatedTreasures;
+            data.history = liquidationResult.history;
+            data.logs = liquidationResult.logs;
+            data.__meta = buildNextStoredMeta(existingMeta, now);
+            persistDataObject(store, {
+                students: data.students,
+                storage: data.storage,
+                liquidatedTreasures: data.liquidatedTreasures,
+                history: data.history,
+                logs: data.logs,
+                __meta: data.__meta
+            });
+        }
         data.config = stripLegacyAdminPasswordFromConfig(data.config);
         delete data.attendanceRecords;
         delete data.attendance_records;
@@ -2258,6 +2290,32 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
         };
         if (decayResult.changed) {
             data.students = decayResult.students;
+            normalizedIncomingMeta.updatedAt = Math.max(
+                normalizedIncomingMeta.updatedAt,
+                Number(now.getTime()) || 0,
+                existingUpdatedAt + 1
+            );
+        }
+        const mergedStorage = isPlainObject(data.storage) ? data.storage : readStoredJson(store, 'storage') || {};
+        const mergedTreasures = Array.isArray(data.treasures) ? data.treasures : readStoredJson(store, 'treasures') || [];
+        const mergedLiquidatedTreasures = Array.isArray(data.liquidatedTreasures) ? data.liquidatedTreasures : readStoredJson(store, 'liquidatedTreasures') || [];
+        const mergedLogs = Array.isArray(data.logs) ? data.logs : readStoredJson(store, 'logs') || [];
+        const liquidationResult = applyBankruptcyLiquidation({
+            students: data.students || mergedStudents,
+            storage: mergedStorage,
+            treasures: mergedTreasures,
+            liquidatedTreasures: mergedLiquidatedTreasures,
+            history: data.history || mergedHistory,
+            logs: mergedLogs,
+            config: mergedConfig,
+            now
+        });
+        if (liquidationResult.changed) {
+            data.students = liquidationResult.students;
+            data.storage = liquidationResult.storage;
+            data.liquidatedTreasures = liquidationResult.liquidatedTreasures;
+            data.history = liquidationResult.history;
+            data.logs = liquidationResult.logs;
             normalizedIncomingMeta.updatedAt = Math.max(
                 normalizedIncomingMeta.updatedAt,
                 Number(now.getTime()) || 0,
