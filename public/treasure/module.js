@@ -129,6 +129,8 @@
             defaultGachaConfig,
             redemptionHistory = {},
             dailyUsageCounts = {},
+            liquidatedTreasures = [],
+            liquidationEnabled = false,
             onReturnItem,
             onRedeemTreasure,
             onUseItem,
@@ -136,7 +138,9 @@
             onUpdateGachaConfig,
             onSaveItem,
             onDeleteItem,
-            onImportTreasureData
+            onImportTreasureData,
+            onRedeemLiquidatedItem,
+            onToggleLiquidation
         }) {
             const treasurePoints = window.TreasurePoints || {};
             const {
@@ -178,6 +182,21 @@
                 if (typeof onRedeemTreasure !== 'function') return alert("兑换功能不可用");
 
                 const result = onRedeemTreasure(student.id, item.id);
+                if (result?.ok) {
+                    alert("兑换成功！");
+                } else {
+                    alert(result?.message || "兑换失败，请重试");
+                }
+            };
+
+            const handleBuyLiquidated = (item) => {
+                if (!selectedStudent) return alert("请先选择一名学生");
+                const student = students.find(s => s.id == selectedStudent);
+                if (!student) return;
+                if (!confirm(`确定为 ${student.name} 兑换清算物品 ${item.name} 吗？\n消耗: ${item.price} 积分`)) return;
+                if (typeof onRedeemLiquidatedItem !== 'function') return alert("兑换功能不可用");
+
+                const result = onRedeemLiquidatedItem(student.id, item.id);
                 if (result?.ok) {
                     alert("兑换成功！");
                 } else {
@@ -386,6 +405,26 @@
                             );
                         })
                     ),
+                    liquidatedTreasures.filter(t => t.stock > 0).length > 0 && h("div", { className: "mt-6" },
+                        h("div", { className: "flex items-center gap-2 mb-3" },
+                            h("span", { className: "text-lg font-bold text-orange-600" }, "🔥 清算专区"),
+                            h("span", { className: "text-xs text-orange-400" }, "破产清算物品，八五折特惠")
+                        ),
+                        h("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-4" },
+                            liquidatedTreasures.filter(t => t.stock > 0).map(item =>
+                                h("div", { key: item.id, className: "bg-white rounded-lg shadow border-2 border-orange-300 p-3 flex flex-col relative bg-orange-50" },
+                                    h("div", { className: "absolute top-2 right-2 text-xs font-bold px-1 rounded border border-orange-400 text-orange-600 bg-orange-100" }, item.rarity),
+                                    h("div", { className: "font-bold text-gray-800" }, item.name),
+                                    h("div", { className: "text-xs text-gray-500 mb-2 h-8 overflow-hidden" }, item.desc),
+                                    item.originalPrice && h("div", { className: "text-xs text-gray-400 line-through" }, `原价: ${item.originalPrice}`),
+                                    h("div", { className: "mt-auto flex justify-between items-center" },
+                                        h("div", { className: "text-sm text-gray-500" }, `库存: ${item.stock}`),
+                                        h("button", { onClick: () => handleBuyLiquidated(item), className: "bg-orange-500 text-white px-3 py-1 rounded text-xs hover:bg-orange-600" }, `${item.price} 积分`)
+                                    )
+                                )
+                            )
+                        )
+                    ),
                     tab === 'gacha' && h("div", { className: "h-full flex flex-col items-center justify-center relative overflow-hidden rounded-xl bg-space" },
                         h("div", { className: "absolute inset-0 bg-black/20" }),
                         h("div", { className: "z-10 flex flex-col gap-8 items-center animate-float" },
@@ -509,6 +548,23 @@
                         )
                     ),
                     tab === 'admin' && h("div", { className: "space-y-6" },
+                        h("div", { className: "bg-white p-4 rounded shadow" },
+                            h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                                h("div", null,
+                                    h("h4", { className: "font-bold text-gray-800" }, "清算设置"),
+                                    h("p", { className: "text-xs text-gray-500 mt-1" }, "开启后，学生余额为负时自动清算储物箱宝物，按70%返还积分，物品以85折上架到清算专区。")
+                                ),
+                                h("label", { className: "flex items-center gap-2 cursor-pointer" },
+                                    h("input", {
+                                        type: "checkbox",
+                                        checked: liquidationEnabled,
+                                        onChange: () => { if (typeof onToggleLiquidation === 'function') onToggleLiquidation(!liquidationEnabled); },
+                                        className: "w-5 h-5 accent-orange-500"
+                                    }),
+                                    h("span", { className: "text-sm font-medium " + (liquidationEnabled ? "text-orange-600" : "text-gray-600") }, liquidationEnabled ? "已开启" : "已关闭")
+                                )
+                            )
+                        ),
                         h("div", { className: "bg-white p-4 rounded shadow" },
                             h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                                 h("div", null,

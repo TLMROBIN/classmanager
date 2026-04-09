@@ -17,6 +17,7 @@
         '/treasure/points.js',
         '/treasure/actions.js',
         '/treasure/io.js',
+        '/treasure/liquidation.js',
         '/treasure/module.js',
         '/nav/module.js',
         '/dashboard/module.js',
