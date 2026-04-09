@@ -205,6 +205,9 @@
             rates: { ...DEFAULT_TREASURE_GACHA_RATES },
             costs: { ...DEFAULT_TREASURE_GACHA_COSTS }
         },
+        treasureLiquidation: {
+            enabled: false
+        },
         subjects: [
             { id: 'chinese', name: '语文', representatives: [] },
             { id: 'math', name: '数学', representatives: [] },
@@ -402,6 +405,9 @@
         }
         if (userConfig.treasureGacha) {
             merged.treasureGacha = normalizeTreasureGachaConfig(userConfig.treasureGacha);
+        }
+        if (userConfig.treasureLiquidation) {
+            merged.treasureLiquidation = userConfig.treasureLiquidation;
         }
 
         return merged;

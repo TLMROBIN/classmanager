@@ -89,6 +89,7 @@
             const [redemptionHistory, setRedemptionHistory] = useState({});
             const [dailyRedemptionCounts, setDailyRedemptionCounts] = useState({});
             const [dailyUsageCounts, setDailyUsageCounts] = useState({});
+            const [liquidatedTreasures, setLiquidatedTreasures] = useState([]);
             const [tasks, setTasks] = useState([]);
             const [profileModuleStatus, setProfileModuleStatus] = useState(() => getInitialModuleStatus('createProfileView'));
             const [tasksModuleStatus, setTasksModuleStatus] = useState(() => getInitialModuleStatus('createTasksView'));
@@ -143,6 +144,8 @@
                 setDailyRedemptionCounts,
                 dailyUsageCounts,
                 setDailyUsageCounts,
+                liquidatedTreasures,
+                setLiquidatedTreasures,
                 tasks,
                 setTasks,
                 profileModuleStatus,

@@ -94,6 +94,7 @@
             markChanged('redemptionHistory');
             markChanged('dailyRedemptionCounts');
             markChanged('dailyUsageCounts');
+            markChanged('liquidatedTreasures');
             markChanged('tasks');
 
             return Object.keys(patch).length > 0 ? patch : null;
@@ -116,6 +117,7 @@
                 redemptionHistory,
                 dailyRedemptionCounts,
                 dailyUsageCounts,
+                liquidatedTreasures,
                 tasks,
                 battle,
                 examArchives,
@@ -135,6 +137,7 @@
                 setRedemptionHistory,
                 setDailyRedemptionCounts,
                 setDailyUsageCounts,
+                setLiquidatedTreasures,
                 setTasks,
                 setBattle,
                 setExamArchives,
@@ -220,6 +223,7 @@
                     redemptionHistory: safe.redemptionHistory,
                     dailyRedemptionCounts: safe.dailyRedemptionCounts,
                     dailyUsageCounts: safe.dailyUsageCounts,
+                    liquidatedTreasures: safe.liquidatedTreasures,
                     tasks: safe.tasks,
                     battle: safe.battle,
                     examArchives: normalizeExamArchives(safe.examArchives, safe.battle),
@@ -240,6 +244,7 @@
                         redemptionHistory: Object.prototype.hasOwnProperty.call(safe, 'redemptionHistory'),
                         dailyRedemptionCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyRedemptionCounts'),
                         dailyUsageCounts: Object.prototype.hasOwnProperty.call(safe, 'dailyUsageCounts'),
+                        liquidatedTreasures: Object.prototype.hasOwnProperty.call(safe, 'liquidatedTreasures'),
                         tasks: Object.prototype.hasOwnProperty.call(safe, 'tasks'),
                         battle: Object.prototype.hasOwnProperty.call(safe, 'battle'),
                         examArchives: Object.prototype.hasOwnProperty.call(safe, 'examArchives') || !!(safe.battle && Array.isArray(safe.battle.exams))
@@ -290,6 +295,7 @@
                 if (use(normalized.flags.redemptionHistory)) setRedemptionHistory(normalized.redemptionHistory || {});
                 if (use(normalized.flags.dailyRedemptionCounts)) setDailyRedemptionCounts(normalized.dailyRedemptionCounts || {});
                 if (use(normalized.flags.dailyUsageCounts)) setDailyUsageCounts(normalized.dailyUsageCounts || {});
+                if (use(normalized.flags.liquidatedTreasures)) setLiquidatedTreasures(normalized.liquidatedTreasures || []);
                 if (use(normalized.flags.tasks)) setTasks(normalized.tasks || []);
                 if (use(normalized.flags.battle)) setBattle(battleNormalize(normalized.battle || {}));
                 if (use(normalized.flags.examArchives)) setExamArchives(normalizeExamArchives(normalized.examArchives, normalized.battle));
@@ -396,6 +402,7 @@
                     redemptionHistory,
                     dailyRedemptionCounts,
                     dailyUsageCounts,
+                    liquidatedTreasures,
                     tasks,
                     pets,
                     battle,
@@ -406,7 +413,7 @@
                     students: nextStudents,
                     studentProfiles: nextStudentProfiles
                 };
-            }, [students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, pets, battle, examArchives]);
+            }, [students, studentProfiles, history, config, effectiveTreasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, liquidatedTreasures, tasks, pets, battle, examArchives]);
 
             const fetchFromServerCore = useCallback(async (options = {}) => {
                 const normalizedOptions = typeof options === 'boolean' ? { isAuto: options } : (options || {});
@@ -864,6 +871,7 @@
                     redemptionHistory,
                     dailyRedemptionCounts,
                     dailyUsageCounts,
+                    liquidatedTreasures,
                     tasks
                 };
                 if (!mainAutosaveSnapshotRef.current) {
@@ -899,7 +907,7 @@
 
                 const timer = setTimeout(saveData, 1500);
                 return () => clearTimeout(timer);
-            }, [localHydrationDone, students, studentProfiles, history, config, pets, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, tasks, persistDataPatch]);
+            }, [localHydrationDone, students, studentProfiles, history, config, pets, treasures, storage, logs, quotes, messages, teacherMessages, redemptionHistory, dailyRedemptionCounts, dailyUsageCounts, liquidatedTreasures, tasks, persistDataPatch]);
 
             useEffect(() => {
                 if (!localHydrationDone) return undefined;
