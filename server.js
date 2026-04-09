@@ -2409,6 +2409,79 @@ app.put('/api/admin/users/:id/role', authMiddleware, adminMiddleware, (req, res)
     }
 });
 
+// 管理员重置用户登录密码
+app.put('/api/admin/users/:id/password', authMiddleware, adminMiddleware, (req, res) => {
+    const userId = req.params.id;
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+
+    if (Number(userId) === req.user.id) {
+        return res.status(400).json({ error: '不能通过管理员接口重置自己的密码，请使用修改密码功能' });
+    }
+
+    if (!newPassword) {
+        return res.status(400).json({ error: '新密码不能为空' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: '新密码长度至少6个字符' });
+    }
+
+    try {
+        const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
+        if (!targetUser) {
+            return res.status(404).json({ error: '用户不存在' });
+        }
+        if (targetUser.role === 'admin') {
+            return res.status(400).json({ error: '不能重置其他管理员的密码' });
+        }
+
+        const passwordHash = hashPassword(newPassword);
+        const result = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
+        if (result.changes === 0) return res.status(404).json({ error: '用户不存在' });
+
+        res.json({ success: true, message: '登录密码已重置' });
+    } catch (err) {
+        console.error('重置用户密码失败:', err);
+        res.status(500).json({ error: '重置用户密码失败' });
+    }
+});
+
+// 管理员重置用户维护密码
+app.put('/api/admin/users/:id/maintenance-password', authMiddleware, adminMiddleware, (req, res) => {
+    const userId = req.params.id;
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+
+    if (!newPassword) {
+        return res.status(400).json({ error: '新维护密码不能为空' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: '维护密码长度至少 6 个字符' });
+    }
+
+    try {
+        const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
+        if (!targetUser) {
+            return res.status(404).json({ error: '用户不存在' });
+        }
+        if (targetUser.role === 'admin') {
+            return res.status(400).json({ error: '管理员账户没有维护密码' });
+        }
+
+        const passwordHash = hashPassword(newPassword);
+        db.prepare(`
+            INSERT INTO maintenance_credentials (user_id, password_hash, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                password_hash = excluded.password_hash,
+                updated_at = CURRENT_TIMESTAMP
+        `).run(userId, passwordHash);
+
+        res.json({ success: true, message: '维护密码已重置' });
+    } catch (err) {
+        console.error('重置维护密码失败:', err);
+        res.status(500).json({ error: '重置维护密码失败' });
+    }
+});
+
 // 系统统计
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
     try {

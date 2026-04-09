@@ -1,4 +1,6 @@
 (function () {
+    const MAINTENANCE_PASSWORD_MIN_LENGTH = 6;
+
     const parseJsonResponse = async (res) => {
         const text = await res.text();
         if (!text) return null;
@@ -60,6 +62,26 @@
             void deleteUser(user.id);
         });
         actionCell.appendChild(deleteButton);
+
+        if (user.role !== 'admin') {
+            const resetPasswordButton = document.createElement('button');
+            resetPasswordButton.type = 'button';
+            resetPasswordButton.className = 'text-orange-600 hover:text-orange-800 mr-3';
+            resetPasswordButton.textContent = '重置密码';
+            resetPasswordButton.addEventListener('click', () => {
+                showResetModal(user.id, user.username, 'password');
+            });
+            actionCell.insertBefore(resetPasswordButton, deleteButton);
+
+            const resetMaintButton = document.createElement('button');
+            resetMaintButton.type = 'button';
+            resetMaintButton.className = 'text-amber-600 hover:text-amber-800 mr-3';
+            resetMaintButton.textContent = '重置维护密码';
+            resetMaintButton.addEventListener('click', () => {
+                showResetModal(user.id, user.username, 'maintenance');
+            });
+            actionCell.insertBefore(resetMaintButton, deleteButton);
+        }
 
         row.appendChild(actionCell);
         return row;
@@ -153,6 +175,95 @@
 
         await Promise.all([loadUsers(), loadStats()]);
     };
+
+    const resetModal = document.getElementById('resetPasswordModal');
+    const resetModalTitle = document.getElementById('resetModalTitle');
+    const resetModalUser = document.getElementById('resetModalUser');
+    const resetNewPassword = document.getElementById('resetNewPassword');
+    const resetNewPasswordConfirm = document.getElementById('resetNewPasswordConfirm');
+    const resetModalError = document.getElementById('resetModalError');
+    const resetModalCancel = document.getElementById('resetModalCancel');
+    const resetModalConfirm = document.getElementById('resetModalConfirm');
+
+    let currentResetTarget = null;
+
+    const showResetModal = (userId, username, type) => {
+        currentResetTarget = { userId, username, type };
+        resetModalTitle.textContent = type === 'password' ? '重置登录密码' : '重置维护密码';
+        resetModalUser.textContent = '用户: ' + username;
+        resetNewPassword.value = '';
+        resetNewPasswordConfirm.value = '';
+        resetModalError.classList.add('hidden');
+        resetModalError.textContent = '';
+        resetModal.classList.remove('hidden');
+        resetModal.classList.add('flex');
+        resetNewPassword.focus();
+    };
+
+    const hideResetModal = () => {
+        currentResetTarget = null;
+        resetModal.classList.add('hidden');
+        resetModal.classList.remove('flex');
+    };
+
+    const handleResetConfirm = async () => {
+        if (!currentResetTarget) return;
+
+        const { userId, type } = currentResetTarget;
+        const newPasswordVal = resetNewPassword.value;
+        const confirmPasswordVal = resetNewPasswordConfirm.value;
+
+        if (!newPasswordVal) {
+            resetModalError.textContent = '请输入新密码';
+            resetModalError.classList.remove('hidden');
+            return;
+        }
+
+        if (newPasswordVal.length < MAINTENANCE_PASSWORD_MIN_LENGTH) {
+            resetModalError.textContent = '密码长度至少' + MAINTENANCE_PASSWORD_MIN_LENGTH + '个字符';
+            resetModalError.classList.remove('hidden');
+            return;
+        }
+
+        if (newPasswordVal !== confirmPasswordVal) {
+            resetModalError.textContent = '两次输入的密码不一致';
+            resetModalError.classList.remove('hidden');
+            return;
+        }
+
+        const endpoint = type === 'password'
+            ? '/api/admin/users/' + userId + '/password'
+            : '/api/admin/users/' + userId + '/maintenance-password';
+
+        const res = await fetchWithAuth(endpoint, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newPassword: newPasswordVal })
+        });
+        if (!res) { hideResetModal(); return; }
+
+        const data = await parseJsonResponse(res);
+        if (!data || !data.success) {
+            resetModalError.textContent = (data && data.error) || '重置失败';
+            resetModalError.classList.remove('hidden');
+            return;
+        }
+
+        hideResetModal();
+        alert((type === 'password' ? '登录密码' : '维护密码') + '已重置');
+    };
+
+    resetModalCancel.addEventListener('click', hideResetModal);
+    resetModalConfirm.addEventListener('click', () => { void handleResetConfirm(); });
+    resetModal.addEventListener('click', (e) => {
+        if (e.target === resetModal) hideResetModal();
+    });
+    resetNewPassword.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') resetNewPasswordConfirm.focus();
+    });
+    resetNewPasswordConfirm.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void handleResetConfirm();
+    });
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         void window.__logout__();

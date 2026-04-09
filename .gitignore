@@ -44,3 +44,4 @@ classmanager-next
 # OS / editor
 .DS_Store
 Thumbs.db
+.omx/
