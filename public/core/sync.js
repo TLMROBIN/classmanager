@@ -2,6 +2,7 @@
     window.createClassManagerSync = function createClassManagerSync(deps) {
         const {
             useRef,
+            useState,
             useEffect,
             useCallback,
             getApiUrl,
@@ -33,6 +34,7 @@
 
         if (
             !useRef ||
+            !useState ||
             !useEffect ||
             !useCallback ||
             !getApiUrl ||
@@ -158,6 +160,7 @@
             const retryTimerRef = useRef(null);
             const serverMetaRef = useRef({ updatedAt: 0 });
             const initialServerSyncDoneRef = useRef(!getApiUrl());
+            const [realDataReady, setRealDataReady] = useState(() => !getApiUrl());
             const skipMainAutosaveRef = useRef(false);
             const skipBattleAutosaveRef = useRef(false);
             const mainAutosaveSnapshotRef = useRef(null);
@@ -197,12 +200,17 @@
                 return protectTreasureDomain(nextDomain, () => ({ treasures, storage, logs }), options);
             }, [treasures, storage, logs]);
 
-            const markServerMeta = (updatedAt) => {
+            const updateServerMeta = (updatedAt) => {
                 const ts = Number(updatedAt) || 0;
                 if (ts > 0) {
                     serverMetaRef.current = { updatedAt: ts };
                 }
+            };
+
+            const markInitialServerSyncDone = (updatedAt) => {
+                updateServerMeta(updatedAt);
                 initialServerSyncDoneRef.current = true;
+                setRealDataReady(true);
             };
 
             const normalizeFullData = (data) => {
@@ -304,7 +312,7 @@
             const applyAttendanceServerPayload = useCallback((data, options = {}) => {
                 const safe = data || {};
                 const updatedAt = Number(safe.updatedAt) || Number(safe.__meta?.updatedAt) || 0;
-                if (updatedAt > 0) markServerMeta(updatedAt);
+                if (updatedAt > 0) updateServerMeta(updatedAt);
                 const partial = {};
                 if (Object.prototype.hasOwnProperty.call(safe, 'attendanceRecords')) partial.attendanceRecords = safe.attendanceRecords;
                 if (Object.prototype.hasOwnProperty.call(safe, 'students')) partial.students = safe.students;
@@ -465,7 +473,7 @@
                     if (data && Object.keys(data).length > 0) {
                         const normalized = normalizeFullData(data);
                         const remoteTs = Number(normalized.__meta.updatedAt) || 0;
-                        markServerMeta(remoteTs);
+                        markInitialServerSyncDone(remoteTs);
                         skipMainAutosaveRef.current = true;
                         skipBattleAutosaveRef.current = true;
                         applyFullData(data, {
@@ -485,7 +493,7 @@
                         }
                         return { success: true, updatedAt: remoteTs };
                     }
-                    initialServerSyncDoneRef.current = true;
+                    markInitialServerSyncDone();
                     if (typeof emptyAlert === 'string' && emptyAlert) {
                         alert(emptyAlert);
                     } else if (!isAuto && emptyAlert !== false) {
@@ -567,7 +575,7 @@
                         throw new Error(data?.error || '保存失败');
                     }
                     const savedUpdatedAt = Number(data?.updatedAt) || nowTs;
-                    markServerMeta(savedUpdatedAt);
+                    markInitialServerSyncDone(savedUpdatedAt);
                     setSyncStatus('saved');
                     isSavingRef.current = false;
                     return { success: true, updatedAt: savedUpdatedAt };
@@ -790,6 +798,7 @@
 
                 serverMetaRef.current = { updatedAt: 0 };
                 initialServerSyncDoneRef.current = false;
+                setRealDataReady(!getApiUrl());
                 isDirtyRef.current = false;
                 isSavingRef.current = false;
                 fetchFromServer({
@@ -945,6 +954,8 @@
                 persistData,
                 persistDataPatch,
                 persistManagedPatch,
+                fetchAttendanceData,
+                realDataReady,
                 handleAttendanceCheckIn,
                 handleAttendanceMaintenance
             };

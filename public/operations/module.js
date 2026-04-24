@@ -49,7 +49,11 @@
             buildHomeworkUpdates,
             buildHomeworkConfirmMessage,
             buildRunningExerciseUpdates,
-            buildRunningExerciseConfirmMessage
+            buildRunningExerciseConfirmMessage,
+            buildHygieneUpdates,
+            buildHygieneConfirmMessage,
+            buildDisciplineUpdates,
+            buildDisciplineConfirmMessage
         } = builders;
         const createOperationHandlers = window.createOperationHandlers;
         const createOperationViews = window.createOperationViews;
@@ -98,6 +102,10 @@
             !buildHomeworkConfirmMessage ||
             !buildRunningExerciseUpdates ||
             !buildRunningExerciseConfirmMessage ||
+            !buildHygieneUpdates ||
+            !buildHygieneConfirmMessage ||
+            !buildDisciplineUpdates ||
+            !buildDisciplineConfirmMessage ||
             !createOperationHandlers ||
             !createOperationViews ||
             !createOperationSettingsSections ||
@@ -113,6 +121,8 @@
             ReasonToolbar,
             HomeworkPanel,
             RunningExercisePanel,
+            HygienePanel,
+            DisciplinePanel,
             RecentHistoryPanel,
             BatchAdjustModalView
         } = createOperationViews({
@@ -132,6 +142,8 @@
             ReasonsConfigSection,
             PenaltyDecaySection,
             RunningExerciseSettingsSection,
+            HygieneRegisterSettingsSection,
+            DisciplineRegisterSettingsSection,
             RecordAttributesSection
         } = createOperationSettingsSections({
             h,
@@ -191,6 +203,14 @@
             const [hwSelectedIds, setHwSelectedIds] = useState(new Set());
             const [runDate, setRunDate] = useState("");
             const [runSelectedAbsentIds, setRunSelectedAbsentIds] = useState(new Set());
+            const [hygieneSelectedIds, setHygieneSelectedIds] = useState(new Set());
+            const [disciplineDate, setDisciplineDate] = useState("");
+            const [disciplineActiveTab, setDisciplineActiveTabState] = useState("noise");
+            const [disciplineSelectedIds, setDisciplineSelectedIds] = useState(new Set());
+            const setDisciplineActiveTab = (tab) => {
+                setDisciplineActiveTabState(tab);
+                setDisciplineSelectedIds(new Set());
+            };
 
             const setSelectedIds = (next) => {
                 setSelectedIdsState(prev => {
@@ -244,6 +264,93 @@
             const historyList = Array.isArray(history) ? history : [];
             const homeworkDates = getHomeworkDates({ getNow, getDateString });
 
+            const computeHygieneSession = () => {
+                const schedule = (systemConfig.attendance && systemConfig.attendance.schedule) || [];
+                const now = getNow();
+                const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                for (const session of schedule) {
+                    if (!session.lateTime || !session.end) continue;
+                    const [lh, lm] = session.lateTime.split(':').map(Number);
+                    const [eh, em] = session.end.split(':').map(Number);
+                    const startMin = lh * 60 + lm;
+                    const endMin = eh * 60 + em + 20;
+                    if (currentMinutes >= startMin && currentMinutes <= endMin) {
+                        return session;
+                    }
+                }
+                return null;
+            };
+            const hygieneSession = computeHygieneSession();
+
+            const getDayKey = (date) => {
+                const day = date.getDay();
+                const map = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri' };
+                return map[day] || null;
+            };
+            const todayKey = getDayKey(getNow());
+            const resolveStudentsFromRefs = (refs) => {
+                const safeStudents = Array.isArray(students) ? students : [];
+                const uniqueStudents = [];
+                const seen = new Set();
+                (Array.isArray(refs) ? refs : []).forEach((ref) => {
+                    const text = String(ref || '').trim();
+                    if (!text) return;
+                    const matchedStudent = safeStudents.find(student => (
+                        String(student?.id) === text || String(student?.name || '').trim() === text
+                    ));
+                    if (!matchedStudent) return;
+                    const studentKey = String(matchedStudent.id);
+                    if (seen.has(studentKey)) return;
+                    seen.add(studentKey);
+                    uniqueStudents.push(matchedStudent);
+                });
+                return uniqueStudents;
+            };
+
+            const dutyList = todayKey && config && config.duty ? config.duty[todayKey] : [];
+            const hygieneInspectors = resolveStudentsFromRefs(dutyList);
+            const hygieneInspectorStudentIds = hygieneInspectors.map(student => student.id);
+            const hygieneInspectorNames = hygieneInspectors.map(student => student.name);
+
+            const pointsConfig = systemConfig.points || {};
+            const hygieneAreaPenalty = pointsConfig.hygieneRegister?.areaPenalty ?? 1;
+            const hygieneInspectorBonus = pointsConfig.hygieneRegister?.inspectorBonus ?? 1;
+
+            const disciplineConfig = pointsConfig.disciplineRegister || {};
+            const commissionerRolesList = (systemConfig.organization && Array.isArray(systemConfig.organization.commissionerRoles))
+                ? systemConfig.organization.commissionerRoles
+                : [];
+            const commissionerStudentIdMap = {};
+            const disciplineCommissionerNamesMap = {};
+            commissionerRolesList.forEach(role => {
+                if (role && role.id) {
+                    const studentId = role.studentId != null && role.studentId !== '' ? String(role.studentId) : '';
+                    if (!studentId) return;
+                    const student = studentMap.get(studentId);
+                    if (!student) return;
+                    if (!Array.isArray(commissionerStudentIdMap[role.id])) commissionerStudentIdMap[role.id] = [];
+                    if (!Array.isArray(disciplineCommissionerNamesMap[role.id])) disciplineCommissionerNamesMap[role.id] = [];
+                    if (!commissionerStudentIdMap[role.id].includes(student.id)) {
+                        commissionerStudentIdMap[role.id].push(student.id);
+                    }
+                    if (!disciplineCommissionerNamesMap[role.id].includes(student.name)) {
+                        disciplineCommissionerNamesMap[role.id].push(student.name);
+                    }
+                }
+            });
+            const disciplineCommissionerMap = {
+                noise: commissionerStudentIdMap.noise || [],
+                desk: commissionerStudentIdMap.desk || [],
+                tablet: commissionerStudentIdMap.tablet || [],
+                outdoor: commissionerStudentIdMap.outdoor || []
+            };
+            const disciplineTabLabels = {
+                noise: '学习时间讲话',
+                desk: '桌面杂乱',
+                tablet: '平板未归',
+                outdoor: '晚自习外出'
+            };
+
             const toggleSettingsPanel = async () => {
                 if (settingsOpen) {
                     setSettingsOpen(false);
@@ -268,6 +375,14 @@
                     return setsAreEqual(prev, next) ? prev : next;
                 });
                 setRunSelectedAbsentIds(prev => {
+                    const next = sanitizeIdSetByStudents(prev, students);
+                    return setsAreEqual(prev, next) ? prev : next;
+                });
+                setHygieneSelectedIds(prev => {
+                    const next = sanitizeIdSetByStudents(prev, students);
+                    return setsAreEqual(prev, next) ? prev : next;
+                });
+                setDisciplineSelectedIds(prev => {
                     const next = sanitizeIdSetByStudents(prev, students);
                     return setsAreEqual(prev, next) ? prev : next;
                 });
@@ -300,7 +415,11 @@
                 toggleHomeworkSelection,
                 handleHomeworkSubmit,
                 toggleRunningExerciseSelection,
-                handleRunningExerciseSubmit
+                handleRunningExerciseSubmit,
+                toggleHygieneSelection,
+                handleHygieneSubmit,
+                toggleDisciplineSelection,
+                handleDisciplineSubmit
             } = createOperationHandlers({
                 selectedIdsState,
                 setSelectedIds,
@@ -335,7 +454,26 @@
                 runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
                 runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
                 runningExerciseCommissionerStudentId: (systemConfig.points || {}).runningExerciseCommissionerStudentId,
-                runningExerciseCommissionerBonus: (systemConfig.points || {}).runningExerciseCommissionerBonus
+                runningExerciseCommissionerBonus: (systemConfig.points || {}).runningExerciseCommissionerBonus,
+                buildHygieneUpdates,
+                buildHygieneConfirmMessage,
+                buildDisciplineUpdates,
+                buildDisciplineConfirmMessage,
+                getTodayStr,
+                hygieneSession,
+                hygieneSelectedIds,
+                hygieneInspectorStudentIds,
+                hygieneInspectorNames,
+                hygieneAreaPenalty,
+                hygieneInspectorBonus,
+                setHygieneSelectedIds,
+                disciplineDate: disciplineDate || homeworkDates[1] || homeworkDates[0],
+                disciplineActiveTab,
+                disciplineSelectedIds,
+                disciplineConfig,
+                disciplineCommissionerMap,
+                disciplineCommissionerNamesMap,
+                setDisciplineSelectedIds
             });
 
             return h("div", { className: "space-y-6 animate-fade-in" },
@@ -422,6 +560,16 @@
                             setConfig,
                             embedded: true
                         }),
+                        h(HygieneRegisterSettingsSection, {
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
+                        h(DisciplineRegisterSettingsSection, {
+                            config,
+                            setConfig,
+                            embedded: true
+                        }),
                         h(SubjectConfigSection, {
                             students,
                             config,
@@ -437,31 +585,63 @@
                         })
                     )
                 ),
-                h(HomeworkPanel, {
-                    students: Array.isArray(students) ? students : [],
-                    homeworkSubjects,
-                    hwSubject,
-                    setHwSubject,
-                    homeworkDates,
-                    hwDate,
-                    setHwDate,
-                    hwSelectedIds,
-                    setHwSelectedIds,
-                    onToggleHomeworkSelection: toggleHomeworkSelection,
-                    onSubmit: handleHomeworkSubmit
-                }),
-                h(RunningExercisePanel, {
-                    students: Array.isArray(students) ? students : [],
-                    runningExerciseDates: homeworkDates,
-                    runDate,
-                    setRunDate,
-                    runSelectedAbsentIds,
-                    setRunSelectedAbsentIds,
-                    runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
-                    runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
-                    onToggleRunningExerciseSelection: toggleRunningExerciseSelection,
-                    onSubmit: handleRunningExerciseSubmit
-                }),
+                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+                    h(HomeworkPanel, {
+                        students: Array.isArray(students) ? students : [],
+                        homeworkSubjects,
+                        hwSubject,
+                        setHwSubject,
+                        homeworkDates,
+                        hwDate,
+                        setHwDate,
+                        hwSelectedIds,
+                        setHwSelectedIds,
+                        onToggleHomeworkSelection: toggleHomeworkSelection,
+                        onSubmit: handleHomeworkSubmit
+                    }),
+                    h(RunningExercisePanel, {
+                        students: Array.isArray(students) ? students : [],
+                        runningExerciseDates: homeworkDates,
+                        runDate,
+                        setRunDate,
+                        runSelectedAbsentIds,
+                        setRunSelectedAbsentIds,
+                        runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
+                        runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
+                        onToggleRunningExerciseSelection: toggleRunningExerciseSelection,
+                        onSubmit: handleRunningExerciseSubmit
+                    }),
+                    systemConfig.enabledFeatures?.hygieneRegister && h(HygienePanel, {
+                        students: Array.isArray(students) ? students : [],
+                        sessionName: hygieneSession ? hygieneSession.name : null,
+                        date: getTodayStr(),
+                        inspectorNames: hygieneInspectorNames,
+                        inspectorBonus: hygieneInspectorBonus,
+                        areaPenalty: hygieneAreaPenalty,
+                        selectedIds: hygieneSelectedIds,
+                        setSelectedIds: setHygieneSelectedIds,
+                        onToggleSelection: toggleHygieneSelection,
+                        onSubmit: handleHygieneSubmit,
+                        disabled: !hygieneSession,
+                        disabledReason: hygieneSession ? null : "当前非卫生登记时段（请于早读/午练/放学期间登记）"
+                    }),
+                    systemConfig.enabledFeatures?.disciplineRegister && h(DisciplinePanel, {
+                        students: Array.isArray(students) ? students : [],
+                        dates: homeworkDates,
+                        date: disciplineDate || homeworkDates[1] || homeworkDates[0],
+                        setDate: setDisciplineDate,
+                        activeTab: disciplineActiveTab,
+                        setActiveTab: setDisciplineActiveTab,
+                        selectedIds: disciplineSelectedIds,
+                        setSelectedIds: setDisciplineSelectedIds,
+                        commissionerNames: disciplineCommissionerNamesMap[disciplineActiveTab] || [],
+                        commissionerBonus: disciplineConfig[disciplineActiveTab]?.commissionerBonus ?? 1,
+                        penalty: disciplineConfig[disciplineActiveTab]?.penalty ?? 1,
+                        onToggleSelection: toggleDisciplineSelection,
+                        onSubmit: handleDisciplineSubmit,
+                        disabled: false
+                    })
+                ),
                 h(RecentHistoryPanel, {
                     recentHistory,
                     onUndo: handleUndo

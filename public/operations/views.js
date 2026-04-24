@@ -245,23 +245,23 @@
             setHwSelectedIds,
             onToggleHomeworkSelection,
             onSubmit
-        }) => h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-            h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "book" }), "作业登记"),
-            h("div", { className: "flex flex-wrap gap-2 mb-3" },
+        }) => h("div", { className: "bg-white p-3 rounded-xl shadow-sm h-full flex flex-col" },
+            h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "book" }), "作业登记"),
+            h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 homeworkSubjects.map(subject => h("button", {
                     key: subject,
                     onClick: () => setHwSubject(subject),
-                    className: `px-3 py-1 rounded-full text-xs font-bold border ${hwSubject === subject ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    className: `px-2 py-0.5 rounded-full text-xs font-bold border ${hwSubject === subject ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                 }, subject))
             ),
-            h("div", { className: "flex flex-wrap gap-2 mb-3" },
+            h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 homeworkDates.map(date => h("button", {
                     key: date,
                     onClick: () => setHwDate(date),
-                    className: `px-3 py-1 rounded-full text-xs font-bold border ${((hwDate || homeworkDates[0]) === date) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    className: `px-2 py-0.5 rounded-full text-xs font-bold border ${((hwDate || homeworkDates[0]) === date) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                 }, date))
             ),
-            h("div", { className: "flex justify-between items-center mb-2" },
+            h("div", { className: "flex justify-between items-center mb-1" },
                 h("div", { className: "text-sm text-gray-600" }, "选择未交学生"),
                 h("div", { className: "flex gap-2" },
                     h("button", { onClick: () => setHwSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
@@ -271,7 +271,7 @@
                     }, "全选")
                 )
             ),
-            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-56 overflow-y-auto border rounded p-2" },
+            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
                 students.map(student => {
                     const chosen = hwSelectedIds.has(student.id);
                     return h("button", {
@@ -281,10 +281,10 @@
                     }, student.name);
                 })
             ),
-            h("div", { className: "pt-3 flex justify-end gap-2" },
+            h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
                 h("button", {
                     onClick: onSubmit,
-                    className: "px-4 py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                    className: "px-3 py-1.5 rounded bg-red-600 text-white text-sm hover:bg-red-700"
                 }, hwSelectedIds.size === 0 ? "提交（无人未交）" : `提交未交记录 (${hwSelectedIds.size}人)`)
             )
         );
@@ -316,20 +316,20 @@
                 borderColor: '#e5e7eb',
                 color: '#374151'
             };
-            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-            h("h3", { className: "font-bold text-gray-700 mb-4 flex items-center gap-2" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
-            h("div", { className: "flex flex-wrap gap-2 mb-3" },
+            return h("div", { className: "bg-white p-3 rounded-xl shadow-sm h-full flex flex-col" },
+            h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
+            h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 runningExerciseDates.map(date => h("button", {
                     key: date,
                     onClick: () => setRunDate(date),
-                    className: "px-3 py-1 rounded-full text-xs font-bold border",
+                    className: "px-2 py-0.5 rounded-full text-xs font-bold border",
                     style: ((runDate || runningExerciseDates[0]) === date) ? selectedDateStyle : defaultDateStyle
                 }, date))
             ),
-            h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3 leading-5" },
-                `缺勤扣分 ${Math.abs(Number(runningExerciseAbsentPenalty) || 0)} 分，正常出勤加分 ${Math.abs(Number(runningExercisePresentBonus) || 0)} 分。填 0 的一侧将不会记分。`
+            h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 mb-2 leading-5" },
+                `缺勤扣分 ${Math.abs(Number(runningExerciseAbsentPenalty) || 0)} 分，正常出勤加分 ${Math.abs(Number(runningExercisePresentBonus) || 0)} 分。`
             ),
-            h("div", { className: "flex justify-between items-center mb-2" },
+            h("div", { className: "flex justify-between items-center mb-1" },
                 h("div", { className: "text-sm text-gray-600" }, "选择缺勤学生"),
                 h("div", { className: "flex gap-2" },
                     h("button", { onClick: () => setRunSelectedAbsentIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
@@ -339,7 +339,7 @@
                     }, "全选缺勤")
                 )
             ),
-            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-56 overflow-y-auto border rounded p-2" },
+            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
                 students.map(student => {
                     const chosen = runSelectedAbsentIds.has(student.id);
                     return h("button", {
@@ -349,14 +349,139 @@
                     }, student.name);
                 })
             ),
-            h("div", { className: "pt-3 flex justify-end gap-2" },
+            h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
                 h("button", {
                     onClick: onSubmit,
-                    className: "px-4 py-2 rounded text-sm",
+                    className: "px-3 py-1.5 rounded text-sm",
                     style: primaryButtonStyle
                 }, runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size}人缺勤)`)
             )
         );
+        };
+
+        const HygienePanel = ({
+            students,
+            date,
+            sessionName,
+            inspectorNames,
+            inspectorBonus,
+            areaPenalty,
+            selectedIds,
+            setSelectedIds,
+            onToggleSelection,
+            onSubmit,
+            disabled,
+            disabledReason
+        }) => {
+            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            const inspectorList = Array.isArray(inspectorNames) ? inspectorNames.filter(Boolean) : [];
+            return h("div", { className: `bg-white p-3 rounded-xl shadow-sm h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
+                h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "droplet" }), "卫生登记"),
+                h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
+                    h("span", { className: "text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200" }, [date, sessionName || "时段判定中"].filter(Boolean).join(' ')),
+                    inspectorList.length > 0
+                        ? h("span", { className: "text-xs text-gray-600" }, `专员：${inspectorList.join('、')}（各 +${inspectorBonus ?? 1}）`)
+                        : h("span", { className: "text-xs text-amber-600" }, "今日卫生专员未设置")
+                ),
+                disabled && disabledReason && h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 mb-2" }, disabledReason),
+                h("div", { className: "flex justify-between items-center mb-1" },
+                    h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
+                    h("div", { className: "flex gap-2" },
+                        h("button", { onClick: () => setSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
+                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "text-xs text-blue-600" }, "全选")
+                    )
+                ),
+                h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
+                    (students || []).map(student => {
+                        const chosen = selectedIds.has(student.id);
+                        return h("button", {
+                            key: student.id,
+                            onClick: () => !disabled && onToggleSelection(student.id),
+                            className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                        }, student.name);
+                    })
+                ),
+                h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
+                    h("button", {
+                        onClick: onSubmit,
+                        disabled: disabled,
+                        className: `px-3 py-1.5 rounded text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`
+                    }, selectedIds.size === 0 ? "提交（无问题）" : `提交卫生登记 (${selectedIds.size}人不合格)`)
+                )
+            );
+        };
+
+        const DisciplinePanel = ({
+            students,
+            dates,
+            date,
+            setDate,
+            activeTab,
+            setActiveTab,
+            selectedIds,
+            setSelectedIds,
+            commissionerNames,
+            commissionerBonus,
+            penalty,
+            onToggleSelection,
+            onSubmit,
+            disabled
+        }) => {
+            const tabs = [
+                { key: 'noise',   label: '讲话', fullLabel: '学习时间讲话', commissionerRole: '噪音专员' },
+                { key: 'desk',    label: '桌面', fullLabel: '桌面杂乱',     commissionerRole: '书桌专员' },
+                { key: 'tablet',  label: '平板', fullLabel: '平板未归',     commissionerRole: '平板专员' },
+                { key: 'outdoor', label: '外出', fullLabel: '晚自习外出',   commissionerRole: '外出专员' }
+            ];
+            const currentTab = tabs.find(t => t.key === activeTab) || tabs[0];
+            const commissionerList = Array.isArray(commissionerNames) ? commissionerNames.filter(Boolean) : [];
+            return h("div", { className: `bg-white p-3 rounded-xl shadow-sm h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
+                h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "shield" }), "纪律登记"),
+                h("div", { className: "flex flex-wrap gap-1 mb-2" },
+                    dates.map(d => h("button", {
+                        key: d,
+                        onClick: () => setDate(d),
+                        className: `px-2 py-0.5 rounded-full text-xs font-bold border ${(date || dates[0]) === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    }, d))
+                ),
+                h("div", { className: "flex flex-wrap gap-1 mb-2" },
+                    tabs.map(tab => h("button", {
+                        key: tab.key,
+                        onClick: () => setActiveTab(tab.key),
+                        className: `px-2 py-0.5 rounded text-xs font-bold border ${activeTab === tab.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    }, tab.label))
+                ),
+                h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
+                    h("span", { className: "text-xs text-gray-600" }, `${currentTab.fullLabel}`),
+                    commissionerList.length > 0
+                        ? h("span", { className: "text-xs text-gray-500" }, `→ ${currentTab.commissionerRole}（${commissionerList.join('、')}）各 +${commissionerBonus ?? 1}`)
+                        : h("span", { className: "text-xs text-amber-600" }, `${currentTab.commissionerRole}未设置`)
+                ),
+                h("div", { className: "flex justify-between items-center mb-1" },
+                    h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
+                    h("div", { className: "flex gap-2" },
+                        h("button", { onClick: () => setSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
+                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "text-xs text-blue-600" }, "全选")
+                    )
+                ),
+                h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
+                    (students || []).map(student => {
+                        const chosen = selectedIds.has(student.id);
+                        return h("button", {
+                            key: student.id,
+                            onClick: () => !disabled && onToggleSelection(student.id),
+                            className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                        }, student.name);
+                    })
+                ),
+                h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
+                    h("button", {
+                        onClick: onSubmit,
+                        disabled: disabled,
+                        className: `px-3 py-1.5 rounded text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`
+                    }, selectedIds.size === 0 ? "提交（无问题）" : `提交纪律登记 (${selectedIds.size}人)`)
+                )
+            );
         };
 
         const RecentHistoryPanel = ({ recentHistory, onUndo }) => h("div", {
@@ -492,6 +617,8 @@
             ReasonToolbar,
             HomeworkPanel,
             RunningExercisePanel,
+            HygienePanel,
+            DisciplinePanel,
             RecentHistoryPanel,
             BatchAdjustModalView
         };

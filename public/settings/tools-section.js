@@ -45,10 +45,40 @@
                 reportEnd,
                 setReportEnd,
                 getReportRange,
-                handleGenerateBrief
+                handleGenerateBrief,
+                realDataReady,
+                weeklyReportPreset,
+                weeklyReportStart,
+                setWeeklyReportStart,
+                weeklyReportEnd,
+                setWeeklyReportEnd,
+                handleWeeklyReportPresetChange,
+                rawStudents,
+                weeklyReportSelectedStudentIds,
+                handleWeeklyReportSelectionToggle,
+                handleSelectAllWeeklyReportStudents,
+                handleClearWeeklyReportStudents,
+                weeklyReportIncludeTasks,
+                setWeeklyReportIncludeTasks,
+                weeklyReportIncludeNetPoints,
+                setWeeklyReportIncludeNetPoints,
+                weeklyReportGenerating,
+                handleGenerateWeeklyReport
             } = props || {};
 
             const studentList = Array.isArray(students) ? students : [];
+            const weeklyReportStudents = Array.isArray(rawStudents) ? rawStudents : [];
+            const weeklyReportSelectedIds = Array.isArray(weeklyReportSelectedStudentIds)
+                ? weeklyReportSelectedStudentIds.map(id => String(id))
+                : [];
+            const weeklyReportSelectedIdSet = new Set(weeklyReportSelectedIds);
+            const weeklyReportDisabled = !realDataReady || weeklyReportGenerating || weeklyReportSelectedIds.length === 0;
+            const weeklyReportEmptyStateText = realDataReady ? "暂无可用学生数据" : "等待数据同步后显示学生名单";
+            const weeklyReportPresetOptions = [
+                { value: 'current', label: '本周' },
+                { value: 'previous', label: '上周' },
+                { value: 'custom', label: '自定义' }
+            ];
             const countdownEvents = Array.isArray(config?.countdownEvents) ? config.countdownEvents : [];
             const isValidScheduleDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
             const scheduleNotes = config?.scheduleNotes && typeof config.scheduleNotes === 'object'
@@ -207,6 +237,89 @@
                                     h("button", { onClick: () => removeCountdownEvent(event.id), className: "px-2 py-1 text-xs bg-red-50 text-red-600 rounded shrink-0" }, "删除")
                                 ))
                             )
+                        )
+                    ),
+                    renderToolCard(
+                        "🧾 学生周报",
+                        "周报优先导出所选学生的行为 Markdown 周报，默认全班，可手动调整。",
+                        h("div", { className: "space-y-3" },
+                            !realDataReady && h("div", { className: "bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-3 text-xs" }, "正在等待首轮数据同步完成。同步前不可生成周报，避免导出访客示例名单。"),
+                            testMode && h("div", { className: "bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-3 text-xs" }, "当前处于测试模式，导出的学生周报将基于测试沙盒数据。"),
+                            h("div", { className: "flex flex-wrap gap-2" },
+                                weeklyReportPresetOptions.map(option => h("button", {
+                                    key: option.value,
+                                    onClick: () => handleWeeklyReportPresetChange(option.value),
+                                    className: `px-3 py-1 text-xs rounded border ${weeklyReportPreset === option.value ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white text-gray-700 border-gray-200"}`
+                                }, option.label))
+                            ),
+                            h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2" },
+                                h("input", {
+                                    type: "date",
+                                    className: "border rounded p-2 text-sm bg-white",
+                                    value: weeklyReportStart,
+                                    onChange: e => setWeeklyReportStart(e.target.value)
+                                }),
+                                h("input", {
+                                    type: "date",
+                                    className: "border rounded p-2 text-sm bg-white",
+                                    value: weeklyReportEnd,
+                                    onChange: e => setWeeklyReportEnd(e.target.value)
+                                })
+                            ),
+                            h("div", { className: "space-y-2" },
+                                h("div", { className: "flex items-center justify-between gap-2 text-xs text-gray-500" },
+                                    h("span", null, `已选 ${weeklyReportSelectedIds.length} / ${weeklyReportStudents.length} 名学生`),
+                                    h("div", { className: "flex gap-2" },
+                                        h("button", {
+                                            onClick: handleSelectAllWeeklyReportStudents,
+                                            className: "px-2 py-1 rounded bg-white border text-gray-700"
+                                        }, "全选"),
+                                        h("button", {
+                                            onClick: handleClearWeeklyReportStudents,
+                                            className: "px-2 py-1 rounded bg-white border text-gray-700"
+                                        }, "全不选")
+                                    )
+                                ),
+                                h("div", { className: "max-h-40 overflow-y-auto border rounded-lg bg-gray-50 p-2 space-y-2" },
+                                    weeklyReportStudents.length === 0
+                                        ? h("div", { className: "text-xs text-gray-400 py-2 text-center" }, weeklyReportEmptyStateText)
+                                        : weeklyReportStudents.map(student => {
+                                            const studentId = String(student.id);
+                                            const checked = weeklyReportSelectedIdSet.has(studentId);
+                                            return h("label", { key: studentId, className: "flex items-center gap-2 text-sm text-gray-700" },
+                                                h("input", {
+                                                    type: "checkbox",
+                                                    checked,
+                                                    onChange: () => handleWeeklyReportSelectionToggle(studentId)
+                                                }),
+                                                h("span", { className: "truncate" }, student.name)
+                                            );
+                                        })
+                                )
+                            ),
+                            h("div", { className: "flex flex-wrap gap-3 text-xs text-gray-600" },
+                                h("label", { className: "inline-flex items-center gap-2" },
+                                    h("input", {
+                                        type: "checkbox",
+                                        checked: !!weeklyReportIncludeTasks,
+                                        onChange: e => setWeeklyReportIncludeTasks(e.target.checked)
+                                    }),
+                                    h("span", null, "包含任务小节")
+                                ),
+                                h("label", { className: "inline-flex items-center gap-2" },
+                                    h("input", {
+                                        type: "checkbox",
+                                        checked: !!weeklyReportIncludeNetPoints,
+                                        onChange: e => setWeeklyReportIncludeNetPoints(e.target.checked)
+                                    }),
+                                    h("span", null, "包含净积分小结")
+                                )
+                            ),
+                            h("button", {
+                                onClick: handleGenerateWeeklyReport,
+                                disabled: weeklyReportDisabled,
+                                className: `w-full px-3 py-2 rounded text-sm font-medium ${weeklyReportDisabled ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700"}`
+                            }, weeklyReportGenerating ? "生成中..." : "生成学生周报")
                         )
                     ),
                     renderToolCard(

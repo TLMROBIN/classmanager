@@ -50,7 +50,26 @@
             runningExerciseAbsentPenalty,
             runningExercisePresentBonus,
             runningExerciseCommissionerStudentId,
-            runningExerciseCommissionerBonus
+            runningExerciseCommissionerBonus,
+            buildHygieneUpdates,
+            buildHygieneConfirmMessage,
+            buildDisciplineUpdates,
+            buildDisciplineConfirmMessage,
+            getTodayStr,
+            hygieneSession,
+            hygieneSelectedIds,
+            hygieneInspectorStudentIds,
+            hygieneInspectorNames,
+            hygieneAreaPenalty,
+            hygieneInspectorBonus,
+            setHygieneSelectedIds,
+            disciplineDate,
+            disciplineActiveTab,
+            disciplineSelectedIds,
+            disciplineConfig,
+            disciplineCommissionerMap,
+            disciplineCommissionerNamesMap,
+            setDisciplineSelectedIds
         } = deps || {};
 
         if (
@@ -70,7 +89,14 @@
             typeof setHwSubject !== 'function' ||
             !buildRunningExerciseUpdates ||
             !buildRunningExerciseConfirmMessage ||
-            typeof setRunSelectedAbsentIds !== 'function'
+            typeof setRunSelectedAbsentIds !== 'function' ||
+            !buildHygieneUpdates ||
+            !buildHygieneConfirmMessage ||
+            !buildDisciplineUpdates ||
+            !buildDisciplineConfirmMessage ||
+            typeof getTodayStr !== 'function' ||
+            typeof setHygieneSelectedIds !== 'function' ||
+            typeof setDisciplineSelectedIds !== 'function'
         ) {
             throw new Error('Operation action dependencies are missing');
         }
@@ -212,6 +238,112 @@
             setRunSelectedAbsentIds(prev => toggleIdInSet(prev, id));
         };
 
+        const toggleHygieneSelection = (id) => {
+            setHygieneSelectedIds(prev => toggleIdInSet(prev, id));
+        };
+
+        const handleHygieneSubmit = () => {
+            if (!hygieneSession) return alert("当前非卫生登记时段");
+            const dateVal = getTodayStr();
+            if (!dateVal) return alert("无法确定当前日期");
+
+            const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
+                item.reason && (
+                    item.reason.includes(`${dateVal} ${hygieneSession.name} 卫生登记`) ||
+                    item.reason.includes(`${dateVal} ${hygieneSession.name} 卫生不达标`)
+                )
+            ));
+            if (alreadySubmitted) {
+                return alert(`${dateVal} ${hygieneSession.name} 已完成卫生登记，每个时段每天只能登记一次`);
+            }
+
+            const updates = buildHygieneUpdates({
+                date: dateVal,
+                sessionName: hygieneSession.name,
+                inspectorStudentIds: hygieneInspectorStudentIds,
+                selectedIds: hygieneSelectedIds,
+                areaPenalty: hygieneAreaPenalty,
+                inspectorBonus: hygieneInspectorBonus
+            });
+
+            if (updates.length === 0) {
+                return alert("当前卫生登记不会产生积分变动，请检查专员是否已设置。");
+            }
+
+            const confirmMsg = buildHygieneConfirmMessage({
+                date: dateVal,
+                sessionName: hygieneSession.name,
+                inspectorNames: hygieneInspectorNames,
+                selectedIds: hygieneSelectedIds,
+                studentMap,
+                areaPenalty: hygieneAreaPenalty,
+                inspectorBonus: hygieneInspectorBonus
+            });
+            if (!confirm(confirmMsg)) return;
+
+            batchUpdatePoints(updates);
+            setHygieneSelectedIds(new Set());
+        };
+
+        const toggleDisciplineSelection = (id) => {
+            setDisciplineSelectedIds(prev => toggleIdInSet(prev, id));
+        };
+
+        const handleDisciplineSubmit = () => {
+            const dateVal = disciplineDate;
+            if (!dateVal) return alert("请选择日期");
+
+            const tabConfig = disciplineConfig[disciplineActiveTab];
+            if (!tabConfig) return alert("请选择登记理由");
+
+            const reasonLabels = {
+                noise: '学习时间讲话',
+                desk: '桌面杂乱',
+                tablet: '平板未归',
+                outdoor: '晚自习外出'
+            };
+            const reasonLabel = reasonLabels[disciplineActiveTab];
+
+            const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
+                item.reason && item.reason.includes(`${dateVal} ${reasonLabel}`)
+            ));
+            if (alreadySubmitted) {
+                return alert(`${dateVal} ${reasonLabel} 已完成登记，每天同一理由只能登记一次`);
+            }
+
+            const commissionerIds = Array.isArray(disciplineCommissionerMap[disciplineActiveTab])
+                ? disciplineCommissionerMap[disciplineActiveTab]
+                : [];
+
+            const updates = buildDisciplineUpdates({
+                date: dateVal,
+                reasonKey: disciplineActiveTab,
+                reasonLabel,
+                commissionerStudentIds: commissionerIds,
+                selectedIds: disciplineSelectedIds,
+                penalty: tabConfig.penalty,
+                commissionerBonus: tabConfig.commissionerBonus
+            });
+
+            if (updates.length === 0) {
+                return alert("当前纪律登记不会产生积分变动，请检查专员是否已设置。");
+            }
+
+            const confirmMsg = buildDisciplineConfirmMessage({
+                date: dateVal,
+                reasonLabel,
+                commissionerNames: disciplineCommissionerNamesMap[disciplineActiveTab] || [],
+                selectedIds: disciplineSelectedIds,
+                studentMap,
+                penalty: tabConfig.penalty,
+                commissionerBonus: tabConfig.commissionerBonus
+            });
+            if (!confirm(confirmMsg)) return;
+
+            batchUpdatePoints(updates);
+            setDisciplineSelectedIds(new Set());
+        };
+
         const handleRunningExerciseSubmit = () => {
             const dateVal = runDate || homeworkDates[0];
             if (!dateVal) return alert("请选择日期");
@@ -263,7 +395,11 @@
             toggleHomeworkSelection,
             handleHomeworkSubmit,
             toggleRunningExerciseSelection,
-            handleRunningExerciseSubmit
+            handleRunningExerciseSubmit,
+            toggleHygieneSelection,
+            handleHygieneSubmit,
+            toggleDisciplineSelection,
+            handleDisciplineSubmit
         };
     };
 })();

@@ -517,6 +517,186 @@
             );
         };
 
+        const HygieneRegisterSettingsSection = ({ config, setConfig, embedded = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const systemConfig = getSystemConfig(config);
+            const pointsConfig = (systemConfig && systemConfig.points) || {};
+            const hygieneConfig = pointsConfig.hygieneRegister || {};
+            const isVisible = isOpen;
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", { className: "space-y-1" },
+                        h("div", { className: "flex items-center gap-2 text-gray-800" },
+                            h(Icon, { name: "droplet", size: 18 }),
+                            h("h3", { className: "font-bold text-sm" }, "卫生登记设置")
+                        ),
+                        h("p", { className: "text-xs text-gray-500" }, "配置卫生登记开关、专员加分与不合格扣分分值。")
+                    ),
+                    h("button", {
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入维护密码以打开卫生登记设置："
+                            });
+                        },
+                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                    }, isOpen ? "收起卫生登记设置" : "打开卫生登记设置")
+                ),
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { className: "flex items-center gap-2" },
+                        h("input", {
+                            type: "checkbox",
+                            id: "hygieneRegisterEnabled",
+                            checked: systemConfig.enabledFeatures?.hygieneRegister === true,
+                            onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                ...sc,
+                                enabledFeatures: { ...(sc.enabledFeatures || {}), hygieneRegister: e.target.checked }
+                            })),
+                            className: "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        }),
+                        h("label", { htmlFor: "hygieneRegisterEnabled", className: "text-sm text-gray-700 cursor-pointer" }, "启用卫生登记")
+                    ),
+                    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "卫生专员加分"),
+                            h("input", {
+                                type: "number",
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: hygieneConfig.inspectorBonus ?? 1,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        hygieneRegister: { ...(sc.points?.hygieneRegister || {}), inspectorBonus: Number(e.target.value) || 0 }
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "每次提交后，当日卫生专员获得此加分。")
+                        ),
+                        h("label", { className: "space-y-1" },
+                            h("span", { className: "block text-sm font-medium text-gray-700" }, "卫生不达标扣分"),
+                            h("input", {
+                                type: "number",
+                                step: 0.5,
+                                className: "w-full border rounded-lg p-2 text-sm",
+                                value: hygieneConfig.areaPenalty ?? 1,
+                                onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                    ...sc,
+                                    points: {
+                                        ...(sc.points || {}),
+                                        hygieneRegister: { ...(sc.points?.hygieneRegister || {}), areaPenalty: Number(e.target.value) || 0 }
+                                    }
+                                }))
+                            }),
+                            h("p", { className: "text-xs text-gray-500" }, "被勾选为不合格的学生每人扣此分值。")
+                        )
+                    )
+                )
+            );
+        };
+
+        const DisciplineRegisterSettingsSection = ({ config, setConfig, embedded = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const systemConfig = getSystemConfig(config);
+            const pointsConfig = (systemConfig && systemConfig.points) || {};
+            const discConfig = pointsConfig.disciplineRegister || {};
+            const isVisible = isOpen;
+
+            const disciplineItems = [
+                { key: 'noise',   label: '学习时间讲话', commissionerName: '噪音专员' },
+                { key: 'desk',    label: '桌面杂乱',     commissionerName: '书桌专员' },
+                { key: 'tablet',  label: '平板未归',     commissionerName: '平板专员' },
+                { key: 'outdoor', label: '晚自习外出',   commissionerName: '外出专员' }
+            ];
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", { className: "space-y-1" },
+                        h("div", { className: "flex items-center gap-2 text-gray-800" },
+                            h(Icon, { name: "shield", size: 18 }),
+                            h("h3", { className: "font-bold text-sm" }, "纪律登记设置")
+                        ),
+                        h("p", { className: "text-xs text-gray-500" }, "配置纪律登记开关、各检查项扣分与专员加分。")
+                    ),
+                    h("button", {
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入维护密码以打开纪律登记设置："
+                            });
+                        },
+                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                    }, isOpen ? "收起纪律登记设置" : "打开纪律登记设置")
+                ),
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { className: "flex items-center gap-2" },
+                        h("input", {
+                            type: "checkbox",
+                            id: "disciplineRegisterEnabled",
+                            checked: systemConfig.enabledFeatures?.disciplineRegister === true,
+                            onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                ...sc,
+                                enabledFeatures: { ...(sc.enabledFeatures || {}), disciplineRegister: e.target.checked }
+                            })),
+                            className: "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        }),
+                        h("label", { htmlFor: "disciplineRegisterEnabled", className: "text-sm text-gray-700 cursor-pointer" }, "启用纪律登记")
+                    ),
+                    h("div", { className: "space-y-2" },
+                        disciplineItems.map(item => {
+                            const itemConfig = discConfig[item.key] || {};
+                            return h("div", { key: item.key, className: "grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 border rounded-lg p-3" },
+                                h("div", { className: "flex items-center gap-2 text-sm font-medium text-gray-700" },
+                                    h("span", null, item.label),
+                                    h("span", { className: "text-xs text-gray-400" }, `→ ${item.commissionerName}`)
+                                ),
+                                h("label", { className: "space-y-1" },
+                                    h("span", { className: "block text-xs font-medium text-gray-600" }, "扣分"),
+                                    h("input", {
+                                        type: "number",
+                                        step: 0.5,
+                                        className: "w-full border rounded p-2 text-sm",
+                                        value: itemConfig.penalty ?? 1,
+                                        onChange: e => updateSystemConfig(config, setConfig, sc => {
+                                            const next = { ...(sc.points?.disciplineRegister || {}) };
+                                            next[item.key] = { ...(next[item.key] || {}), penalty: Number(e.target.value) || 0 };
+                                            return { ...sc, points: { ...(sc.points || {}), disciplineRegister: next } };
+                                        })
+                                    })
+                                ),
+                                h("label", { className: "space-y-1" },
+                                    h("span", { className: "block text-xs font-medium text-gray-600" }, "专员加分"),
+                                    h("input", {
+                                        type: "number",
+                                        step: 0.5,
+                                        className: "w-full border rounded p-2 text-sm",
+                                        value: itemConfig.commissionerBonus ?? 1,
+                                        onChange: e => updateSystemConfig(config, setConfig, sc => {
+                                            const next = { ...(sc.points?.disciplineRegister || {}) };
+                                            next[item.key] = { ...(next[item.key] || {}), commissionerBonus: Number(e.target.value) || 0 };
+                                            return { ...sc, points: { ...(sc.points || {}), disciplineRegister: next } };
+                                        })
+                                    })
+                                )
+                            );
+                        })
+                    )
+                )
+            );
+        };
+
         const RecordAttributesSection = ({ history, setHistory, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const [recordSearch, setRecordSearch] = useState("");
@@ -683,6 +863,8 @@
             ReasonsConfigSection,
             PenaltyDecaySection,
             RunningExerciseSettingsSection,
+            HygieneRegisterSettingsSection,
+            DisciplineRegisterSettingsSection,
             RecordAttributesSection
         };
     };

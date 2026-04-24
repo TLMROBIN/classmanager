@@ -163,7 +163,7 @@
             const customRoleAnnouncements = useMemo(() => {
                 return getCustomRoles(config)
                     .map((role, idx) => {
-                        const student = (Array.isArray(students) ? students : []).find(s => s.id === role.studentId);
+                        const student = (Array.isArray(students) ? students : []).find(s => String(s.id) === String(role.studentId));
                         return {
                             id: role.id || `custom_role_${idx + 1}`,
                             name: role.name || `职务${idx + 1}`,
@@ -177,7 +177,7 @@
             const commissionerAnnouncements = useMemo(() => {
                 return getCommissionerRoles(config)
                     .map((role, idx) => {
-                        const student = (Array.isArray(students) ? students : []).find(s => s.id === role.studentId);
+                        const student = (Array.isArray(students) ? students : []).find(s => String(s.id) === String(role.studentId));
                         return {
                             id: role.id || `commissioner_${idx + 1}`,
                             name: role.name || `纪律专员${idx + 1}`,
@@ -189,14 +189,24 @@
 
             const hygieneDutyAnnouncements = useMemo(() => {
                 const dayNameMap = { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五" };
+                const safeStudents = Array.isArray(students) ? students : [];
                 return Object.entries(config.duty || {})
                     .map(([day, dutyList]) => ({
                         id: day,
                         name: dayNameMap[day] || day,
-                        members: (Array.isArray(dutyList) ? dutyList : []).filter(Boolean)
+                        members: (Array.isArray(dutyList) ? dutyList : [])
+                            .map((member) => {
+                                const text = String(member || '').trim();
+                                if (!text) return '';
+                                const matchedStudent = safeStudents.find((student) => (
+                                    String(student.id) === text || String(student.name || '').trim() === text
+                                ));
+                                return matchedStudent ? matchedStudent.name : text;
+                            })
+                            .filter(Boolean)
                     }))
                     .filter(item => item.members.length > 0);
-            }, [config]);
+            }, [config, students]);
 
             const penaltyLastMap = useMemo(() => {
                 const map = new Map();

@@ -112,7 +112,9 @@
         recordCategoryPendingMigrated: false,
         enabledFeatures: {
             battle: true,
-            pet: false
+            pet: false,
+            hygieneRegister: false,
+            disciplineRegister: false
         },
         attendance: {
             schedule: [...SCHEDULE_CONFIG],
@@ -168,6 +170,16 @@
             runningExercisePresentBonus: 1,
             runningExerciseCommissionerStudentId: null,
             runningExerciseCommissionerBonus: 1,
+            hygieneRegister: {
+                inspectorBonus: 1,
+                areaPenalty: 1
+            },
+            disciplineRegister: {
+                noise:    { penalty: 1, commissionerBonus: 1 },
+                desk:     { penalty: 1, commissionerBonus: 1 },
+                tablet:   { penalty: 1, commissionerBonus: 1 },
+                outdoor:  { penalty: 1, commissionerBonus: 1 }
+            },
             reasons: [
                 { name: '每日工资', val: 5, type: 'bonus', note: '组长+6', scene: '班级', category: '班务' },
                 { name: '宣传组装饰', val: 100, type: 'bonus', note: '组长+120', scene: '班级', category: '纪律' },
@@ -221,12 +233,18 @@
         ]
     };
 
+    const normalizeStudentRef = (value) => {
+        if (value == null) return null;
+        const text = String(value).trim();
+        return text ? text : null;
+    };
+
     const normalizeCustomRoles = (roles, fallbackDailyWage = 0) => (
         Array.isArray(roles) ? roles : []
     ).map((role, idx) => ({
         id: role?.id || `custom_role_${idx + 1}`,
         name: role?.name || '',
-        studentId: role?.studentId != null && role.studentId !== '' ? Number(role.studentId) : null,
+        studentId: normalizeStudentRef(role?.studentId),
         dailyWage: Number.isFinite(Number(role?.dailyWage)) ? Number(role.dailyWage) : fallbackDailyWage
     }));
 
@@ -234,12 +252,8 @@
         const roleList = Array.isArray(roles) ? roles : [];
         const legacyMap = legacyAssignments && typeof legacyAssignments === 'object' ? legacyAssignments : {};
         return roleList.map((role, idx) => {
-            const ownStudentId = role?.studentId != null && role.studentId !== ''
-                ? Number(role.studentId)
-                : null;
-            const legacyStudentId = role?.id && legacyMap[role.id] != null && legacyMap[role.id] !== ''
-                ? Number(legacyMap[role.id])
-                : null;
+            const ownStudentId = normalizeStudentRef(role?.studentId);
+            const legacyStudentId = role?.id ? normalizeStudentRef(legacyMap[role.id]) : null;
             return {
                 id: role?.id || `commissioner_role_${idx + 1}`,
                 name: role?.name || '',
@@ -391,6 +405,21 @@
                 const legacyCommissionerBonus = Number(userConfig.points.runningExerciseCommissionerDailyWage);
                 if (Number.isFinite(legacyCommissionerBonus)) merged.points.runningExerciseCommissionerBonus = legacyCommissionerBonus;
             }
+            if (userConfig.points.hygieneRegister) {
+                merged.points.hygieneRegister = {
+                    ...merged.points.hygieneRegister,
+                    ...userConfig.points.hygieneRegister
+                };
+            }
+            if (userConfig.points.disciplineRegister) {
+                const dr = userConfig.points.disciplineRegister;
+                merged.points.disciplineRegister = {
+                    noise:   { ...merged.points.disciplineRegister.noise,   ...(dr.noise || {}) },
+                    desk:    { ...merged.points.disciplineRegister.desk,    ...(dr.desk || {}) },
+                    tablet:  { ...merged.points.disciplineRegister.tablet,  ...(dr.tablet || {}) },
+                    outdoor: { ...merged.points.disciplineRegister.outdoor, ...(dr.outdoor || {}) }
+                };
+            }
             if (userConfig.points.reasons) {
                 merged.points.reasons = userConfig.points.reasons;
             }
@@ -512,9 +541,7 @@
         return merged;
     };
 
-    window.SCHEDULE_CONFIG = SCHEDULE_CONFIG;
-    window.DEFAULT_QUOTES = DEFAULT_QUOTES;
-    window.ClassManagerSchema = {
+    const api = {
         SCHEDULE_CONFIG,
         DEFAULT_QUOTES,
         DEFAULT_SYSTEM_CONFIG,
@@ -539,4 +566,13 @@
         getDefaultCommissioners,
         mergeAttendanceRecords
     };
+
+    if (typeof window !== 'undefined') {
+        window.SCHEDULE_CONFIG = SCHEDULE_CONFIG;
+        window.DEFAULT_QUOTES = DEFAULT_QUOTES;
+        window.ClassManagerSchema = api;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
 })();

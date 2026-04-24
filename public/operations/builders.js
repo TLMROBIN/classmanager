@@ -206,12 +206,143 @@
         return confirmMsg;
     };
 
-    window.OperationBuilders = {
+    const buildHygieneUpdates = ({ date, sessionName, inspectorStudentIds, selectedIds, areaPenalty, inspectorBonus }) => {
+        const updates = [];
+        const dateLabel = String(date || '').trim();
+        const reasonPrefix = [dateLabel, sessionName || '卫生'].filter(Boolean).join(' ');
+        const normalizedPenalty = Math.abs(Number(areaPenalty) || 0);
+        const normalizedBonus = Math.abs(Number(inspectorBonus) || 0);
+        const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+        const inspectorIdSet = new Set((Array.isArray(inspectorStudentIds) ? inspectorStudentIds : [])
+            .map(id => String(id || '').trim())
+            .filter(Boolean));
+
+        Array.from(idSet).forEach(id => {
+            if (!id) return;
+            updates.push({
+                id,
+                val: -normalizedPenalty,
+                reason: `${reasonPrefix} 卫生不达标`,
+                type: 'penalty',
+                scene: '班级',
+                category: '班务'
+            });
+        });
+
+        if (normalizedBonus > 0) {
+            inspectorIdSet.forEach((inspectorId) => {
+                updates.push({
+                    id: inspectorId,
+                    val: normalizedBonus,
+                    reason: `${reasonPrefix} 卫生登记`,
+                    type: 'bonus',
+                    scene: '班级',
+                    category: '班务'
+                });
+            });
+        }
+
+        return updates;
+    };
+
+    const buildHygieneConfirmMessage = ({ date, sessionName, inspectorNames, selectedIds, studentMap, areaPenalty, inspectorBonus }) => {
+        const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+        const normalizedPenalty = Math.abs(Number(areaPenalty) || 0);
+        const normalizedBonus = Math.abs(Number(inspectorBonus) || 0);
+        const names = Array.isArray(inspectorNames) ? inspectorNames.filter(Boolean) : [];
+        const badStudents = Array.from(idSet)
+            .map(id => studentMap.get(String(id))?.name || '')
+            .filter(Boolean);
+
+        let msg = `确认提交 ${[date, sessionName || '卫生'].filter(Boolean).join(' ')} 卫生登记？\n\n`;
+        if (badStudents.length > 0) {
+            msg += `不合格学生 (${badStudents.length}人)：\n${badStudents.join('、')}\n`;
+            msg += `每人扣分：-${normalizedPenalty} 分\n`;
+        } else {
+            msg += "✅ 今日无卫生问题\n";
+        }
+        if (names.length > 0 && normalizedBonus > 0) {
+            msg += `\n卫生专员 ${names.join('、')} 加分：各 +${normalizedBonus} 分`;
+        }
+        return msg;
+    };
+
+    const buildDisciplineUpdates = ({ date, reasonKey, reasonLabel, commissionerStudentIds, selectedIds, penalty, commissionerBonus }) => {
+        const updates = [];
+        const normalizedPenalty = Math.abs(Number(penalty) || 0);
+        const normalizedBonus = Math.abs(Number(commissionerBonus) || 0);
+        const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+        const commissionerIdSet = new Set((Array.isArray(commissionerStudentIds) ? commissionerStudentIds : [])
+            .map(id => String(id || '').trim())
+            .filter(Boolean));
+
+        Array.from(idSet).forEach(id => {
+            if (!id) return;
+            updates.push({
+                id,
+                val: -normalizedPenalty,
+                reason: `${date} ${reasonLabel}`,
+                type: 'penalty',
+                scene: '班级',
+                category: '纪律'
+            });
+        });
+
+        if (normalizedBonus > 0) {
+            commissionerIdSet.forEach((commissionerId) => {
+                updates.push({
+                    id: commissionerId,
+                    val: normalizedBonus,
+                    reason: `${date} ${reasonLabel} 登记`,
+                    type: 'bonus',
+                    scene: '班级',
+                    category: '纪律'
+                });
+            });
+        }
+
+        return updates;
+    };
+
+    const buildDisciplineConfirmMessage = ({ date, reasonLabel, commissionerNames, selectedIds, studentMap, penalty, commissionerBonus }) => {
+        const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+        const normalizedPenalty = Math.abs(Number(penalty) || 0);
+        const normalizedBonus = Math.abs(Number(commissionerBonus) || 0);
+        const names = Array.isArray(commissionerNames) ? commissionerNames.filter(Boolean) : [];
+        const badStudents = Array.from(idSet)
+            .map(id => studentMap.get(String(id))?.name || '')
+            .filter(Boolean);
+
+        let msg = `确认提交 ${date} ${reasonLabel} 纪律登记？\n\n`;
+        if (badStudents.length > 0) {
+            msg += `不合格学生 (${badStudents.length}人)：\n${badStudents.join('、')}\n`;
+            msg += `每人扣分：-${normalizedPenalty} 分\n`;
+        } else {
+            msg += `✅ ${date} ${reasonLabel} 无问题\n`;
+        }
+        if (names.length > 0 && normalizedBonus > 0) {
+            msg += `\n专员 ${names.join('、')} 加分：各 +${normalizedBonus} 分`;
+        }
+        return msg;
+    };
+
+    const api = {
         buildModalStudents,
         buildBatchUpdates,
         buildHomeworkUpdates,
         buildHomeworkConfirmMessage,
         buildRunningExerciseUpdates,
-        buildRunningExerciseConfirmMessage
+        buildRunningExerciseConfirmMessage,
+        buildHygieneUpdates,
+        buildHygieneConfirmMessage,
+        buildDisciplineUpdates,
+        buildDisciplineConfirmMessage
     };
+
+    if (typeof window !== 'undefined') {
+        window.OperationBuilders = api;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
 })();

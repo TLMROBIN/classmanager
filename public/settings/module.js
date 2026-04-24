@@ -96,7 +96,7 @@
             }, {});
         };
 
-    const SettingsView = ({ students, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, rawStudents, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, fetchAttendanceData, realDataReady, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [setupPassword, setSetupPassword] = useState('');
@@ -115,8 +115,47 @@
             start.setDate(start.getDate() - (days - 1));
             return { start: getDateString(start), end };
         };
+        const getCurrentWeekRangeFallback = () => {
+            const now = getNow();
+            const currentDay = now.getDay();
+            const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+            const start = new Date(now);
+            start.setDate(now.getDate() - distanceToMonday);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            return { start: getDateString(start), end: getDateString(end) };
+        };
+        const getPreviousWeekRangeFallback = () => {
+            const current = getCurrentWeekRangeFallback();
+            const currentStart = new Date(current.start);
+            const end = new Date(currentStart);
+            end.setDate(currentStart.getDate() - 1);
+            const start = new Date(end);
+            start.setDate(end.getDate() - 6);
+            return { start: getDateString(start), end: getDateString(end) };
+        };
+        const getWeeklyReportPresetRange = (preset) => {
+            const weeklyReportUtils = window.WeeklyReportUtils || {};
+            if (preset === 'previous' && typeof weeklyReportUtils.getLastWeekRange === 'function') {
+                return weeklyReportUtils.getLastWeekRange(getNow());
+            }
+            if (preset === 'current' && typeof weeklyReportUtils.getThisWeekRange === 'function') {
+                return weeklyReportUtils.getThisWeekRange(getNow());
+            }
+            return preset === 'previous'
+                ? getPreviousWeekRangeFallback()
+                : getCurrentWeekRangeFallback();
+        };
         const [reportStart, setReportStart] = useState(() => getReportRange(7).start);
         const [reportEnd, setReportEnd] = useState(() => getReportRange(7).end);
+        const [weeklyReportPreset, setWeeklyReportPreset] = useState('current');
+        const [weeklyReportStart, setWeeklyReportStart] = useState(() => getWeeklyReportPresetRange('current').start);
+        const [weeklyReportEnd, setWeeklyReportEnd] = useState(() => getWeeklyReportPresetRange('current').end);
+        const [weeklyReportSelectedStudentIds, setWeeklyReportSelectedStudentIds] = useState([]);
+        const [weeklyReportSelectionReady, setWeeklyReportSelectionReady] = useState(false);
+        const [weeklyReportIncludeTasks, setWeeklyReportIncludeTasks] = useState(true);
+        const [weeklyReportIncludeNetPoints, setWeeklyReportIncludeNetPoints] = useState(true);
+        const [weeklyReportGenerating, setWeeklyReportGenerating] = useState(false);
         const [countdownName, setCountdownName] = useState("");
         const [countdownDate, setCountdownDate] = useState("");
         const initialScheduleDate = getDateString(getNow());
@@ -181,6 +220,38 @@
         useEffect(() => {
             refreshMaintenanceState();
         }, []);
+
+        const rawStudentList = Array.isArray(rawStudents)
+            ? rawStudents.filter(student => student && student.id != null && String(student.name || '').trim())
+            : [];
+        const filterValidWeeklyReportIds = (ids, validIdSet) => ids.filter(id => validIdSet.has(String(id)));
+        const fallbackDownloadWeeklyReportMarkdown = (filename, markdown) => {
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = filename;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        };
+
+        useEffect(() => {
+            const validIds = rawStudentList.map(student => String(student.id));
+            const validIdSet = new Set(validIds);
+            if (!realDataReady) {
+                setWeeklyReportSelectionReady(false);
+                setWeeklyReportSelectedStudentIds(prev => filterValidWeeklyReportIds(prev, validIdSet));
+                return;
+            }
+            if (!weeklyReportSelectionReady) {
+                setWeeklyReportSelectedStudentIds(validIds);
+                setWeeklyReportSelectionReady(true);
+                return;
+            }
+            setWeeklyReportSelectedStudentIds(prev => filterValidWeeklyReportIds(prev, validIdSet));
+        }, [realDataReady, rawStudentList, weeklyReportSelectionReady]);
 
         const handleUnlock = () => {
             const nextPassword = pwd.trim();
@@ -309,6 +380,130 @@
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
+        };
+
+        const handleWeeklyReportPresetChange = (preset) => {
+            const range = getWeeklyReportPresetRange(preset);
+            setWeeklyReportPreset(preset);
+            setWeeklyReportStart(range.start);
+            setWeeklyReportEnd(range.end);
+        };
+
+        const handleWeeklyReportCustomStartChange = (value) => {
+            setWeeklyReportPreset('custom');
+            setWeeklyReportStart(value);
+        };
+
+        const handleWeeklyReportCustomEndChange = (value) => {
+            setWeeklyReportPreset('custom');
+            setWeeklyReportEnd(value);
+        };
+
+        const handleWeeklyReportSelectionToggle = (studentId) => {
+            const safeId = String(studentId);
+            setWeeklyReportSelectionReady(true);
+            setWeeklyReportSelectedStudentIds(prev => (
+                prev.includes(safeId)
+                    ? prev.filter(id => id !== safeId)
+                    : [...prev, safeId]
+            ));
+        };
+
+        const handleSelectAllWeeklyReportStudents = () => {
+            setWeeklyReportSelectionReady(true);
+            setWeeklyReportSelectedStudentIds(rawStudentList.map(student => String(student.id)));
+        };
+
+        const handleClearWeeklyReportStudents = () => {
+            setWeeklyReportSelectionReady(true);
+            setWeeklyReportSelectedStudentIds([]);
+        };
+
+        const handleGenerateWeeklyReport = async () => {
+            const weeklyReportUtils = window.WeeklyReportUtils || {};
+            const weeklyReportBuilder = window.WeeklyReportBuilder || {};
+            const weeklyReportMarkdown = window.WeeklyReportMarkdown || {};
+            if (typeof weeklyReportBuilder.buildWeeklyReport !== 'function' || typeof weeklyReportMarkdown.renderWeeklyReportMarkdown !== 'function') {
+                alert('学生周报模块未加载完成，请刷新后重试');
+                return;
+            }
+            if (!realDataReady) {
+                alert('数据尚未同步完成，请稍后再生成周报');
+                return;
+            }
+            if (rawStudentList.length === 0) {
+                alert('当前没有可用于导出的真实学生数据');
+                return;
+            }
+            const selectedIds = weeklyReportSelectedStudentIds.map(id => String(id));
+            if (selectedIds.length === 0) {
+                alert('请至少选择一名学生');
+                return;
+            }
+            const start = new Date(weeklyReportStart);
+            const end = new Date(weeklyReportEnd);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                alert('周报日期范围无效');
+                return;
+            }
+            if (start.getTime() > end.getTime()) {
+                alert('周报开始日期不能晚于结束日期');
+                return;
+            }
+
+            setWeeklyReportGenerating(true);
+            try {
+                const attendancePayload = typeof fetchAttendanceData === 'function'
+                    ? await fetchAttendanceData({ silent: false })
+                    : null;
+                const nextAttendanceRecords = attendancePayload?.attendanceRecords || {};
+                const reportData = weeklyReportBuilder.buildWeeklyReport({
+                    title: '学生行为周报',
+                    range: {
+                        start: weeklyReportStart,
+                        end: weeklyReportEnd
+                    },
+                    students: rawStudentList,
+                    selectedStudentIds: selectedIds,
+                    history,
+                    attendanceRecords: nextAttendanceRecords,
+                    tasks,
+                    includeNetPoints: weeklyReportIncludeNetPoints
+                });
+                const reportForMarkdown = (!weeklyReportIncludeTasks && Array.isArray(reportData?.students))
+                    ? {
+                        ...reportData,
+                        students: reportData.students.map(studentReport => ({
+                            ...studentReport,
+                            tasks: []
+                        }))
+                    }
+                    : reportData;
+                const markdown = weeklyReportMarkdown.renderWeeklyReportMarkdown(reportForMarkdown);
+                if (!markdown || !markdown.trim()) {
+                    alert('所选范围内暂无可导出的周报内容');
+                    return;
+                }
+                const reportRange = reportForMarkdown?.range || {
+                    start: weeklyReportStart,
+                    end: weeklyReportEnd
+                };
+                const filename = typeof weeklyReportUtils.buildWeeklyReportFilename === 'function'
+                    ? weeklyReportUtils.buildWeeklyReportFilename(reportRange)
+                    : `${weeklyReportStart}~${weeklyReportEnd}学生行为周报.md`;
+                if (typeof weeklyReportUtils.downloadMarkdown === 'function') {
+                    weeklyReportUtils.downloadMarkdown(filename, markdown);
+                } else {
+                    fallbackDownloadWeeklyReportMarkdown(filename, markdown);
+                }
+            } catch (error) {
+                console.error('生成学生周报失败:', error);
+                if (error?.code !== 'AUTH_REQUIRED') {
+                    alert(error?.message || '生成学生周报失败');
+                }
+            } finally {
+                setWeeklyReportGenerating(false);
+            }
         };
 
         const scheduleNotes = normalizeScheduleNotes(config?.scheduleNotes);
@@ -878,7 +1073,25 @@
                 reportEnd,
                 setReportEnd,
                 getReportRange,
-                handleGenerateBrief
+                handleGenerateBrief,
+                realDataReady,
+                weeklyReportPreset,
+                weeklyReportStart,
+                setWeeklyReportStart: handleWeeklyReportCustomStartChange,
+                weeklyReportEnd,
+                setWeeklyReportEnd: handleWeeklyReportCustomEndChange,
+                handleWeeklyReportPresetChange,
+                rawStudents: rawStudentList,
+                weeklyReportSelectedStudentIds,
+                handleWeeklyReportSelectionToggle,
+                handleSelectAllWeeklyReportStudents,
+                handleClearWeeklyReportStudents,
+                weeklyReportIncludeTasks,
+                setWeeklyReportIncludeTasks,
+                weeklyReportIncludeNetPoints,
+                setWeeklyReportIncludeNetPoints,
+                weeklyReportGenerating,
+                handleGenerateWeeklyReport
             }),
             renderExamArchivesSection({
                 examArchivesModuleStatus,

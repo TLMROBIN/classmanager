@@ -694,6 +694,7 @@ const INITIAL_TREASURES = [
     }
     const useClassManagerSync = createClassManagerSync({
         useRef,
+        useState,
         useEffect,
         useCallback,
         getApiUrl,
@@ -820,6 +821,26 @@ const INITIAL_TREASURES = [
         const TasksView = tasksModuleStatus === 'ready' ? getTasksView() : null;
         const BattleView = battleModuleStatus === 'ready' ? getBattleView() : null;
         const petFeatureEnabled = getSystemConfig(config).enabledFeatures?.pet === true;
+        const loadWeeklyReportHelperScript = useCallback(async (src) => {
+            try {
+                const res = await fetch(src, { method: 'HEAD', cache: 'no-store' });
+                if (!res.ok) return false;
+            } catch (_) {
+                return false;
+            }
+            await loadScriptOnce(src);
+            return true;
+        }, []);
+        const loadWeeklyReportHelperScripts = useCallback(async () => {
+            const helperScripts = [
+                'weekly-report/utils.js',
+                'weekly-report/builder.js',
+                'weekly-report/markdown.js'
+            ];
+            for (const src of helperScripts) {
+                await loadWeeklyReportHelperScript(src);
+            }
+        }, [loadWeeklyReportHelperScript]);
 
         useEffect(() => {
             if (activeTab !== 'profile' || profileModuleStatus === 'ready' || profileModuleStatus === 'loading') return;
@@ -909,6 +930,7 @@ const INITIAL_TREASURES = [
             loadScriptOnce('settings/exam-archives-section.js')
                 .then(() => loadScriptOnce('settings/student-roster-section.js'))
                 .then(() => loadScriptOnce('settings/system-config-section.js'))
+                .then(() => loadWeeklyReportHelperScripts())
                 .then(() => loadScriptOnce('settings/tools-section.js'))
                 .then(() => loadScriptOnce('settings/module.js'))
                 .then(() => {
@@ -929,7 +951,7 @@ const INITIAL_TREASURES = [
                     console.error('加载维护中心模块失败:', err);
                     setSettingsModuleStatus('error');
                 });
-        }, [activeTab, settingsModuleStatus]);
+        }, [activeTab, settingsModuleStatus, loadWeeklyReportHelperScripts]);
 
         useEffect(() => {
             if (testMode && testSessionId) {
@@ -966,6 +988,8 @@ const INITIAL_TREASURES = [
             persistData,
             persistDataPatch,
             persistManagedPatch,
+            fetchAttendanceData,
+            realDataReady,
             handleAttendanceCheckIn,
             handleAttendanceMaintenance
         } = useClassManagerSync({
@@ -1538,12 +1562,15 @@ const INITIAL_TREASURES = [
                     settingsModuleStatus === 'ready' && SettingsView
                         ? h(SettingsView, { 
                             students: displayStudents, studentProfiles, history, config,
+                            rawStudents: students,
                             treasures, storage, logs,
                             setStudents, setStudentProfiles, setHistory, setConfig,
                             setTreasures, setStorage, setLogs,
                             quotes, setQuotes,
                             persistData,
                             persistDataPatch,
+                            fetchAttendanceData,
+                            realDataReady,
                             tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages,
                             redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, liquidatedTreasures, setLiquidatedTreasures,
                             battle, setBattle, examArchives, setExamArchives, isDirtyRef,

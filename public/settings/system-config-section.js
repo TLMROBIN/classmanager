@@ -254,13 +254,13 @@
                                                                 }), placeholder: "角色名称" }),
                                                                 h("select", { className: "w-16 sm:w-20 border rounded p-2 text-sm bg-white shrink-0", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
                                                                     const list = normalizeCommissionerRoles(sc.organization.commissionerRoles || [], config.commissioners);
-                                                                    list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
+                                                                    list[idx] = { ...list[idx], studentId: e.target.value ? String(e.target.value) : null };
                                                                     return { ...sc, organization: { ...sc.organization, commissionerRoles: list } };
                                                                 }) },
                                                                     h("option", { value: "" }, "未设置"),
                                                                     Array.from(new Map(
                                                                         (students || [])
-                                                                            .filter(student => student.group === 'discipline' || student.id === role.studentId)
+                                                                            .filter(student => student.group === 'discipline' || String(student.id) === String(role.studentId))
                                                                             .map(student => [student.id, student])
                                                                     ).values()).map(student => h("option", { key: student.id, value: student.id }, student.name))
                                                                 ),
@@ -301,7 +301,7 @@
                                                             }), placeholder: "工资" }),
                                                             h("select", { className: "w-16 sm:w-20 shrink-0 border rounded p-2 text-sm bg-white", value: role.studentId || "", onChange: e => updateSystemConfig(sc => {
                                                                 const list = normalizeCustomRoles(sc.organization.customRoles || sc.organization.studentCouncilRoles || [], 2);
-                                                                list[idx] = { ...list[idx], studentId: e.target.value ? Number(e.target.value) : null };
+                                                                list[idx] = { ...list[idx], studentId: e.target.value ? String(e.target.value) : null };
                                                                 return { ...sc, organization: { ...sc.organization, customRoles: list } };
                                                             }) },
                                                                 h("option", { value: "" }, "未设置"),
@@ -332,7 +332,7 @@
                                                     className: "w-full border rounded p-2 text-sm bg-white"
                                                 },
                                                     h("option", { value: "" }, "未设置"),
-                                                    students.filter(student => student.group === 'hygiene').map(student => h("option", { key: student.id, value: student.name }, student.name))
+                                                    students.filter(student => student.group === 'hygiene').map(student => h("option", { key: student.id, value: student.id }, student.name))
                                                 ))
                                             ))
                                         )
