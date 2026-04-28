@@ -66,7 +66,8 @@
             typeof window.createSettingsExamArchivesSection === 'function' &&
             typeof window.createSettingsStudentRosterSection === 'function' &&
             typeof window.createSettingsSystemConfigSection === 'function' &&
-            typeof window.createSettingsToolsSection === 'function'
+            typeof window.createSettingsToolsSection === 'function' &&
+            typeof window.createSettingsBehaviorAlertSection === 'function'
                 ? 'ready'
                 : 'idle'
         );

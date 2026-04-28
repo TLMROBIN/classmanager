@@ -533,12 +533,14 @@ const INITIAL_TREASURES = [
             typeof window.createSettingsExamArchivesSection !== 'function' ||
             typeof window.createSettingsStudentRosterSection !== 'function' ||
             typeof window.createSettingsSystemConfigSection !== 'function' ||
-            typeof window.createSettingsToolsSection !== 'function'
+            typeof window.createSettingsToolsSection !== 'function' ||
+            typeof window.createSettingsBehaviorAlertSection !== 'function'
         ) return null;
         window.__SettingsViewComponent__ = window.createSettingsView({
             h,
             useState,
             useEffect,
+            useMemo,
             Icon,
             getNow,
             getDateString,
@@ -568,10 +570,15 @@ const INITIAL_TREASURES = [
             normalizeExamArchives,
             loadScriptOnce,
             getExamArchivesView,
+            normalizePointScene,
+            normalizePointCategory,
+            POINT_SCENES,
+            POINT_CATEGORIES,
             createSettingsExamArchivesSection: window.createSettingsExamArchivesSection,
             createSettingsStudentRosterSection: window.createSettingsStudentRosterSection,
             createSettingsSystemConfigSection: window.createSettingsSystemConfigSection,
-            createSettingsToolsSection: window.createSettingsToolsSection
+            createSettingsToolsSection: window.createSettingsToolsSection,
+            createSettingsBehaviorAlertSection: window.createSettingsBehaviorAlertSection
         });
         return window.__SettingsViewComponent__;
     };
@@ -932,6 +939,7 @@ const INITIAL_TREASURES = [
                 .then(() => loadScriptOnce('settings/system-config-section.js'))
                 .then(() => loadWeeklyReportHelperScripts())
                 .then(() => loadScriptOnce('settings/tools-section.js'))
+                .then(() => loadScriptOnce('settings/behavior-alert-section.js'))
                 .then(() => loadScriptOnce('settings/module.js'))
                 .then(() => {
                     if (
@@ -939,7 +947,8 @@ const INITIAL_TREASURES = [
                         typeof window.createSettingsExamArchivesSection === 'function' &&
                         typeof window.createSettingsStudentRosterSection === 'function' &&
                         typeof window.createSettingsSystemConfigSection === 'function' &&
-                        typeof window.createSettingsToolsSection === 'function'
+                        typeof window.createSettingsToolsSection === 'function' &&
+                        typeof window.createSettingsBehaviorAlertSection === 'function'
                     ) {
                         getSettingsView();
                         setSettingsModuleStatus('ready');

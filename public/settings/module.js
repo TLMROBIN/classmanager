@@ -4,6 +4,7 @@
             h,
             useState,
             useEffect,
+            useMemo,
             Icon,
             getNow,
             getDateString,
@@ -33,16 +34,22 @@
             normalizeExamArchives,
             loadScriptOnce,
             getExamArchivesView,
+            normalizePointScene,
+            normalizePointCategory,
+            POINT_SCENES,
+            POINT_CATEGORIES,
             createSettingsExamArchivesSection,
             createSettingsStudentRosterSection,
             createSettingsSystemConfigSection,
-            createSettingsToolsSection
+            createSettingsToolsSection,
+            createSettingsBehaviorAlertSection
         } = deps || {};
 
         if (
             !h ||
             !useState ||
             !useEffect ||
+            !useMemo ||
             !Icon ||
             !getNow ||
             !getDateString ||
@@ -72,10 +79,15 @@
             !normalizeExamArchives ||
             !loadScriptOnce ||
             !getExamArchivesView ||
+            !normalizePointScene ||
+            !normalizePointCategory ||
+            !POINT_SCENES ||
+            !POINT_CATEGORIES ||
             !createSettingsExamArchivesSection ||
             !createSettingsStudentRosterSection ||
             !createSettingsSystemConfigSection ||
-            !createSettingsToolsSection
+            !createSettingsToolsSection ||
+            !createSettingsBehaviorAlertSection
         ) {
             throw new Error('SettingsView dependencies are missing');
         }
@@ -84,6 +96,12 @@
         const StudentRosterSection = createSettingsStudentRosterSection({ h });
         const renderSystemConfigSection = createSettingsSystemConfigSection({ h, Icon });
         const renderToolsSection = createSettingsToolsSection({ h, useState, getNow, getDateString });
+        const BehaviorAlertSection = createSettingsBehaviorAlertSection({
+            h, useState, useEffect, useMemo, Icon,
+            normalizePointScene, normalizePointCategory,
+            POINT_SCENES, POINT_CATEGORIES,
+            getNow, getDateString
+        });
         const isValidScheduleDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
         const normalizeScheduleNotes = (value) => {
             if (!value || typeof value !== 'object') return {};
@@ -1092,6 +1110,10 @@
                 setWeeklyReportIncludeNetPoints,
                 weeklyReportGenerating,
                 handleGenerateWeeklyReport
+            }),
+            h(BehaviorAlertSection, {
+                students,
+                history
             }),
             renderExamArchivesSection({
                 examArchivesModuleStatus,
