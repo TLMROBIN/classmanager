@@ -1,0 +1,68 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const schema = require('../public/core/schema');
+
+const loadPointsController = () => {
+    const source = fs.readFileSync(path.join(__dirname, '../public/points/controller.js'), 'utf8');
+    const alerts = [];
+    const context = {
+        window: {},
+        alert: (message) => alerts.push(message),
+        Math,
+        Date
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    return { controller: context.window.PointsController, alerts };
+};
+
+test('handleWage pays custom role wage when role student id is a string and student id is numeric', () => {
+    const { controller, alerts } = loadPointsController();
+    const students = [
+        { id: 101, name: '学生甲', group: 'life', role: 'member', zizai: 0, balance: 0, penalty: 0 }
+    ];
+    const config = {
+        systemConfig: {
+            organization: {
+                customRoles: [
+                    { id: 'custom_role_1', name: '班长', studentId: '101', dailyWage: 2 }
+                ]
+            },
+            points: {
+                dailyWageAmount: 5,
+                dailyWageGroups: []
+            }
+        }
+    };
+
+    let nextStudents = null;
+    let nextHistory = null;
+    let nextConfig = null;
+
+    const count = controller.handleWage({
+        config,
+        students,
+        history: [],
+        getNow: () => new Date('2026-04-30T08:00:00+08:00'),
+        getSystemConfig: schema.getSystemConfig,
+        getCustomRoles: schema.getCustomRoles,
+        setStudents: value => { nextStudents = value; },
+        setHistory: value => { nextHistory = value; },
+        setConfig: value => { nextConfig = value; },
+        GUEST_ROSTER: [],
+        normalizePointScene: value => value,
+        normalizePointCategory: value => value
+    });
+
+    assert.equal(count, 1);
+    assert.equal(nextStudents[0].zizai, 2);
+    assert.equal(nextStudents[0].balance, 2);
+    assert.equal(nextHistory[0].studentId, 101);
+    assert.equal(nextHistory[0].reason, '班级职务津贴: 班长');
+    assert.equal(nextConfig.lastWageDate, '2026-04-30');
+    assert.deepEqual(alerts, ['发放完成（含1个班级职务津贴）']);
+});

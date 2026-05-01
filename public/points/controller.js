@@ -1,4 +1,9 @@
 (function() {
+    const isSameStudentId = (left, right) => {
+        if (left == null || right == null) return left === right;
+        return String(left) === String(right);
+    };
+
     const buildBatchPointState = ({
         updates,
         students,
@@ -14,7 +19,7 @@
         const nextHistoryRecords = [];
 
         (Array.isArray(updates) ? updates : []).forEach(update => {
-            const idx = nextStudents.findIndex(student => student.id === update.id);
+            const idx = nextStudents.findIndex(student => isSameStudentId(student.id, update.id));
             if (idx === -1) return;
 
             const student = nextStudents[idx];
