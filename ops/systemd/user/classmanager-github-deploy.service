@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy ClassManager updates from GitHub
+Wants=network-online.target
+After=network-online.target classmanager-app.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=-__PROJECT_DIR__/.env.runtime
+ExecStart=__PROJECT_DIR__/scripts/deploy_from_github.sh
+TimeoutStartSec=600
