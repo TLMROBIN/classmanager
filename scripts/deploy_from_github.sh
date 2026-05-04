@@ -8,6 +8,9 @@ REMOTE="${CLASSMANAGER_DEPLOY_REMOTE:-origin}"
 STATE_ROOT="${CLASSMANAGER_DEPLOY_STATE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/classmanager-multi}"
 LOCK_FILE="${CLASSMANAGER_DEPLOY_LOCK:-$STATE_ROOT/runtime/github-deploy.lock}"
 PORT="${PORT:-3002}"
+NODE_BIN_DIR="${CLASSMANAGER_NODE_BIN_DIR:-/opt/node-current/bin}"
+
+export PATH="$NODE_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 if [ ! -d "$PROJECT_ROOT/.git" ]; then
     echo "Project root is not a Git checkout: $PROJECT_ROOT" >&2

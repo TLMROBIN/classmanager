@@ -7,5 +7,6 @@ After=network-online.target classmanager-app.service
 Type=oneshot
 WorkingDirectory=__PROJECT_DIR__
 EnvironmentFile=-__PROJECT_DIR__/.env.runtime
+Environment=PATH=/opt/node-current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=__PROJECT_DIR__/scripts/deploy_from_github.sh
 TimeoutStartSec=600

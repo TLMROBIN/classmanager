@@ -5,4 +5,5 @@ Description=Check classmanager backup freshness
 Type=oneshot
 WorkingDirectory=__PROJECT_DIR__
 EnvironmentFile=-__PROJECT_DIR__/.env.runtime
-ExecStart=/usr/bin/npm run backup:check-freshness
+Environment=PATH=/opt/node-current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/env npm run backup:check-freshness
