@@ -243,7 +243,7 @@
     }) => {
         const now = typeof getNow === 'function' ? getNow() : new Date();
         const today = getLocalDateKey(now);
-        const alreadyIssuedToday = config?.lastWageDate === today || (Array.isArray(history) ? history : []).some(item => (
+        const alreadyIssuedToday = (Array.isArray(history) ? history : []).some(item => (
             item &&
             !item.isUndoLog &&
             isWageHistoryRecord(item) &&
@@ -298,7 +298,6 @@
             normalizePointScene,
             normalizePointCategory
         });
-        const nextConfig = { ...config, lastWageDate: today };
 
         if (typeof setStudents === 'function') {
             setStudents(result.nextStudents);
@@ -306,14 +305,10 @@
         if (typeof setHistory === 'function') {
             setHistory(result.nextHistory);
         }
-        if (typeof setConfig === 'function') {
-            setConfig(nextConfig);
-        }
         if (typeof onPersist === 'function') {
             onPersist({
                 nextStudents: result.nextStudents,
-                nextHistory: result.nextHistory,
-                nextConfig
+                nextHistory: result.nextHistory
             });
         }
 

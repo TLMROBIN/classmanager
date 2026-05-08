@@ -41,7 +41,8 @@ test('handleWage pays custom role wage when role student id is a string and stud
 
     let nextStudents = null;
     let nextHistory = null;
-    let nextConfig = null;
+    let nextConfig = 'not-called';
+    let persistedPatch = null;
 
     const count = controller.handleWage({
         config,
@@ -55,7 +56,8 @@ test('handleWage pays custom role wage when role student id is a string and stud
         setConfig: value => { nextConfig = value; },
         GUEST_ROSTER: [],
         normalizePointScene: value => value,
-        normalizePointCategory: value => value
+        normalizePointCategory: value => value,
+        onPersist: value => { persistedPatch = value; }
     });
 
     assert.equal(count, 1);
@@ -63,6 +65,60 @@ test('handleWage pays custom role wage when role student id is a string and stud
     assert.equal(nextStudents[0].balance, 2);
     assert.equal(nextHistory[0].studentId, 101);
     assert.equal(nextHistory[0].reason, '班级职务津贴: 班长');
-    assert.equal(nextConfig.lastWageDate, '2026-04-30');
+    assert.equal(nextConfig, 'not-called');
+    assert.ok(!Object.prototype.hasOwnProperty.call(persistedPatch, 'nextConfig'));
     assert.deepEqual(alerts, ['发放完成（含1个班级职务津贴）']);
+});
+
+test('handleWage pays wages when stale lastWageDate exists but no wage history exists today', () => {
+    const { controller, alerts } = loadPointsController();
+    const students = [
+        { id: 's1', name: '学生甲', group: 'hygiene', role: 'member', zizai: 0, balance: 0, penalty: 0 },
+        { id: 's2', name: '学生乙', group: 'discipline', role: 'leader', zizai: 1, balance: 1, penalty: 0 }
+    ];
+    const config = {
+        lastWageDate: '2026-04-30',
+        systemConfig: {
+            organization: {
+                customRoles: []
+            },
+            points: {
+                dailyWageAmount: 5,
+                dailyWageGroups: ['hygiene', 'discipline']
+            }
+        }
+    };
+
+    let nextStudents = null;
+    let nextHistory = null;
+    let nextConfig = 'not-called';
+    let persistedPatch = null;
+
+    const count = controller.handleWage({
+        config,
+        students,
+        history: [],
+        getNow: () => new Date('2026-04-30T08:00:00+08:00'),
+        getSystemConfig: schema.getSystemConfig,
+        getCustomRoles: schema.getCustomRoles,
+        setStudents: value => { nextStudents = value; },
+        setHistory: value => { nextHistory = value; },
+        setConfig: value => { nextConfig = value; },
+        GUEST_ROSTER: [],
+        normalizePointScene: value => value,
+        normalizePointCategory: value => value,
+        onPersist: value => { persistedPatch = value; }
+    });
+
+    assert.equal(count, 2);
+    assert.equal(nextStudents[0].zizai, 5);
+    assert.equal(nextStudents[0].balance, 5);
+    assert.equal(nextStudents[1].zizai, 7);
+    assert.equal(nextStudents[1].balance, 7);
+    assert.equal(nextHistory.length, 2);
+    assert.equal(nextHistory[0].reason, '每日工资');
+    assert.equal(nextHistory[1].reason, '每日工资');
+    assert.equal(nextConfig, 'not-called');
+    assert.ok(!Object.prototype.hasOwnProperty.call(persistedPatch, 'nextConfig'));
+    assert.deepEqual(alerts, ['发放完成']);
 });
