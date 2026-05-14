@@ -122,3 +122,43 @@ test('handleWage pays wages when stale lastWageDate exists but no wage history e
     assert.ok(!Object.prototype.hasOwnProperty.call(persistedPatch, 'nextConfig'));
     assert.deepEqual(alerts, ['发放完成']);
 });
+
+test('handleUndo persists related domain rollback when provided by caller', () => {
+    const { controller } = loadPointsController();
+    const students = [
+        { id: 'stu-1', name: '学生甲', zizai: 0, balance: -3, penalty: 3 }
+    ];
+    const history = [
+        { id: 'penalty-1', ts: 1000, studentId: 'stu-1', studentName: '学生甲', val: -3, reason: '违纪', type: 'penalty', scene: '班级', category: '纪律' }
+    ];
+
+    let nextStudents = null;
+    let nextHistory = null;
+    let persistedPatch = null;
+
+    const ok = controller.handleUndo({
+        recordId: 'penalty-1',
+        history,
+        students,
+        setStudents: value => { nextStudents = value; },
+        setHistory: value => { nextHistory = value; },
+        normalizePointScene: value => value,
+        normalizePointCategory: value => value,
+        applyRelatedUndo: ({ record, students: undoStudents, history: undoHistory }) => ({
+            changed: true,
+            students: undoStudents,
+            history: undoHistory,
+            storage: { 'stu-1': { 'treasure-1': 1 } },
+            liquidatedTreasures: [],
+            logs: []
+        }),
+        onPersist: value => { persistedPatch = value; }
+    });
+
+    assert.equal(ok, true);
+    assert.deepEqual(persistedPatch.storage, { 'stu-1': { 'treasure-1': 1 } });
+    assert.deepEqual(persistedPatch.liquidatedTreasures, []);
+    assert.deepEqual(persistedPatch.logs, []);
+    assert.equal(nextStudents[0].balance, 0);
+    assert.equal(nextHistory[0].isUndoLog, true);
+});

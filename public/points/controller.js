@@ -156,6 +156,7 @@
         setHistory,
         normalizePointScene,
         normalizePointCategory,
+        applyRelatedUndo,
         onPersist
     }) => {
         const record = (Array.isArray(history) ? history : []).find(item => item.id === recordId);
@@ -215,12 +216,33 @@
             category: normalizePointCategory(record.category)
         };
 
-        setStudents(nextStudents);
-        setHistory([undoEntry, ...filteredHistory]);
+        let finalStudents = nextStudents;
+        let finalHistory = [undoEntry, ...filteredHistory];
+        let relatedPatch = {};
+        if (typeof applyRelatedUndo === 'function') {
+            const relatedResult = applyRelatedUndo({
+                record,
+                students: finalStudents,
+                history: finalHistory
+            });
+            if (relatedResult && relatedResult.changed) {
+                if (Array.isArray(relatedResult.students)) finalStudents = relatedResult.students;
+                if (Array.isArray(relatedResult.history)) finalHistory = relatedResult.history;
+                ['storage', 'liquidatedTreasures', 'logs'].forEach(key => {
+                    if (Object.prototype.hasOwnProperty.call(relatedResult, key)) {
+                        relatedPatch[key] = relatedResult[key];
+                    }
+                });
+            }
+        }
+
+        setStudents(finalStudents);
+        setHistory(finalHistory);
         if (typeof onPersist === 'function') {
             onPersist({
-                nextStudents,
-                nextHistory: [undoEntry, ...filteredHistory]
+                nextStudents: finalStudents,
+                nextHistory: finalHistory,
+                ...relatedPatch
             });
         }
         return true;

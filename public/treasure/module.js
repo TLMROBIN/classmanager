@@ -416,6 +416,7 @@
                                     h("div", { className: "absolute top-2 right-2 text-xs font-bold px-1 rounded border border-orange-400 text-orange-600 bg-orange-100" }, item.rarity),
                                     h("div", { className: "font-bold text-gray-800" }, item.name),
                                     h("div", { className: "text-xs text-gray-500 mb-2 h-8 overflow-hidden" }, item.desc),
+                                    item.ownerStudentName && h("div", { className: "text-xs text-orange-600 mb-1" }, `来源: ${item.ownerStudentName}`),
                                     item.originalPrice && h("div", { className: "text-xs text-gray-400 line-through" }, `原价: ${item.originalPrice}`),
                                     h("div", { className: "mt-auto flex justify-between items-center" },
                                         h("div", { className: "text-sm text-gray-500" }, `库存: ${item.stock}`),
@@ -525,9 +526,10 @@
                             )
                         ) : Object.keys(storage[selectedStudent] || {}).length === 0 ? h("div", { className: "text-center text-gray-500 mt-10" }, "空空如也") : h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
                             Object.keys(storage[selectedStudent]).map(tid => {
-                                const item = treasures.find(t => t.id == tid);
+                                const item = treasures.find(t => t.id == tid) || liquidatedTreasures.find(t => t.id == tid);
                                 const count = storage[selectedStudent][tid];
                                 if (!item) return null;
+                                const isLegacyLiquidatedItem = item.liquidation === true && item.originalTreasureId;
 
                                 const todayCount = dailyUsageCounts[getTodayStr()]?.[item.id] || 0;
                                 const dailyLimitText = item.dailyLimit > 0 ? `(今日全班可用: ${Math.max(0, item.dailyLimit - todayCount)}/${item.dailyLimit})` : "";
@@ -540,8 +542,8 @@
                                     ),
                                     h("div", { className: "flex items-center gap-2" },
                                         h("span", { className: "text-gray-500" }, `x${count}`),
-                                        h("button", { onClick: () => handleUseItem(tid), className: "bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600" }, "使用"),
-                                        h("button", { onClick: () => handleReturnItem(tid), className: "bg-amber-500 text-white px-3 py-1 rounded text-xs hover:bg-amber-600" }, "退回")
+                                        !isLegacyLiquidatedItem && h("button", { onClick: () => handleUseItem(tid), className: "bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600" }, "使用"),
+                                        !isLegacyLiquidatedItem && h("button", { onClick: () => handleReturnItem(tid), className: "bg-amber-500 text-white px-3 py-1 rounded text-xs hover:bg-amber-600" }, "退回")
                                     )
                                 );
                             })

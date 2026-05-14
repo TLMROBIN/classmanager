@@ -1133,11 +1133,33 @@ const INITIAL_TREASURES = [
             setHistory,
             normalizePointScene,
             normalizePointCategory,
-            onPersist: ({ nextStudents, nextHistory }) => {
-                persistManagedPatch({
+            applyRelatedUndo: ({ record, students: nextStudents, history: nextHistory }) => {
+                const liquidationLib = window.TreasureLiquidation || {};
+                if (typeof liquidationLib.rollbackLiquidationForUndo !== 'function') return null;
+                const rollback = liquidationLib.rollbackLiquidationForUndo({
+                    sourceHistoryId: record?.id,
                     students: nextStudents,
-                    history: nextHistory
+                    history: nextHistory,
+                    storage,
+                    liquidatedTreasures,
+                    logs
                 });
+                if (rollback?.changed) {
+                    setStorage(rollback.storage || {});
+                    setLiquidatedTreasures(rollback.liquidatedTreasures || []);
+                    setLogs(rollback.logs || []);
+                }
+                return rollback;
+            },
+            onPersist: (undoPatch) => {
+                const patch = {
+                    students: undoPatch.nextStudents,
+                    history: undoPatch.nextHistory
+                };
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'storage')) patch.storage = undoPatch.storage;
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'liquidatedTreasures')) patch.liquidatedTreasures = undoPatch.liquidatedTreasures;
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'logs')) patch.logs = undoPatch.logs;
+                persistManagedPatch(patch);
             }
         });
 

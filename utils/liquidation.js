@@ -26,6 +26,17 @@ const getTreasurePriceForLiquidation = (item) => {
     return Number.isFinite(price) ? price : 0;
 };
 
+const getLiquidationSourceRecord = ({ history, studentId }) => {
+    const records = Array.isArray(history) ? history : [];
+    return records
+        .filter(item => (
+            String(item?.studentId) === String(studentId)
+            && !item?.isUndoLog
+            && Number(item?.val) < 0
+        ))
+        .sort((a, b) => (Number(b?.ts) || 0) - (Number(a?.ts) || 0))[0] || null;
+};
+
 const liquidateStudent = ({ student, storage, treasures, liquidatedTreasures, history, logs, now }) => {
     const studentId = String(student.id);
     const studentStorage = storage && typeof storage === 'object' ? storage[studentId] : null;
@@ -59,6 +70,8 @@ const liquidateStudent = ({ student, storage, treasures, liquidatedTreasures, hi
     const newHistoryEntries = [];
     const newLogEntries = [];
     const nowTs = typeof now === 'object' && now !== null ? now.getTime() : Date.now();
+    const sourceRecord = getLiquidationSourceRecord({ history, studentId });
+    const liquidationBatchId = `liq_batch_${studentId}_${nowTs}_${Math.random().toString(36).slice(2, 8)}`;
 
     for (const item of items) {
         for (let i = 0; i < item.count; i++) {
@@ -76,52 +89,65 @@ const liquidateStudent = ({ student, storage, treasures, liquidatedTreasures, hi
             }
             nextBalance += refund;
 
-        const liquidatedId = `liq_${item.treasure.id}_${nowTs}_${Math.random().toString(36).slice(2, 8)}`;
-        nextLiquidatedTreasures.push({
-            id: liquidatedId,
-            originalTreasureId: item.treasure.id,
-            name: item.treasure.name,
-            rarity: item.treasure.rarity || 'N',
-            price: salePrice,
-            originalPrice: item.price,
-            stock: 1,
-            desc: `清算物品（原价 ${item.price}）`,
-            dailyLimit: 0,
-            ladderPrices: [],
-            liquidation: true
-        });
+            const liquidatedId = `liq_${item.treasure.id}_${nowTs}_${Math.random().toString(36).slice(2, 8)}`;
+            nextLiquidatedTreasures.push({
+                id: liquidatedId,
+                originalTreasureId: item.treasure.id,
+                name: item.treasure.name,
+                rarity: item.treasure.rarity || 'N',
+                price: salePrice,
+                originalPrice: item.price,
+                stock: 1,
+                desc: `清算物品（原价 ${item.price}）`,
+                dailyLimit: 0,
+                ladderPrices: [],
+                liquidation: true,
+                liquidationBatchId,
+                sourceHistoryId: sourceRecord?.id,
+                sourceReason: sourceRecord?.reason,
+                ownerStudentId: student.id,
+                ownerStudentName: student.name
+            });
 
-        const snapshot = {
-            zizai: Number(student.zizai) || 0,
-            balance: balance,
-            penalty: Number(student.penalty) || 0
-        };
+            const snapshot = {
+                zizai: Number(student.zizai) || 0,
+                balance: balance,
+                penalty: Number(student.penalty) || 0
+            };
 
-        newHistoryEntries.push({
-            id: nowTs + Math.random(),
-            ts: nowTs,
-            studentId: student.id,
-            studentName: student.name,
-            val: refund,
-            reason: `清算退回: ${item.treasure.name}`,
-            snapshot,
-            type: 'bonus',
-            scene: '班级',
-            category: '清算'
-        });
+            newHistoryEntries.push({
+                id: nowTs + Math.random(),
+                ts: nowTs,
+                studentId: student.id,
+                studentName: student.name,
+                val: refund,
+                reason: `清算退回: ${item.treasure.name}`,
+                snapshot,
+                type: 'bonus',
+                scene: '班级',
+                category: '清算',
+                liquidationBatchId,
+                liquidatedItemId: liquidatedId,
+                sourceHistoryId: sourceRecord?.id
+            });
 
-        newLogEntries.push({
-            id: nowTs + Math.random(),
-            ts: nowTs,
-            studentName: student.name,
-            action: '清算',
-            itemName: item.treasure.name,
-            rarity: item.treasure.rarity || 'N',
-            cost: refund,
-            note: `返还${refund}，上架${salePrice}`
-        });
+            newLogEntries.push({
+                id: nowTs + Math.random(),
+                ts: nowTs,
+                studentName: student.name,
+                action: '清算',
+                itemName: item.treasure.name,
+                rarity: item.treasure.rarity || 'N',
+                cost: refund,
+                note: `返还${refund}，上架${salePrice}`,
+                liquidationBatchId,
+                liquidatedItemId: liquidatedId,
+                sourceHistoryId: sourceRecord?.id,
+                ownerStudentId: student.id,
+                ownerStudentName: student.name
+            });
 
-        balance = nextBalance;
+            balance = nextBalance;
         }
     }
 
