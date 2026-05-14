@@ -21,6 +21,11 @@
             s.id == studentId ? { ...s, balance: s.balance - item.price } : s
         ));
 
+        const newStorage = { ...(storage || {}) };
+        const studentStore = { ...(newStorage[studentId] || {}) };
+        studentStore[itemId] = (studentStore[itemId] || 0) + 1;
+        newStorage[studentId] = studentStore;
+
         const ts = typeof getNow === 'function' ? getNow().getTime() : Date.now();
         const snapshot = {
             zizai: student.zizai,
@@ -44,7 +49,7 @@
             id: ts + Math.random(),
             ts,
             studentName: student.name,
-            action: '兑换',
+            action: '清算',
             itemName: item.name,
             rarity: item.rarity || 'N',
             cost: item.price,
@@ -55,6 +60,7 @@
             ok: true,
             newStudents,
             newHistory,
+            newStorage,
             newLiquidatedTreasures,
             newLogs
         };

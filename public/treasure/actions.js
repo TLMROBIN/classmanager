@@ -1,5 +1,6 @@
 (function() {
     const getTreasurePoints = () => window.TreasurePoints || {};
+    const getTreasureLiquidation = () => window.TreasureLiquidation || {};
     const sameId = (left, right) => String(left) === String(right);
     const DEFAULT_GACHA_RATES = Object.freeze({
         SSR: 0.05,
@@ -126,6 +127,25 @@
                 storage: result.newStorage,
                 logs: result.newLogs,
                 dailyUsageCounts: result.newDailyUsageCounts
+            }
+        };
+    };
+
+    const buildLiquidatedRedeemAction = (params) => {
+        const treasureLiquidation = getTreasureLiquidation();
+        if (typeof treasureLiquidation.buildLiquidatedRedeemState !== 'function') {
+            return { ok: false, message: "清算模块未加载" };
+        }
+        const result = treasureLiquidation.buildLiquidatedRedeemState(params);
+        if (!result?.ok) return result || { ok: false, message: "兑换失败" };
+        return {
+            ok: true,
+            nextState: {
+                students: result.newStudents,
+                history: result.newHistory,
+                storage: result.newStorage,
+                liquidatedTreasures: result.newLiquidatedTreasures,
+                logs: result.newLogs
             }
         };
     };
@@ -344,6 +364,7 @@
         buildTreasureRedeemAction,
         buildTreasureReturnAction,
         buildTreasureUseAction,
+        buildLiquidatedRedeemAction,
         buildTreasureGachaAction,
         buildTreasureSaveItemAction,
         buildTreasureDeleteItemAction

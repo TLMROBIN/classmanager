@@ -1178,6 +1178,7 @@ const INITIAL_TREASURES = [
             if (Object.prototype.hasOwnProperty.call(nextState, 'history')) setHistory(nextState.history || []);
             if (Object.prototype.hasOwnProperty.call(nextState, 'treasures')) setTreasures(nextState.treasures || []);
             if (Object.prototype.hasOwnProperty.call(nextState, 'storage')) setStorage(nextState.storage || {});
+            if (Object.prototype.hasOwnProperty.call(nextState, 'liquidatedTreasures')) setLiquidatedTreasures(nextState.liquidatedTreasures || []);
             if (Object.prototype.hasOwnProperty.call(nextState, 'logs')) setLogs(nextState.logs || []);
             if (Object.prototype.hasOwnProperty.call(nextState, 'redemptionHistory')) setRedemptionHistory(nextState.redemptionHistory || {});
             if (Object.prototype.hasOwnProperty.call(nextState, 'dailyUsageCounts')) setDailyUsageCounts(nextState.dailyUsageCounts || {});
@@ -1293,33 +1294,16 @@ const INITIAL_TREASURES = [
             getNow
         }));
 
-        const handleRedeemLiquidatedItem = (studentId, itemId) => {
-            const liquidationLib = window.TreasureLiquidation || {};
-            if (typeof liquidationLib.buildLiquidatedRedeemState !== 'function') return { ok: false, message: '清算模块未加载' };
-            const result = liquidationLib.buildLiquidatedRedeemState({
-                studentId,
-                itemId,
-                students,
-                liquidatedTreasures,
-                storage,
-                history,
-                logs,
-                getNow
-            });
-            if (!result || !result.ok) return result || { ok: false, message: '兑换失败' };
-
-            setStudents(result.newStudents);
-            setHistory(result.newHistory);
-            setLiquidatedTreasures(result.newLiquidatedTreasures);
-            setLogs(result.newLogs);
-            persistManagedPatch({
-                students: result.newStudents,
-                history: result.newHistory,
-                liquidatedTreasures: result.newLiquidatedTreasures,
-                logs: result.newLogs
-            });
-            return { ok: true };
-        };
+        const handleRedeemLiquidatedItem = (studentId, itemId) => commitTreasureAction(runTreasureAction('buildLiquidatedRedeemAction', {
+            studentId,
+            itemId,
+            students,
+            liquidatedTreasures,
+            storage,
+            history,
+            logs,
+            getNow
+        }));
 
         const handleToggleLiquidation = (enabled) => {
             const nextSystemConfig = {
