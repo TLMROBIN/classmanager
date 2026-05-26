@@ -94,26 +94,6 @@
         };
     };
 
-    const buildTreasureReturnAction = (params) => {
-        const treasurePoints = getTreasurePoints();
-        if (typeof treasurePoints.buildTreasureReturnState !== 'function') {
-            return { ok: false, message: "藏宝阁规则未加载" };
-        }
-        const result = treasurePoints.buildTreasureReturnState(params);
-        if (!result?.ok) return result || { ok: false, message: "退回失败" };
-        return {
-            ok: true,
-            nextState: {
-                students: result.newStudents,
-                history: result.newHistory,
-                treasures: result.newTreasures,
-                storage: result.newStorage,
-                logs: result.newLogs,
-                redemptionHistory: result.newRedemptionHistory
-            }
-        };
-    };
-
     const buildTreasureUseAction = (params) => {
         const treasurePoints = getTreasurePoints();
         if (typeof treasurePoints.buildTreasureUseState !== 'function') {
@@ -362,7 +342,6 @@
 
     window.TreasureActions = {
         buildTreasureRedeemAction,
-        buildTreasureReturnAction,
         buildTreasureUseAction,
         buildLiquidatedRedeemAction,
         buildTreasureGachaAction,

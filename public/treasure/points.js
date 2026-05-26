@@ -15,15 +15,6 @@
         return `(下次: ${item.ladderPrices[count + 1]})`;
     };
 
-    const getTreasureRefundPrice = ({ studentId, item, redemptionHistory }) => {
-        if (!item || !Array.isArray(item.ladderPrices) || item.ladderPrices.length === 0) return item?.price;
-        const history = redemptionHistory?.[studentId] || {};
-        const count = history[item.id] || 0;
-        if (count <= 0) return item.price;
-        const index = Math.min(count - 1, item.ladderPrices.length - 1);
-        return item.ladderPrices[index];
-    };
-
     const buildTreasureRedeemState = ({ studentId, itemId, students, treasures, storage, history, logs, redemptionHistory, getNow }) => {
         const student = (Array.isArray(students) ? students : []).find(item => item.id === studentId);
         const treasure = (Array.isArray(treasures) ? treasures : []).find(item => item.id == itemId);
@@ -94,72 +85,6 @@
         };
     };
 
-    const buildTreasureReturnState = ({ studentId, itemId, students, treasures, storage, history, logs, redemptionHistory, getNow }) => {
-        const student = (Array.isArray(students) ? students : []).find(item => item.id === studentId);
-        const treasure = (Array.isArray(treasures) ? treasures : []).find(item => item.id == itemId);
-        if (!student || !treasure) return { ok: false };
-        const count = storage?.[studentId]?.[itemId] || 0;
-        if (count <= 0) return { ok: false };
-
-        const refund = getTreasureRefundPrice({ studentId, item: treasure, redemptionHistory });
-
-        const newStorage = { ...(storage || {}) };
-        const studentStore = { ...(newStorage[studentId] || {}) };
-        studentStore[itemId] = (studentStore[itemId] || 0) - 1;
-        if (studentStore[itemId] <= 0) delete studentStore[itemId];
-        if (Object.keys(studentStore).length === 0) delete newStorage[studentId];
-        else newStorage[studentId] = studentStore;
-
-        const newTreasures = (Array.isArray(treasures) ? treasures : []).map(item => (
-            item.id === treasure.id ? { ...item, stock: item.stock + 1 } : item
-        ));
-
-        const newRedemptionHistory = { ...(redemptionHistory || {}) };
-        const studentHistory = { ...(newRedemptionHistory[studentId] || {}) };
-        const nextCount = (studentHistory[treasure.id] || 0) - 1;
-        if (nextCount <= 0) delete studentHistory[treasure.id];
-        else studentHistory[treasure.id] = nextCount;
-        if (Object.keys(studentHistory).length === 0) delete newRedemptionHistory[studentId];
-        else newRedemptionHistory[studentId] = studentHistory;
-
-        const newStudents = (Array.isArray(students) ? students : []).map(item => (
-            item.id === studentId ? { ...item, balance: item.balance + refund } : item
-        ));
-        const ts = typeof getNow === 'function' ? getNow().getTime() : Date.now();
-        const newHistory = [{
-            id: ts + Math.random(),
-            ts,
-            studentId: student.id,
-            studentName: student.name,
-            val: refund,
-            reason: `退宝物: ${treasure.name}`,
-            snapshot: { zizai: student.zizai, balance: student.balance, penalty: student.penalty },
-            type: 'bonus',
-            scene: "班级",
-            category: "学业"
-        }, ...(Array.isArray(history) ? history : [])];
-        const newLogs = [{
-            id: ts + Math.random(),
-            ts,
-            studentName: student.name,
-            action: "退宝物",
-            itemName: treasure.name,
-            rarity: treasure.rarity,
-            cost: refund,
-            note: ""
-        }, ...(Array.isArray(logs) ? logs : [])];
-
-        return {
-            ok: true,
-            newStudents,
-            newHistory,
-            newTreasures,
-            newStorage,
-            newLogs,
-            newRedemptionHistory
-        };
-    };
-
     const buildTreasureUseState = ({ studentId, itemId, students, treasures, storage, logs, dailyUsageCounts, getTodayStr, getNow }) => {
         const student = (Array.isArray(students) ? students : []).find(item => item.id === studentId);
         const treasure = (Array.isArray(treasures) ? treasures : []).find(item => item.id == itemId);
@@ -211,9 +136,7 @@
     window.TreasurePoints = {
         getTreasurePrice,
         getNextTreasurePriceHint,
-        getTreasureRefundPrice,
         buildTreasureRedeemState,
-        buildTreasureReturnState,
         buildTreasureUseState
     };
 })();

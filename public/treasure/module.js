@@ -131,7 +131,6 @@
             dailyUsageCounts = {},
             liquidatedTreasures = [],
             liquidationEnabled = false,
-            onReturnItem,
             onRedeemTreasure,
             onUseItem,
             onPerformGacha,
@@ -219,26 +218,6 @@
                     alert("使用成功！");
                 } else {
                     alert(result?.message || "使用失败，请重试");
-                }
-            };
-
-            const handleReturnItem = async (itemId) => {
-                if (!selectedStudent) return alert("请先选择学生");
-                const student = students.find(s => s.id == selectedStudent);
-                if (!student) return;
-                const count = storage[student.id]?.[itemId] || 0;
-                if (count <= 0) return;
-                const item = treasures.find(t => t.id == itemId);
-                if (!item) return;
-
-                if (!await requireAdminAuth("请输入维护密码以退回宝物：")) return;
-                if (typeof onReturnItem !== 'function') return alert("退回功能不可用");
-
-                const result = onReturnItem(student.id, itemId);
-                if (result?.ok) {
-                    alert("退回成功！");
-                } else if (result?.message) {
-                    alert(result.message);
                 }
             };
 
@@ -542,8 +521,7 @@
                                     ),
                                     h("div", { className: "flex items-center gap-2" },
                                         h("span", { className: "text-gray-500" }, `x${count}`),
-                                        !isLegacyLiquidatedItem && h("button", { onClick: () => handleUseItem(tid), className: "bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600" }, "使用"),
-                                        !isLegacyLiquidatedItem && h("button", { onClick: () => handleReturnItem(tid), className: "bg-amber-500 text-white px-3 py-1 rounded text-xs hover:bg-amber-600" }, "退回")
+                                        !isLegacyLiquidatedItem && h("button", { onClick: () => handleUseItem(tid), className: "bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600" }, "使用")
                                     )
                                 );
                             })

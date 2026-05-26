@@ -1221,18 +1221,6 @@ const INITIAL_TREASURES = [
             getNow
         }));
 
-        const handleReturnItem = (studentId, itemId) => commitTreasureAction(runTreasureAction('buildTreasureReturnAction', {
-            studentId,
-            itemId,
-            students,
-            treasures,
-            storage,
-            history,
-            logs,
-            redemptionHistory,
-            getNow
-        }));
-
         const handleUseItem = (studentId, itemId) => commitTreasureAction(runTreasureAction('buildTreasureUseAction', {
             studentId,
             itemId,
@@ -1523,7 +1511,6 @@ const INITIAL_TREASURES = [
                     redemptionHistory, dailyUsageCounts,
                     liquidatedTreasures,
                     liquidationEnabled: getSystemConfig(config).treasureLiquidation?.enabled === true,
-                    onReturnItem: handleReturnItem,
                     onRedeemTreasure: handleRedeemTreasure,
                     onUseItem: handleUseItem,
                     onPerformGacha: handlePerformGacha,
