@@ -194,6 +194,12 @@ test('API smoke flows', async (t) => {
             assert.equal(response.body.checks.backup.status, 'fresh');
         });
 
+        await t.test('frontend scripts are served without browser caching', async () => {
+            const response = await fetch(`${baseUrl}/treasure/module.js`);
+            assert.equal(response.status, 200);
+            assert.equal(response.headers.get('cache-control'), 'no-store');
+        });
+
         await t.test('register, logout, login and verify access auth', async () => {
             const username = `user_${Date.now()}`;
             const password = 'User123456';
