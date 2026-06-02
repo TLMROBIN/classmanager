@@ -1315,7 +1315,9 @@ const INITIAL_TREASURES = [
             getNow
         }));
 
-        const handleToggleLiquidation = (enabled) => {
+        const handleToggleLiquidation = async (enabled) => {
+            if (!await requireAdminAuth("切换破产清算需要维护密码，请输入：")) return;
+            const previousConfig = config;
             const nextSystemConfig = {
                 ...getSystemConfig(config),
                 treasureLiquidation: { enabled }
@@ -1325,7 +1327,12 @@ const INITIAL_TREASURES = [
                 systemConfig: stripSystemConfigTreasures(nextSystemConfig)
             });
             setConfig(nextConfig);
-            persistManagedPatch({ config: nextConfig });
+            try {
+                await persistManagedPatch({ config: nextConfig });
+            } catch (error) {
+                setConfig(previousConfig);
+                alert(error?.message || "清算设置保存失败，请重试");
+            }
         };
 
         const handleApplyFixedStudents = (nextStudents) => {
