@@ -259,11 +259,27 @@
             };
 
             return h("div", { className: "space-y-6 animate-fade-in" },
-                h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-3 items-center" },
-                    h("h3", { className: "font-bold text-gray-800 flex items-center gap-2" }, h(Icon, { name: "clock" }), "倒数日"),
+                h("div", { className: "bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl shadow-sm border border-blue-100" },
+                    h("h3", { className: "font-bold text-gray-800 flex items-center gap-2 text-lg mb-4" }, h(Icon, { name: "clock" }), "倒数日"),
                     countdownList.length === 0 ? h("span", { className: "text-sm text-gray-400" }, "暂无倒数日") :
-                    h("div", { className: "flex flex-wrap gap-2" },
-                        countdownList.map(item => h("div", { key: item.id || `${item.name}-${item.date}`, className: "px-3 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100" }, `${item.name} ${item.diff >= 0 ? `还有${item.diff}天` : `已过${Math.abs(item.diff)}天`}`))
+                    h("div", { className: "flex flex-wrap gap-4" },
+                        countdownList.map(item => {
+                            const isPast = item.diff < 0;
+                            const days = Math.abs(item.diff);
+                            return h("div", {
+                                key: item.id || `${item.name}-${item.date}`,
+                                className: `flex items-center gap-3 px-4 py-3 rounded-lg shadow-sm border ${isPast ? 'bg-gray-50 border-gray-200' : 'bg-white border-blue-200'}`
+                            },
+                                h("div", { className: "flex flex-col" },
+                                    h("span", { className: `text-3xl font-extrabold leading-none ${isPast ? 'text-gray-500' : 'text-blue-600'}` }, String(days)),
+                                    h("span", { className: `text-xs mt-1 ${isPast ? 'text-gray-400' : 'text-blue-500'}` }, isPast ? "天已过" : "天剩余")
+                                ),
+                                h("div", { className: "flex flex-col" },
+                                    h("span", { className: "text-base font-bold text-gray-800" }, item.name),
+                                    h("span", { className: "text-xs text-gray-500" }, item.date)
+                                )
+                            );
+                        })
                     )
                 ),
                 h("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-6" },
