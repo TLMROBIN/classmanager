@@ -497,6 +497,106 @@ test('API smoke flows', async (t) => {
             assert.equal(attendanceResponse.status, 200);
             assert.equal(attendanceResponse.body.attendanceRecords['2026-03-30']['李四'].morning.status, 'late');
         });
+
+        await t.test('attendance absent settlement survives a stale students-only save', async () => {
+            const mondayMorningMs = buildLocalTimestamp(2026, 2, 30, 6, 30, 0);
+            const mondayAfterMorningMs = buildLocalTimestamp(2026, 2, 30, 7, 30, 0);
+            const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
+                method: 'POST',
+                headers: { Cookie: userCookie },
+                body: { simTimeMs: mondayMorningMs }
+            });
+            assert.equal(sessionResponse.status, 200);
+            assert.equal(typeof sessionResponse.body.sessionId, 'string');
+
+            const sessionHeaders = {
+                Cookie: userCookie,
+                'x-test-session': sessionResponse.body.sessionId
+            };
+
+            const scopedUnlockResponse = await requestJson(baseUrl, '/api/maintenance/unlock', {
+                method: 'POST',
+                headers: sessionHeaders,
+                body: { password: 'Maintain123' }
+            });
+            assert.equal(scopedUnlockResponse.status, 200);
+            assert.equal(typeof scopedUnlockResponse.body.token, 'string');
+
+            const sessionWriteHeaders = {
+                ...sessionHeaders,
+                'x-maintenance-token': scopedUnlockResponse.body.token
+            };
+
+            const initialStudents = [
+                { id: 'stu_present', name: '王五', zizai: 10, balance: 10, penalty: 0 },
+                { id: 'stu_absent', name: '赵六', zizai: 10, balance: 10, penalty: 0 }
+            ];
+
+            const seedResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: sessionWriteHeaders,
+                body: {
+                    students: initialStudents,
+                    history: [],
+                    config: {},
+                    __meta: {
+                        allowServerOverwrite: true
+                    }
+                }
+            });
+            assert.equal(seedResponse.status, 200);
+
+            const checkInResponse = await requestJson(baseUrl, '/api/attendance/check-in', {
+                method: 'POST',
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayMorningMs)
+                },
+                body: { studentName: '王五' }
+            });
+            assert.equal(checkInResponse.status, 200);
+
+            const settleResponse = await requestJson(baseUrl, '/api/attendance/maintenance', {
+                method: 'POST',
+                headers: {
+                    ...sessionWriteHeaders,
+                    'x-test-now': String(mondayAfterMorningMs)
+                },
+                body: {
+                    action: 'settleAbsent',
+                    items: [
+                        { date: '2026-03-30', studentName: '赵六', sessionId: 'morning' }
+                    ]
+                }
+            });
+            assert.equal(settleResponse.status, 200);
+            assert.equal(settleResponse.body.students.find(item => item.id === 'stu_absent').balance, 5);
+            assert.equal(settleResponse.body.students.find(item => item.id === 'stu_absent').penalty, 5);
+
+            const staleSaveResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: sessionWriteHeaders,
+                body: {
+                    students: initialStudents,
+                    __meta: {
+                        baseUpdatedAt: settleResponse.body.updatedAt
+                    }
+                }
+            });
+            assert.equal(staleSaveResponse.status, 200);
+
+            const readResponse = await requestJson(baseUrl, '/api/data', {
+                headers: {
+                    ...sessionHeaders,
+                    'x-test-now': String(mondayAfterMorningMs)
+                }
+            });
+            assert.equal(readResponse.status, 200);
+            const absentStudent = readResponse.body.students.find(item => item.id === 'stu_absent');
+            assert.equal(absentStudent.balance, 5);
+            assert.equal(absentStudent.penalty, 5);
+            assert.equal(readResponse.body.history[0].reason, '缺勤扣分: 2026-03-30 早读');
+        });
     } finally {
         await stopServer(child, { signal: 'SIGTERM', requireGraceful: true });
         fs.rmSync(tempDir, { recursive: true, force: true });

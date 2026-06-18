@@ -833,6 +833,54 @@ const applyPointChange = ({
     };
 };
 
+const isProtectedAttendancePenaltyRecord = (record) => {
+    if (!record || record.isUndoLog) return false;
+    if (record.type !== 'penalty') return false;
+    const numericVal = Number(record.val);
+    if (!Number.isFinite(numericVal) || numericVal >= 0) return false;
+    const reason = String(record.reason || '');
+    return reason.startsWith('缺勤扣分: ') || reason.startsWith('考勤迟到: ');
+};
+
+const numbersMatch = (left, right) => {
+    const leftNum = Number(left);
+    const rightNum = Number(right);
+    if (!Number.isFinite(leftNum) || !Number.isFinite(rightNum)) return false;
+    return Math.abs(leftNum - rightNum) < 1e-9;
+};
+
+const replayMissingAttendancePenaltyChanges = (students, history) => {
+    const nextStudents = Array.isArray(students) ? students.map(student => ({ ...student })) : [];
+    const protectedRecords = (Array.isArray(history) ? history : [])
+        .filter(isProtectedAttendancePenaltyRecord)
+        .sort((a, b) => (Number(a?.ts) || 0) - (Number(b?.ts) || 0));
+    if (nextStudents.length === 0 || protectedRecords.length === 0) {
+        return { students: nextStudents, changed: false };
+    }
+
+    let changed = false;
+    protectedRecords.forEach((record) => {
+        const studentIndex = nextStudents.findIndex(student => String(student?.id) === String(record?.studentId));
+        if (studentIndex === -1) return;
+        const student = nextStudents[studentIndex];
+        const snapshot = record?.snapshot || {};
+        const numericVal = Number(record.val);
+        if (
+            !numbersMatch(student.balance, snapshot.balance) ||
+            !numbersMatch(student.penalty, snapshot.penalty)
+        ) {
+            return;
+        }
+
+        student.balance = Number(student.balance) + numericVal;
+        student.penalty = Math.max(0, Number(student.penalty) + Math.abs(numericVal));
+        student.lastPenaltyAt = Number(record.ts) || student.lastPenaltyAt || 0;
+        changed = true;
+    });
+
+    return { students: nextStudents, changed };
+};
+
 const undoPointChangeByReasons = ({
     students,
     history,
@@ -2280,6 +2328,12 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
         const existingStudents = Array.isArray(readStoredJson(store, 'students')) ? readStoredJson(store, 'students') : [];
         const existingHistory = Array.isArray(readStoredJson(store, 'history')) ? readStoredJson(store, 'history') : [];
         const existingConfig = readStoredJson(store, 'config') || {};
+        const replayResult = Array.isArray(data.students)
+            ? replayMissingAttendancePenaltyChanges(data.students, existingHistory)
+            : { students: data.students, changed: false };
+        if (replayResult.changed) {
+            data.students = replayResult.students;
+        }
         const mergedStudents = Array.isArray(data.students) ? data.students : existingStudents;
         const mergedHistory = Array.isArray(data.history) ? data.history : existingHistory;
         const mergedConfig = Object.prototype.hasOwnProperty.call(data, 'config') ? data.config : existingConfig;
@@ -2294,7 +2348,7 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
             ...incomingMeta,
             updatedAt: Number(incomingMeta.updatedAt) || Date.now()
         };
-        if (decayResult.changed) {
+        if (replayResult.changed || decayResult.changed) {
             data.students = decayResult.students;
             normalizedIncomingMeta.updatedAt = Math.max(
                 normalizedIncomingMeta.updatedAt,
