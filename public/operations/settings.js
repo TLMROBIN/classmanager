@@ -99,6 +99,7 @@
                         h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-2" },
                             h("input", {
                                 className: "border rounded p-2 text-sm",
+                                'aria-label': `第 ${idx + 1} 个学科的标识`,
                                 value: subject.id || "",
                                 onChange: e => updateSystemConfig(config, setConfig, sc => {
                                     const list = [...(sc.subjects || [])];
@@ -109,6 +110,7 @@
                             }),
                             h("input", {
                                 className: "border rounded p-2 text-sm",
+                                'aria-label': `第 ${idx + 1} 个学科的名称`,
                                 value: subject.name || "",
                                 onChange: e => updateSystemConfig(config, setConfig, sc => {
                                     const list = [...(sc.subjects || [])];
@@ -118,6 +120,7 @@
                                 placeholder: "学科名称"
                             }),
                             h("button", {
+                                'aria-label': `删除学科：${subject.name || `第 ${idx + 1} 个学科`}`,
                                 onClick: () => updateSystemConfig(config, setConfig, sc => {
                                     const list = [...(sc.subjects || [])];
                                     list.splice(idx, 1);
@@ -135,6 +138,7 @@
                                         h("span", { className: "text-xs text-gray-500 w-16" }, `课代表${pos + 1}`),
                                         h("select", {
                                             className: "flex-1 border rounded p-2 text-sm",
+                                            'aria-label': `${subject.name || `第 ${idx + 1} 个学科`}的课代表 ${pos + 1}`,
                                             value: currentRepId || "",
                                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                                 const list = [...(sc.subjects || [])];
@@ -221,10 +225,13 @@
                     ),
                     reasons.map((reason, idx) => h("div", {
                         key: idx,
+                        role: 'group',
+                        'aria-label': `积分理由：${reason.name || `第 ${idx + 1} 个积分理由`}`,
                         className: "grid grid-cols-1 md:grid-cols-8 gap-2 bg-white p-3 rounded border"
                     },
                         h("input", {
                             className: "border rounded p-2 text-sm md:col-span-2",
+                            'aria-label': `第 ${idx + 1} 个积分理由的名称`,
                             value: reason.name || "",
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -236,6 +243,7 @@
                         h("input", {
                             type: "number",
                             className: "border rounded p-2 text-sm",
+                            'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的分值`,
                             value: reason.val ?? 0,
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -245,6 +253,7 @@
                         }),
                         h("select", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的类型`,
                             value: reason.type || "bonus",
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -258,6 +267,7 @@
                         ),
                         h("select", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的场景`,
                             value: normalizePointScene(reason.scene),
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -267,6 +277,7 @@
                         }, POINT_SCENES.map(scene => h("option", { key: scene, value: scene }, scene))),
                         h("select", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的类别`,
                             value: normalizePointCategory(reason.category),
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -276,6 +287,7 @@
                         }, POINT_CATEGORIES.map(category => h("option", { key: category, value: category }, category))),
                         h("input", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的备注`,
                             value: reason.note || "",
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -288,6 +300,7 @@
                             h("label", { className: "flex items-center gap-1" },
                                 h("input", {
                                     type: "checkbox",
+                                    'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}：允许编辑分值`,
                                     checked: !!reason.editable,
                                     onChange: e => updateSystemConfig(config, setConfig, sc => {
                                         const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -300,6 +313,7 @@
                             h("label", { className: "flex items-center gap-1" },
                                 h("input", {
                                     type: "checkbox",
+                                    'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}：启用倍率`,
                                     checked: !!reason.isMulti,
                                     onChange: e => updateSystemConfig(config, setConfig, sc => {
                                         const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -314,6 +328,7 @@
                             h("input", {
                                 type: "number",
                                 className: "border rounded p-2 text-sm w-24",
+                                'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的倍率`,
                                 value: reason.factor ?? 1,
                                 onChange: e => updateSystemConfig(config, setConfig, sc => {
                                     const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -322,6 +337,7 @@
                                 })
                             }),
                             h("button", {
+                                'aria-label': `删除积分理由：${reason.name || `第 ${idx + 1} 个积分理由`}`,
                                 onClick: () => updateSystemConfig(config, setConfig, sc => {
                                     const list = [...(((sc || {}).points || {}).reasons || [])];
                                     list.splice(idx, 1);
@@ -667,6 +683,7 @@
                                     h("input", {
                                         type: "number",
                                         step: 0.5,
+                                        'aria-label': `${item.label}扣分`,
                                         className: "w-full border rounded p-2 text-sm",
                                         value: itemConfig.penalty ?? 1,
                                         onChange: e => updateSystemConfig(config, setConfig, sc => {
@@ -681,6 +698,7 @@
                                     h("input", {
                                         type: "number",
                                         step: 0.5,
+                                        'aria-label': `${item.label}专员加分`,
                                         className: "w-full border rounded p-2 text-sm",
                                         value: itemConfig.commissionerBonus ?? 1,
                                         onChange: e => updateSystemConfig(config, setConfig, sc => {
@@ -805,17 +823,20 @@
                     h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-2" },
                         h("input", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': '检索积分记录',
                             value: recordSearch,
                             onChange: e => setRecordSearch(e.target.value),
                             placeholder: "检索学生/理由/场景/类别"
                         }),
                         h("select", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': '按积分场景筛选记录',
                             value: recordScene,
                             onChange: e => setRecordScene(e.target.value)
                         }, POINT_SCENES.map(scene => h("option", { key: scene, value: scene }, scene))),
                         h("select", {
                             className: "border rounded p-2 text-sm",
+                            'aria-label': '按积分类别筛选记录',
                             value: recordCategory,
                             onChange: e => setRecordCategory(e.target.value)
                         }, POINT_CATEGORIES.map(category => h("option", { key: category, value: category }, category)))
@@ -824,7 +845,7 @@
                         h("table", { className: "w-full text-xs text-left" },
                             h("thead", { className: "bg-gray-50 sticky top-0" },
                                 h("tr", null,
-                                    h("th", { className: "p-2 w-10" }, ""),
+                                    h("th", { className: "p-2 w-10", scope: 'col' }, "选择"),
                                     h("th", { className: "p-2" }, "时间"),
                                     h("th", { className: "p-2" }, "学生"),
                                     h("th", { className: "p-2" }, "事项"),
@@ -840,6 +861,7 @@
                                         h("td", { className: "p-2" },
                                             h("input", {
                                                 type: "checkbox",
+                                                'aria-label': `选择 ${item.studentName || '未知学生'} ${new Date(item.ts).toLocaleString()} ${item.reason || '积分变动'}记录`,
                                                 checked: recordSelection.has(item.id),
                                                 onChange: () => toggleRecordSelection(item.id)
                                             })

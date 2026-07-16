@@ -1,0 +1,802 @@
+{
+  "assessment": "B",
+  "rerun": "after-remediation",
+  "generated_at": "2026-07-17T07:12:00+08:00",
+  "stable_path": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+  "scope": [
+    "public/attendance",
+    "public/operations",
+    "public/ui/modal.js",
+    "public/styles.css",
+    "public/core/runtime.js",
+    "public/core/sync.js",
+    "public/points/controller.js",
+    "public/script.js",
+    "server.js attendance request/response path"
+  ],
+  "independence": {
+    "mode": "independent adversarial Assessment B",
+    "assessment_a_read": false,
+    "assessment_a_modified": false,
+    "product_source_modified": false,
+    "note": "只读 PRODUCT.md、DESIGN.md、当前源码、detector 输出与隔离浏览器状态；未读取任何 .assessment-a 文件。"
+  },
+  "product_context": {
+    "primary_user": "中学班主任",
+    "primary_goals": [
+      "快速且准确地完成考勤与积分",
+      "清晰反馈成长",
+      "数据可信、持久、可审计"
+    ],
+    "constraints": [
+      "WCAG AA",
+      "44x44 触控目标",
+      "键盘与焦点可用",
+      "不得仅靠颜色传达状态",
+      "减少装饰运动",
+      "200% 缩放与投影可用"
+    ],
+    "visual_direction": "克制的蓝/白/灰、显式状态、核心流程不使用持续装饰动效。"
+  },
+  "independent_score_suggestion": {
+    "scale": "Nielsen 10 heuristics, 0-4 each",
+    "heuristics": [
+      {
+        "id": 1,
+        "name": "系统状态可见性",
+        "score": 3,
+        "note": "考勤回执清楚，但积分持久化完成态未绑定具体操作。"
+      },
+      {
+        "id": 2,
+        "name": "系统与现实匹配",
+        "score": 4,
+        "note": "考勤时段、迟到、积分与余额语言贴近教师任务。"
+      },
+      {
+        "id": 3,
+        "name": "用户控制与自由",
+        "score": 3,
+        "note": "对话框可取消/Escape/恢复焦点；冲突后原选择仍可能丢失。"
+      },
+      {
+        "id": 4,
+        "name": "一致性与标准",
+        "score": 3,
+        "note": "主流程组件一致；tabs 语义实现不完整。"
+      },
+      {
+        "id": 5,
+        "name": "错误预防",
+        "score": 2,
+        "note": "考勤防重复较强；积分异步保存无提交锁/等待。"
+      },
+      {
+        "id": 6,
+        "name": "识别优于回忆",
+        "score": 3,
+        "note": "按钮、理由与回执可识别；设置字段缺少程序化名称。"
+      },
+      {
+        "id": 7,
+        "name": "灵活性与效率",
+        "score": 2,
+        "note": "批量积分高效，但失败恢复会丢选择上下文。"
+      },
+      {
+        "id": 8,
+        "name": "美观与简约",
+        "score": 3,
+        "note": "核心页明显降噪；通知可能挤压首屏，全球样式仍有范围外装饰。"
+      },
+      {
+        "id": 9,
+        "name": "识别诊断和恢复错误",
+        "score": 2,
+        "note": "考勤恢复清楚；积分保存失败缺少任务级反馈和重试。"
+      },
+      {
+        "id": 10,
+        "name": "帮助与文档",
+        "score": 2,
+        "note": "关键规则有提示，但复杂设置与异常恢复帮助有限。"
+      }
+    ],
+    "total": 27,
+    "maximum": 40,
+    "rating": "Acceptable",
+    "confidence": "medium-high",
+    "p0_count": 0,
+    "p1_count": 2
+  },
+  "claims_challenged": [
+    {
+      "claim": "可靠性已解决",
+      "verdict": "refuted_for_points_and_partially_supported_for_attendance",
+      "counterexamples": [
+        "积分批量更新先同步改本地 students/history，再以未返回、未 await 的 persistManagedPatch 发起保存；失败时操作界面已像成功一样关闭或清空选择。",
+        "persistManagedPatch Promise 未 catch；网络失败或 409 可形成未处理拒绝，具体积分操作没有内联失败状态、回滚或重试。",
+        "考勤 fetch 没有 timeout/AbortController；请求永久悬挂时对应学生按钮会长期停留“提交中…”。",
+        "考勤把缺失/NaN newBalance 归零并展示为权威余额，异常服务响应可能伪装成 0 分。"
+      ]
+    },
+    {
+      "claim": "单任务已解决",
+      "verdict": "mostly_supported_with_residual",
+      "counterexamples": [
+        "学生打卡页已移走编辑工具，但最多 5 条且长度不受限的班主任通知与今日规则仍位于学生网格之前，长通知可把主动作推离首屏。"
+      ]
+    },
+    {
+      "claim": "键盘/读屏已解决",
+      "verdict": "refuted",
+      "counterexamples": [
+        "两组 role=tab 缺 aria-controls、tabpanel、roving tabindex 与方向键/Home/End 处理；隔离浏览器确认四个考勤 tab 全部 tabindex=0，ArrowRight 不移动。",
+        "积分设置的学科、积分理由和记录属性维护含多组 input/select，仅靠 placeholder 或相邻视觉文字，没有 label/aria-label。",
+        "Modal 有焦点圈闭、Escape 与恢复焦点，但没有 inert/aria-hidden 背景；隔离浏览器确认背景节点计数均为 0。"
+      ]
+    },
+    {
+      "claim": "视觉降噪已解决",
+      "verdict": "supported_for_core_with_scope_adjacent_residuals",
+      "counterexamples": [
+        "核心考勤/积分页面未见持续庆祝动效；但 public/styles.css 仍含抽卡弹性 easing、twinkle/meteor/float/pulse/gradient/shimmer 等全局持续动效。它们本次不在核心渲染路径，不能上升为核心 P1。"
+      ]
+    }
+  ],
+  "p0": [],
+  "p1": [
+    {
+      "id": "B-P1-01",
+      "title": "积分操作在服务端保存确认前即表现为成功",
+      "principle": "visibility/error prevention/error recovery",
+      "evidence": [
+        {
+          "file": "public/points/controller.js",
+          "lines": "105-115",
+          "detail": "先 setStudents/setHistory，再同步调用 onPersist，并立即返回 count。"
+        },
+        {
+          "file": "public/script.js",
+          "lines": "1085-1103",
+          "detail": "onPersist 调用 persistManagedPatch 但不 return/await/catch Promise。"
+        },
+        {
+          "file": "public/core/sync.js",
+          "lines": "726-730",
+          "detail": "persistManagedPatch 返回真实异步 persistDataPatch Promise。"
+        }
+      ],
+      "impact": "网络失败、服务器拒绝或 409 冲突时，教师已失去选择/模态上下文；本地看似完成，服务器可能未保存，并可能出现未处理 Promise 拒绝。",
+      "recommendation": "把 batchUpdatePoints 改为 async transaction UX：保留选择与 modal、禁用重复提交、等待 persist 成功后再更新完成态/清空；失败时回滚或明确保留草稿并提供重试。"
+    },
+    {
+      "id": "B-P1-02",
+      "title": "积分设置关键表单控件缺少可访问名称",
+      "principle": "accessibility/recognition/consistency",
+      "evidence": [
+        {
+          "file": "public/operations/settings.js",
+          "lines": "100-159",
+          "detail": "学科 id、名称与课代表 select 无程序化 label。"
+        },
+        {
+          "file": "public/operations/settings.js",
+          "lines": "226-323",
+          "detail": "理由名称、分值、类型、场景、类别、备注、倍率多项控件缺 label/aria-label。"
+        },
+        {
+          "file": "public/operations/settings.js",
+          "lines": "805-821",
+          "detail": "记录检索/场景/类别选择仅靠 placeholder 或布局。"
+        }
+      ],
+      "impact": "读屏教师无法可靠区分同一行多个输入与下拉框，无法独立完成理由/属性配置。",
+      "recommendation": "为每个重复行控件生成稳定 id + label/aria-labelledby，名称包含理由/学科/记录上下文；不要以 placeholder 代替标签。"
+    }
+  ],
+  "residual_issues": [
+    {
+      "id": "B-P2-01",
+      "priority": "P2",
+      "title": "考勤请求无超时或取消",
+      "evidence": [
+        {
+          "file": "public/core/runtime.js",
+          "lines": "336-351"
+        },
+        {
+          "file": "public/attendance/module.js",
+          "lines": "195-248"
+        }
+      ],
+      "impact": "断网但连接不结束时单个学生可无限 pending。",
+      "recommendation": "AbortController + 明确超时回执；超时后恢复按钮并保留重试。"
+    },
+    {
+      "id": "B-P2-02",
+      "priority": "P2",
+      "title": "Tabs 是部分 ARIA 实现",
+      "evidence": [
+        {
+          "file": "public/attendance/module.js",
+          "lines": "529-530"
+        },
+        {
+          "file": "public/operations/module.js",
+          "lines": "481-493"
+        }
+      ],
+      "browser_counterexample": "考勤四 tab 均 tabindex=0，缺 aria-controls/tabpanel；ArrowRight 后焦点和 selected 均仍为学生打卡。",
+      "recommendation": "实现 roving tabindex、方向键/Home/End、aria-controls 与 role=tabpanel；或移除 tab 角色改用普通按钮语义。"
+    },
+    {
+      "id": "B-P2-03",
+      "priority": "P2",
+      "title": "Modal 未隔离读屏背景",
+      "evidence": [
+        {
+          "file": "public/ui/modal.js",
+          "lines": "92-120"
+        }
+      ],
+      "browser_counterexample": "role=dialog、aria-modal、Escape 与焦点恢复有效，但背景 inert=0、aria-hidden=0。",
+      "recommendation": "打开时对应用根节点使用 inert（并提供兼容回退），关闭时完整恢复。"
+    },
+    {
+      "id": "B-P2-04",
+      "priority": "P2",
+      "title": "班主任通知可能挤压首屏主任务",
+      "evidence": [
+        {
+          "file": "public/attendance/module.js",
+          "lines": "531-548"
+        },
+        {
+          "file": "public/attendance/module.js",
+          "lines": "268-269"
+        }
+      ],
+      "impact": "最多 5 条长通知全部位于学生按钮之前。",
+      "recommendation": "无通知时压缩；有通知时默认只展示最新一条并提供展开，或设 max-height。"
+    },
+    {
+      "id": "B-P2-05",
+      "priority": "P2",
+      "title": "考勤回执把异常余额归零",
+      "evidence": [
+        {
+          "file": "public/attendance/module.js",
+          "lines": "206-219"
+        }
+      ],
+      "impact": "服务端缺少/非法 newBalance 时 UI 显示“当前余额 0 分”而非异常。",
+      "recommendation": "验证 Number.isFinite；非法回执应进入错误态并触发数据重取。"
+    },
+    {
+      "id": "B-P3-01",
+      "priority": "P3",
+      "title": "核心范围外仍保留持续/弹性装饰动效",
+      "evidence": [
+        {
+          "file": "public/styles.css",
+          "lines": "76-137"
+        }
+      ],
+      "impact": "本次核心页未渲染，属于后续全局设计系统清理项。",
+      "recommendation": "按功能模块拆分样式并确保 reduced-motion；不要把抽卡装饰规则加载到核心壳层。"
+    }
+  ],
+  "validated_improvements": [
+    "考勤按学生建立 pending 锁，按钮 disabled + aria-busy，成功/失败都有 role=status/alert。",
+    "成功回执明确学生、时段、时间、积分变化、余额与连续全勤，并提供修正入口。",
+    "认证失效保存待办意图，重新登录后要求人工再次确认，不静默重放。",
+    "学生打卡页已把通知编辑、考勤设置移到教师工具。",
+    "Modal 已具 role=dialog、aria-modal、aria-labelledby、焦点圈闭、Escape 和焦点恢复。",
+    "隔离浏览器真实打卡得到“准点打卡已记录”、+2、余额 14，学生按钮随后禁用且 aria-label 变为已到。",
+    "核心页面按钮高度实测 56px，满足 44px 目标；全局 focus-visible 与 reduced-motion 规则存在。"
+  ],
+  "detector": {
+    "command": "node /Users/binyu/.agents/skills/impeccable/scripts/detect.mjs --json public/attendance public/operations public/ui/modal.js public/styles.css",
+    "deterministic": true,
+    "exit_code": 2,
+    "output_parsed": true,
+    "finding_count": 37,
+    "counts_by_rule": {
+      "gray-on-color": 22,
+      "bounce-easing": 2,
+      "design-system-color": 12,
+      "design-system-radius": 1
+    },
+    "classification_summary": {
+      "false_positive_mutually_exclusive_branch": 22,
+      "false_positive_lexical_name": 1,
+      "likely_false_positive_token_alias": 1,
+      "likely_false_positive_component_primitive": 1,
+      "valid_scope_adjacent": 11,
+      "valid_low_priority": 1
+    },
+    "findings": [
+      {
+        "index": 1,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/attendance/module.js",
+        "line": 592,
+        "snippet": "text-gray-400 on bg-green-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 2,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/attendance/module.js",
+        "line": 773,
+        "snippet": "text-gray-400 on bg-green-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把同一表达式不同子分支的 bg-green-50 与空状态 text-gray-400 合并；运行时不会落在同一元素。"
+      },
+      {
+        "index": 3,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/attendance/settings.js",
+        "line": 143,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 4,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/attendance/settings.js",
+        "line": 362,
+        "snippet": "text-gray-700 on bg-yellow-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 5,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/history-section.js",
+        "line": 128,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 6,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/module.js",
+        "line": 491,
+        "snippet": "text-gray-700 on bg-blue-700",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 7,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/module.js",
+        "line": 533,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 8,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 80,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 9,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 195,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 10,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 365,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 11,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 440,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 12,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 548,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 13,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 640,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 14,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/settings.js",
+        "line": 788,
+        "snippet": "text-gray-700 on bg-blue-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 15,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 261,
+        "snippet": "text-gray-700 on bg-blue-700",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 16,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 269,
+        "snippet": "text-gray-700 on bg-emerald-700",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 17,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 289,
+        "snippet": "text-gray-700 on bg-red-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 18,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 358,
+        "snippet": "text-gray-700 on bg-red-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 19,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 412,
+        "snippet": "text-gray-700 on bg-red-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 20,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 457,
+        "snippet": "text-gray-700 on bg-blue-700",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 21,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 465,
+        "snippet": "text-gray-700 on bg-indigo-700",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 22,
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "public/operations/views.js",
+        "line": 489,
+        "snippet": "text-gray-700 on bg-red-50",
+        "classification": "false_positive_mutually_exclusive_branch",
+        "rationale": "检测器把条件类字符串中的选中/未选中或打开/关闭分支合并；运行时互斥。"
+      },
+      {
+        "index": 23,
+        "rule": "bounce-easing",
+        "name": "Bounce or elastic easing",
+        "severity": "warning",
+        "file": "public/styles.css",
+        "line": 16,
+        "snippet": "animate-bounce (Tailwind)",
+        "classification": "false_positive_lexical_name",
+        "rationale": "类名仍含 animate-bounce-in，但实际绑定 dialogIn 0.2s ease-out，并无 bounce/elastic easing。"
+      },
+      {
+        "index": 24,
+        "rule": "bounce-easing",
+        "name": "Bounce or elastic easing",
+        "severity": "warning",
+        "file": "public/styles.css",
+        "line": 107,
+        "snippet": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "classification": "valid_scope_adjacent",
+        "rationale": "弹性 easing 确实存在于抽卡 card-enter；不在本次考勤/积分主流程渲染路径，但属于全局样式残余。"
+      },
+      {
+        "index": 25,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 42,
+        "snippet": "Undocumented color #dbeafe is outside DESIGN.md colors",
+        "classification": "likely_false_positive_token_alias",
+        "rationale": "#dbeafe 等价于既有 Tailwind blue-100，用于移动端考勤语录下边框，符合受控蓝色体系。"
+      },
+      {
+        "index": 26,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 78,
+        "snippet": "Undocumented color #2d3748 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 27,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 78,
+        "snippet": "Undocumented color #1a202c is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 28,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 78,
+        "snippet": "Undocumented color #000000 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 29,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 109,
+        "snippet": "Undocumented color #451a03 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 30,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 110,
+        "snippet": "Undocumented color #a855f7 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 31,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 110,
+        "snippet": "Undocumented color #3b0764 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 32,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 110,
+        "snippet": "Undocumented color #7e22ce is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 33,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 141,
+        "snippet": "Undocumented color #b9f2ff is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 34,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 142,
+        "snippet": "Undocumented color #ffd700 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 35,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 143,
+        "snippet": "Undocumented color #c0c0c0 is outside DESIGN.md colors",
+        "classification": "valid_scope_adjacent",
+        "rationale": "颜色确实未以十六进制形式列入 DESIGN.md；其中大部分仅用于抽卡/排行榜装饰，不在本次核心流程。"
+      },
+      {
+        "index": 36,
+        "rule": "design-system-color",
+        "name": "Color outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 147,
+        "snippet": "Undocumented color rgba(0,0,0,0.3) is outside DESIGN.md colors",
+        "classification": "valid_low_priority",
+        "rationale": "范围滑块阴影使用未登记 rgba，影响很小但确属设计令牌外写法。"
+      },
+      {
+        "index": 37,
+        "rule": "design-system-radius",
+        "name": "Radius outside DESIGN.md",
+        "severity": "advisory",
+        "file": "public/styles.css",
+        "line": 148,
+        "snippet": "border-radius: 2px is outside the DESIGN.md rounded scale",
+        "classification": "likely_false_positive_component_primitive",
+        "rationale": "2px 是 range track 的几何半径，不是卡片/按钮圆角；适合作为原生控件例外。"
+      }
+    ]
+  },
+  "browser": {
+    "isolated": true,
+    "runtime": "in-app Browser via persistent Node REPL",
+    "fresh_tab": true,
+    "base_url": "http://127.0.0.1:3213",
+    "database": "temporary SQLite under /tmp; deleted",
+    "real_database_touched": false,
+    "seeded_test_users": 3,
+    "actions": [
+      "登录临时 user 账户",
+      "打开考勤页并读取 DOM/ARIA",
+      "验证 tab 键盘反例",
+      "对陈晓明执行一次真实隔离打卡",
+      "读取 role=status 回执与禁用态",
+      "打开积分批量确认 modal，验证 dialog 语义、Escape 与焦点恢复",
+      "截取一次页面截图，仅用于本轮视觉检查，不落盘"
+    ],
+    "evidence": {
+      "attendance_tabs": {
+        "count": 4,
+        "all_tabindex_zero": true,
+        "aria_controls_present": false,
+        "tabpanel_count": 0,
+        "arrow_right_changed": false
+      },
+      "student_targets": {
+        "count": 3,
+        "measured_height_px": 56
+      },
+      "check_in": {
+        "status_text": "准点打卡已记录；陈晓明；隔离评审时段；本次加 2 分；当前余额 14 分；连续全勤 1 天",
+        "button_disabled_after": true,
+        "label_after": "陈晓明，已到 07:09"
+      },
+      "modal": {
+        "role_dialog": true,
+        "aria_modal": true,
+        "aria_labelledby": true,
+        "escape_closed": true,
+        "focus_restored_to_reason_button": true,
+        "background_inert_count": 0,
+        "background_aria_hidden_count": 0
+      },
+      "screenshot_captured": true,
+      "screenshot_retained": false
+    },
+    "overlay_injection": {
+      "attempted_in_rerun": false,
+      "reason": "同一浏览器会话先前已被安全策略明确阻止 javascript URL 注入；按主代理边界不重复尝试或绕过。"
+    },
+    "limitations": [
+      "未做网络层故障注入；积分异步保存反例由当前源码调用链证明。",
+      "点击“打开设置”时 CDP click 超时，未继续延长浏览器检查；设置标签缺名以源码逐项核验。"
+    ],
+    "tab_finalized": true
+  },
+  "false_positives": {
+    "detector_mutually_exclusive_count": 22,
+    "explanation": "所有 gray-on-color 告警均来自同一模板字符串中互斥的状态分支，或将父/子/空态的不同元素组合，未发现运行时实际的灰字叠加彩色背景实例。",
+    "other": [
+      "animate-bounce-in 仅保留旧类名，实际动画已改为 dialogIn ease-out。",
+      "#dbeafe 是 Tailwind blue-100 等价色，符合既有蓝色体系。",
+      "range track 的 2px radius 是控件几何细节，不应套用卡片圆角比例。"
+    ]
+  },
+  "cleanup": {
+    "browser_tabs_finalized": true,
+    "temporary_server_stopped": true,
+    "port_3213_clear": true,
+    "temporary_database_removed": true,
+    "live_server_started": false,
+    "product_files_modified": false
+  }
+}

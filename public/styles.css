@@ -6,34 +6,14 @@ body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background
     overscroll-behavior-x: contain;
     touch-action: pan-x;
 }
-/* 动画 */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+/* Motion is brief and functional; no continuous motion in core workflows. */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-@keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
-.animate-bounce-in { animation: bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-
-/* 考勤特效动画 */
-@keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-@keyframes firework { 0% { box-shadow: 0 0 0 0px rgba(255, 165, 0, 0.7); } 100% { box-shadow: 0 0 0 40px rgba(255, 165, 0, 0); } }
-.animate-pop { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-.animate-firework { animation: firework 0.8s ease-out infinite; }
-
-@keyframes quoteGlow {
-    0%, 100% { box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18), 0 0 0 4px rgba(253, 224, 71, 0.22); }
-    50% { box-shadow: 0 16px 32px rgba(15, 23, 42, 0.24), 0 0 0 6px rgba(255, 255, 255, 0.3); }
-}
-
-@keyframes quoteBreath {
-    0%, 100% { transform: scale(1); filter: brightness(1); }
-    50% { transform: scale(1.025); filter: brightness(1.08); }
-}
-
-@keyframes quoteTextPulse {
-    0%, 100% { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 rgba(255, 255, 255, 0); }
-    50% { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 16px rgba(255, 255, 255, 0.45); }
-}
+@keyframes dialogIn { from { opacity: 0; transform: translateY(6px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.animate-dialog-in,
+.animate-bounce-in { animation: dialogIn 0.2s ease-out forwards; }
 
 .attendance-quote-shell {
     align-items: center;
@@ -41,8 +21,8 @@ body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background
 
 .attendance-quote-banner,
 .attendance-quote-mobile {
-    transform-origin: center;
-    animation: quoteGlow 2.8s ease-in-out infinite, quoteBreath 3s ease-in-out infinite;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .attendance-quote-banner {
@@ -50,34 +30,46 @@ body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background
     align-items: center;
     justify-content: center;
     max-width: min(100%, 48rem);
-    padding: 0.8rem 1.5rem;
-    border-radius: 1rem;
-    background: linear-gradient(135deg, rgba(253, 230, 138, 0.98), rgba(250, 204, 21, 0.95));
-    border: 3px solid rgba(255, 255, 255, 0.85);
+    padding: 0.55rem 1rem;
+    border-radius: 0.75rem;
     text-align: center;
 }
 
 .attendance-quote-mobile {
-    padding: 0.9rem 1rem;
-    background: linear-gradient(135deg, #fde68a 0%, #facc15 100%);
-    border-bottom: 4px solid #f59e0b;
+    padding: 0.75rem 1rem;
+    background: #eff6ff;
+    border: 0;
+    border-bottom: 1px solid #dbeafe;
     text-align: center;
 }
 
 .attendance-quote-text {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: clamp(1.15rem, 2vw, 1.9rem);
-    line-height: 1.35;
-    font-weight: 900;
-    letter-spacing: 0.04em;
-    color: #172554;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-    animation: quoteTextPulse 3s ease-in-out infinite;
+    font-family: inherit;
+    font-size: clamp(0.875rem, 1.2vw, 1rem);
+    line-height: 1.5;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: #ffffff;
 }
 
 @media (max-width: 767px) {
     .attendance-quote-text {
-        font-size: clamp(1.05rem, 4.5vw, 1.45rem);
+        font-size: 0.875rem;
+        color: #1e3a8a;
+    }
+}
+
+:where(button, input, select, textarea, a):focus-visible {
+    outline: 3px solid #60a5fa;
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }
 

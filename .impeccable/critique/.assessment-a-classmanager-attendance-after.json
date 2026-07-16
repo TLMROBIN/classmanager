@@ -1,0 +1,480 @@
+{
+  "assessment": {
+    "id": "assessment-a-classmanager-attendance-after",
+    "variant": "A",
+    "title": "ClassManager 考勤与积分主流程整改后独立评估",
+    "date": "2026-07-17",
+    "reviewer_mode": "independent_static_plus_isolated_runtime",
+    "stable_target": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+    "scope": [
+      "public/attendance",
+      "public/operations",
+      "public/ui/modal.js",
+      "public/styles.css",
+      "考勤请求客户端、同步层与服务端返回"
+    ],
+    "source_changes_made": false,
+    "worktree_policy": "只读评估；保留现有脏工作区，不改动任何产品源码",
+    "ignore_file": {
+      "path": ".impeccable/critique/ignore.md",
+      "present": false
+    }
+  },
+  "result": {
+    "score": 34,
+    "max_score": 40,
+    "band": "Good",
+    "summary": "整改后的考勤流程已形成清晰、诚实且可恢复的闭环：学生选择、提交中、成功回执、积分变化、重新登录与重试均有明确状态；积分区也通过工作区分层、语义化选择控件和可访问模态框明显降低了误操作与认知负担。主要剩余风险集中在批量积分保存：确认后立即关闭模态框并清空选择，但持久化 Promise 未被等待或在当前任务上下文中处理，网络失败时缺少动作级回执与原地重试。",
+    "score_scale": {
+      "1": "严重违背启发式，主任务高概率失败",
+      "2": "存在明显阻碍，需要用户绕行",
+      "3": "总体可用，仍有可感知摩擦",
+      "4": "在本次范围内表现稳健"
+    }
+  },
+  "nielsen_heuristics": [
+    {
+      "id": 1,
+      "heuristic": "系统状态可见性",
+      "score": 3,
+      "rationale": "考勤提供按学生隔离的提交中状态、aria-busy、持久成功回执、错误提示、重试与重新登录入口，服务端还返回具体记录、积分变化和新余额。积分批量操作仍只依赖全局同步状态，缺少动作级保存中、保存成功或失败回执，因此未达到满分。",
+      "evidence": [
+        "public/attendance/module.js:188-260",
+        "public/attendance/module.js:551-594",
+        "public/core/sync.js:749-758",
+        "server.js:2053-2068",
+        "public/operations/actions.js:177-190",
+        "public/script.js:1097-1101"
+      ]
+    },
+    {
+      "id": 2,
+      "heuristic": "系统与现实世界匹配",
+      "score": 4,
+      "rationale": "文案使用班主任熟悉的晨间签到、准点、迟到、当前余额、需要修正、快速积分和积分历史等课堂语言；回执如实区分准点、迟到、迟到卡与积分不变，避免游戏化夸张和虚假成功。",
+      "evidence": [
+        "public/attendance/module.js:551-575",
+        "public/operations/module.js:480-520",
+        "public/operations/views.js:542-631"
+      ]
+    },
+    {
+      "id": 3,
+      "heuristic": "用户控制与自由",
+      "score": 4,
+      "rationale": "考勤回执可关闭并可进入修正；积分选择可单个切换、全选、清空，确认模态框支持取消、遮罩关闭、Escape 关闭、焦点循环与焦点归还；积分历史提供撤销入口。",
+      "evidence": [
+        "public/attendance/module.js:565-573",
+        "public/operations/views.js:187-237",
+        "public/operations/views.js:503-539",
+        "public/ui/modal.js:43-90",
+        "public/ui/modal.js:94-118"
+      ]
+    },
+    {
+      "id": 4,
+      "heuristic": "一致性与标准",
+      "score": 3,
+      "rationale": "主流程已统一使用蓝色操作色、语义绿/红、原生按钮语义和共享模态框；但考勤统计、修正以及若干积分登记仍混用原生 alert/confirm，共享模态框与浏览器对话框的反馈、键盘行为和视觉语言不一致。",
+      "evidence": [
+        "public/ui/modal.js:93-118",
+        "public/attendance/module.js:360-455",
+        "public/operations/actions.js:177-190",
+        "public/operations/actions.js:196-232"
+      ]
+    },
+    {
+      "id": 5,
+      "heuristic": "错误预防",
+      "score": 4,
+      "rationale": "考勤按学生设置并发锁，已打卡、非时段和正在提交均禁用；成功前校验服务端 checkIn 结构；积分先选择学生和理由，再在模态框中确认场景、类别及每位学生分值，危险操作使用红色语义。",
+      "evidence": [
+        "public/attendance/module.js:188-205",
+        "public/attendance/module.js:581-594",
+        "public/operations/views.js:542-631",
+        "public/operations/actions.js:177-190"
+      ]
+    },
+    {
+      "id": 6,
+      "heuristic": "识别而非回忆",
+      "score": 3,
+      "rationale": "当前考勤时段、今日规则、学生状态、已选人数、奖励/扣分模式、理由分值和工作区标签均直接可见；但积分理由采用隐藏滚动条的水平长轨，缺少明确的更多内容提示，用户可能不知道还有未显示理由。",
+      "evidence": [
+        "public/attendance/module.js:479-550",
+        "public/operations/module.js:480-520",
+        "public/operations/views.js:187-237",
+        "public/styles.css:2-8"
+      ]
+    },
+    {
+      "id": 7,
+      "heuristic": "灵活性与效率",
+      "score": 3,
+      "rationale": "支持按组/宿舍筛选、全选当前、批量加扣分、自定义理由和快速切换工作区，足以覆盖高频班主任操作；大名单仍没有姓名搜索或键盘快捷入口，隐藏理由轨在触控板之外的发现效率一般。",
+      "evidence": [
+        "public/operations/views.js:25-79",
+        "public/operations/views.js:187-237",
+        "public/attendance/module.js:581-594"
+      ]
+    },
+    {
+      "id": 8,
+      "heuristic": "美观与极简设计",
+      "score": 4,
+      "rationale": "考勤将学生打卡、统计、教师工具和修正拆为互斥任务区；积分将快速积分、日常登记、历史和设置拆分，主任务不再与管理配置同时争夺注意力。视觉以白/灰和克制蓝为主，短动效且支持减少动态。",
+      "evidence": [
+        "public/attendance/module.js:462-477",
+        "public/operations/module.js:480-535",
+        "public/styles.css:9-16",
+        "public/styles.css:67-74"
+      ]
+    },
+    {
+      "id": 9,
+      "heuristic": "帮助用户识别、诊断和恢复错误",
+      "score": 3,
+      "rationale": "考勤按错误码提供已打卡、时段关闭、登录失效和通用失败的可操作消息，登录失效时保留待办学生并支持恢复后重试。积分持久化失败只会把全局同步状态改为未保存，当前确认上下文已经关闭且选择被清空，缺少动作级诊断和原地重试。",
+      "evidence": [
+        "public/attendance/module.js:225-260",
+        "public/core/runtime.js:336-373",
+        "public/operations/actions.js:177-190",
+        "public/core/sync.js:524-590"
+      ]
+    },
+    {
+      "id": 10,
+      "heuristic": "帮助与文档",
+      "score": 3,
+      "rationale": "界面内提供今日规则、教师只读说明、工具区说明、设置区用途说明和模态字段标签，简单任务基本可自解释；对批量积分保存失败、跨标签冲突和理由横向浏览仍缺少就地说明。",
+      "evidence": [
+        "public/attendance/module.js:485-550",
+        "public/attendance/module.js:596-604",
+        "public/operations/module.js:523-535",
+        "public/operations/views.js:556-631"
+      ]
+    }
+  ],
+  "priority_issues": {
+    "P0": [],
+    "P1": [
+      {
+        "id": "A-P1-01",
+        "title": "批量积分在持久化完成前关闭任务上下文",
+        "heuristics": [1, 9],
+        "evidence": [
+          "public/operations/actions.js:177-190 在 batchUpdatePoints 返回后立即关闭模态框并清空选择",
+          "public/script.js:1097-1101 调用 persistManagedPatch 但不 return、await 或 catch Promise",
+          "public/core/sync.js:524-590 保存失败只更新全局同步状态并抛错"
+        ],
+        "impact": "弱网、鉴权失效或数据冲突时，教师已失去本次选择和确认上下文；本地乐观状态与服务端真实状态可能短暂分离，用户只能从全局未保存状态推断失败，容易重复操作或以为积分已经入账。",
+        "recommendation": "让 batchUpdatePoints 返回持久化 Promise；确认按钮进入保存中并禁用重复提交；成功后再关闭并显示包含人数、总变动和保存时间的动作级回执；失败时保留选择和每人分值，在模态框内显示错误与重试。"
+      }
+    ],
+    "P2": [
+      {
+        "id": "A-P2-01",
+        "title": "积分统一调整滑块缺少可见焦点且触控目标偏小",
+        "heuristics": [3, 4, 7],
+        "evidence": [
+          "public/styles.css:145-149 将滑块 thumb 固定为 20px，并以更高特异性移除 focus outline",
+          "public/operations/views.js:588-603 使用该滑块作为统一设置入口"
+        ],
+        "recommendation": "为 range 恢复明确的 :focus-visible 轮廓并提供至少 44px 的可操作轨道容器；保留数值输入作为等价路径。"
+      },
+      {
+        "id": "A-P2-02",
+        "title": "积分理由横向轨隐藏滚动条且没有溢出提示",
+        "heuristics": [6, 7],
+        "evidence": [
+          "public/styles.css:2-8 隐藏全部横向滚动条",
+          "public/operations/views.js:209-237 理由列表依赖横向拖动或滚动"
+        ],
+        "recommendation": "在存在溢出时显示边缘渐隐和“更多理由”箭头，或增加可见滚动条/折行模式。"
+      },
+      {
+        "id": "A-P2-03",
+        "title": "新学生提交期间上一条考勤回执仍保持为主反馈",
+        "heuristics": [1],
+        "evidence": [
+          "public/attendance/module.js:188-205 开始新提交时清空错误但未清空上一条 checkInReceipt",
+          "public/attendance/module.js:551-594 旧回执与新按钮的提交中状态可以同时出现"
+        ],
+        "recommendation": "开始为另一名学生提交时将旧回执降级为历史提示或先清空；在页面主状态区显示“正在为某某提交”。"
+      },
+      {
+        "id": "A-P2-04",
+        "title": "主流程仍混用原生 alert/confirm 与共享模态框",
+        "heuristics": [4, 9],
+        "evidence": [
+          "public/attendance/module.js:360-455",
+          "public/operations/actions.js:177-190",
+          "public/operations/actions.js:196-232"
+        ],
+        "recommendation": "将确认、校验与失败反馈逐步迁移到共享可访问模态框或页内提示，保留一致的焦点管理与恢复操作。"
+      },
+      {
+        "id": "A-P2-05",
+        "title": "少数统计和设置动作未达到 44px 触控目标",
+        "heuristics": [4, 7],
+        "evidence": [
+          "public/attendance/module.js:770 全勤奖按钮使用 text-xs px-2 py-1",
+          "public/operations/module.js:531-534 设置开关未声明 min-h-11"
+        ],
+        "recommendation": "将这些动作统一到至少 44x44px 的按钮规格，并沿用现有 focus-visible 样式。"
+      }
+    ]
+  },
+  "cognitive_load": {
+    "summary": "主任务已通过任务区和渐进披露显著降噪；剩余负担主要来自隐藏的理由溢出和积分保存后需要凭全局状态自行推断结果。",
+    "dimensions": [
+      {
+        "dimension": "单一焦点",
+        "score": 4,
+        "finding": "考勤和积分均以互斥工作区承载单一任务。"
+      },
+      {
+        "dimension": "信息分块",
+        "score": 4,
+        "finding": "时段、规则、回执、学生网格以及筛选、选择、理由、确认形成自然步骤。"
+      },
+      {
+        "dimension": "相关内容分组",
+        "score": 4,
+        "finding": "教师通知编辑移入工具区，积分设置与快速操作分离。"
+      },
+      {
+        "dimension": "视觉层级",
+        "score": 3,
+        "finding": "标题、状态、主操作层级清楚，但统计区仍有较多细小标签和并列卡片。"
+      },
+      {
+        "dimension": "一次只做一件事",
+        "score": 4,
+        "finding": "学生选择后再选理由，最后在模态框确认，流程有明确阶段。"
+      },
+      {
+        "dimension": "最少必要选择",
+        "score": 3,
+        "finding": "默认理由便于高频操作，但长理由轨仍可能让用户横向搜寻。"
+      },
+      {
+        "dimension": "工作记忆要求",
+        "score": 3,
+        "finding": "考勤回执减少记忆负担；积分确认后缺少任务级成功凭据，用户需记住刚才操作并查看同步状态或历史。"
+      },
+      {
+        "dimension": "渐进披露",
+        "score": 4,
+        "finding": "设置、教师工具、修正和历史按需进入，主页面不再同时展示全部管理控件。"
+      }
+    ]
+  },
+  "emotional_journey": {
+    "overall": "考勤形成从确定到放心的正向闭环；积分流程在最后保存确认处仍有不确定性。",
+    "stages": [
+      {
+        "stage": "进入考勤",
+        "emotion": "明确、平静",
+        "evidence": "当前时段、时间、今日规则和任务标签立即可见。"
+      },
+      {
+        "stage": "寻找并点击学生",
+        "emotion": "快速、有掌控感",
+        "evidence": "学生按钮尺寸充足，已到、迟到、不可用和提交中状态可区分。"
+      },
+      {
+        "stage": "等待提交",
+        "emotion": "被告知、较安心",
+        "evidence": "按钮显示提交中并带 aria-busy，按学生防止重复提交。"
+      },
+      {
+        "stage": "收到考勤结果",
+        "emotion": "确认、可信",
+        "evidence": "持久回执包含学生、时段、时间、准点/迟到、积分变化和新余额。"
+      },
+      {
+        "stage": "遇到登录或网络错误",
+        "emotion": "可恢复",
+        "evidence": "页内错误说明对象和原因，提供重新登录、重试与关闭；登录恢复后保留待办学生。"
+      },
+      {
+        "stage": "选择学生与积分理由",
+        "emotion": "高效、谨慎",
+        "evidence": "选择数、奖励/扣分模式和理由分值均可见，确认前可逐人修正。"
+      },
+      {
+        "stage": "确认批量积分",
+        "emotion": "审慎",
+        "evidence": "模态框明确列出场景、类别、统一值和每位学生值。"
+      },
+      {
+        "stage": "积分保存结束",
+        "emotion": "略有不确定",
+        "evidence": "模态框立即关闭且选择清空，缺少动作级成功/失败回执；只能观察全局同步状态或转到积分历史。"
+      }
+    ],
+    "peak": "考勤成功回执是当前最强的信任峰值，因为它把业务结果和积分结果放在同一处并持续保留。",
+    "ending": "考勤结束良好；积分结束仍偏弱，建议把持久化成功回执作为最终体验收口。"
+  },
+  "strengths": [
+    {
+      "title": "诚实而完整的考勤回执",
+      "detail": "不只显示“成功”，还返回实际状态、时间、积分变化、新余额和迟到卡情况。"
+    },
+    {
+      "title": "登录失效可恢复",
+      "detail": "请求层可延迟自动跳转，界面保存待办学生，重新登录后提示确认重试。"
+    },
+    {
+      "title": "高频任务与管理任务分层",
+      "detail": "学生打卡、统计、教师工具、修正以及快速积分、日常登记、历史、设置互不抢占主视线。"
+    },
+    {
+      "title": "选择控件语义与触控规格显著改善",
+      "detail": "学生、模式和日期大多使用原生 button、aria-pressed/aria-selected、可见焦点与至少 44px 高度。"
+    },
+    {
+      "title": "共享模态框具备完整键盘基础",
+      "detail": "包含 dialog 语义、标题关联、Escape、Tab 循环、关闭标签和焦点归还。"
+    },
+    {
+      "title": "克制且符合课堂场景的视觉语言",
+      "detail": "主要使用白灰、动作蓝和语义色；核心动效短促并尊重 prefers-reduced-motion。"
+    }
+  ],
+  "personas": [
+    {
+      "persona": "早读高峰中的班主任",
+      "primary_need": "数秒内完成多人签到或加扣分，且明确知道是否真正保存",
+      "assessment": "考勤表现优秀；积分保存完成感仍需加强。"
+    },
+    {
+      "persona": "在班级大屏前自助打卡的学生",
+      "primary_need": "快速找到姓名、避免重复点击、清楚看到自己的结果",
+      "assessment": "大按钮、禁用状态和持久回执支持良好；大名单缺少搜索。"
+    },
+    {
+      "persona": "使用平板巡堂的教师",
+      "primary_need": "稳定触控目标、少滚动、错误后原地恢复",
+      "assessment": "主要控件合格；滑块、全勤奖和少数设置按钮仍偏小。"
+    },
+    {
+      "persona": "键盘或辅助技术用户",
+      "primary_need": "明确语义、可见焦点、模态不丢焦点",
+      "assessment": "模态框、标签和大部分按钮表现稳健；range 的 focus outline 被移除。"
+    },
+    {
+      "persona": "弱网或多标签环境中的教师",
+      "primary_need": "失败时保留操作上下文并能安全重试",
+      "assessment": "考勤错误恢复完善；积分持久化失败仍可能丢失当前选择上下文。"
+    }
+  ],
+  "detector": {
+    "script": "/Users/binyu/.agents/skills/impeccable/scripts/detect.mjs",
+    "command": "node /Users/binyu/.agents/skills/impeccable/scripts/detect.mjs --json public/attendance/module.js public/attendance/settings.js public/operations/module.js public/operations/views.js public/ui/modal.js",
+    "exit_code": 2,
+    "raw_findings_count": 14,
+    "real_findings_count": 0,
+    "classification": "14 条均为静态正则无法理解模板字符串互斥分支或兄弟条件渲染导致的误报；没有真实的 gray-on-color 同时生效。真实问题来自人工审阅，列于 priority_issues。",
+    "false_positive_groups": [
+      {
+        "file": "public/attendance/module.js",
+        "lines": [592, 773],
+        "count": 2,
+        "reason": "第 592 行的绿色已到分支与灰色无时段分支互斥；第 773 行绿色姓名标签与灰色空状态为兄弟条件分支。"
+      },
+      {
+        "file": "public/attendance/settings.js",
+        "lines": [143, 362],
+        "count": 2,
+        "reason": "打开与关闭状态的背景色和文字色位于同一模板字符串的互斥三元分支。"
+      },
+      {
+        "file": "public/operations/module.js",
+        "lines": [491, 533],
+        "count": 2,
+        "reason": "选中/未选中或展开/收起状态互斥；灰字不会与蓝色选中背景同时生效。"
+      },
+      {
+        "file": "public/operations/views.js",
+        "lines": [261, 269, 289, 358, 412, 457, 465, 489],
+        "count": 8,
+        "reason": "作业、日期、学生、纪律等按钮的选中与未选中类通过三元表达式互斥，检测器把同一源码行中的两个分支错误配对。"
+      }
+    ]
+  },
+  "runtime_validation": {
+    "in_app_browser": {
+      "attempted": true,
+      "fresh_tab_opened": false,
+      "screenshots_captured": 0,
+      "blocker": "Grouping is not supported by tabs in this window.",
+      "observed_tab_count": 0,
+      "retry_policy": "未做 overlay 注入或重复浏览器重试；按独立评估约束如实记录限制。"
+    },
+    "isolated_server": {
+      "attempted": true,
+      "database": "临时 SQLite 数据库，未接触真实数据库",
+      "host": "127.0.0.1",
+      "port": 3211,
+      "test_account": "assessmentteacher",
+      "seed": "4 名测试学生、全天有效的单一考勤时段、准点 +1",
+      "direct_request_result": {
+        "endpoint": "POST /api/attendance/check-in",
+        "studentName": "张三",
+        "sessionName": "晨间签到",
+        "status": "ok",
+        "pointsDelta": 1,
+        "newBalance": 13,
+        "recordedAt_type": "number",
+        "record_status": "ok"
+      },
+      "cleanup": "服务已停止，临时目录与数据库已删除"
+    },
+    "automated_tests": {
+      "command": "npm test",
+      "result": "pass",
+      "tests_passed": 33,
+      "tests_failed": 0,
+      "relevant_coverage": [
+        "考勤准点与迟到接口返回",
+        "可恢复且诚实的考勤回执",
+        "考勤与积分任务区的键盘语义",
+        "共享模态框焦点陷阱与 reduced-motion"
+      ]
+    }
+  },
+  "request_client_server_trace": {
+    "attendance": [
+      "public/attendance/module.js 使用每学生 pending Set 防止重复提交，并渲染提交中/成功/失败状态",
+      "public/core/sync.js handleAttendanceCheckIn 等待 requestAttendanceJson，应用服务端数据后返回完整 payload",
+      "public/core/runtime.js 将 AUTH_REQUIRED、MAINTENANCE_AUTH_REQUIRED 与普通 HTTP 错误转成结构化错误",
+      "server.js 在持久化考勤与积分后返回 record、status、pointsDelta、newBalance、recordedAt",
+      "隔离临时数据库请求验证了返回值与界面消费字段一致"
+    ],
+    "points": [
+      "public/operations/views.js 在共享模态框中预览场景、类别与逐人分值",
+      "public/operations/actions.js 确认后调用 batchUpdatePoints 并立即关闭/清空",
+      "public/script.js 触发 persistManagedPatch 但未将 Promise 传回当前交互",
+      "public/core/sync.js 具备服务器保存、冲突处理和全局同步状态，但失败未回到原模态上下文"
+    ]
+  },
+  "false_positives": {
+    "detector": "见 detector.false_positive_groups；14 条全部排除。",
+    "global_styles_out_of_scope": [
+      "public/styles.css:76-143 的 gacha、流星、发光和排行榜持续动效属于其他模块，不在本次考勤与积分主流程中使用；核心流程的 reduced-motion 规则仍会覆盖这些动画。"
+    ],
+    "not_counted_as_issue": [
+      "考勤绿色已到状态和灰色不可用状态是互斥状态，不构成灰字叠在绿色背景。",
+      "积分选中按钮的白字和未选中按钮的灰字位于互斥三元分支，不构成对比度问题。",
+      "批量调整 range 使用 defaultValue 在模态每次从关闭到打开时会重新挂载，本次未将其认定为跨次状态陈旧。"
+    ]
+  },
+  "completion": {
+    "assessment_file_only": true,
+    "product_source_modified": false,
+    "browser_limit_disclosed": true,
+    "temporary_data_removed": true
+  }
+}

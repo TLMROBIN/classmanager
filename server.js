@@ -71,6 +71,9 @@ const DATA_DOMAIN_RULES = Object.freeze({
     __meta: { kind: 'object', maxBytes: 32 * KB }
 });
 const ALLOWED_DATA_KEYS = new Set(Object.keys(DATA_DOMAIN_RULES));
+// Dev-only allowance so Impeccable live mode can load.
+const __impeccableLiveDev =
+    process.env.NODE_ENV === 'development' ? ' http://localhost:8400' : '';
 const CSP_POLICY = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -79,8 +82,8 @@ const CSP_POLICY = [
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'report-sample'",
-    "connect-src 'self'",
+    `script-src 'self' 'report-sample'${__impeccableLiveDev}`,
+    `connect-src 'self'${__impeccableLiveDev}`,
     "form-action 'self'",
     "manifest-src 'self'",
     "worker-src 'self' blob:",
@@ -2059,7 +2062,9 @@ app.post(['/api/attendance/check-in', '/api/attendance/checkin'], authMiddleware
                     status: record.status,
                     record,
                     usedMorningLateCard,
-                    pointsDelta
+                    pointsDelta,
+                    newBalance: Number(nextStudents.find(item => String(item.id) === String(student.id))?.balance) || 0,
+                    recordedAt: nowTs
                 }
             }
         }));

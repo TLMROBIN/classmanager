@@ -185,7 +185,11 @@
             const [filterGroupState, setFilterGroupState] = useState(() => initialUiState.filterGroup);
             const [filterDormState, setFilterDormState] = useState(() => initialUiState.filterDorm);
             const [opTabState, setOpTabState] = useState(() => initialUiState.opTab);
+            const [workspaceSection, setWorkspaceSection] = useState('quick');
             const [settingsOpen, setSettingsOpen] = useState(false);
+            const operationPendingRef = useRef(false);
+            const [operationPending, setOperationPending] = useState(false);
+            const [operationFeedback, setOperationFeedback] = useState(null);
             const [batchAdjustModal, setBatchAdjustModal] = useState({
                 open: false,
                 reason: null,
@@ -364,6 +368,43 @@
                 groupsConfig,
                 dormsConfig
             });
+            const handleWageClick = async () => {
+                if (operationPendingRef.current) return;
+                operationPendingRef.current = true;
+                setOperationPending(true);
+                setOperationFeedback({ type: 'pending', message: '正在保存工资积分…' });
+                try {
+                    const count = await Promise.resolve(handleWage());
+                    if (Number(count) > 0) {
+                        setOperationFeedback({ type: 'success', message: `工资积分已保存，共 ${count} 条记录。` });
+                    } else {
+                        setOperationFeedback(null);
+                    }
+                } catch (error) {
+                    setOperationFeedback({ type: 'error', message: `工资积分保存失败：${error?.message || '请检查网络后重试'}。` });
+                } finally {
+                    operationPendingRef.current = false;
+                    setOperationPending(false);
+                }
+            };
+            const handleFixScore = async () => {
+                if (operationPendingRef.current) return;
+                operationPendingRef.current = true;
+                setOperationPending(true);
+                setOperationFeedback(null);
+                try {
+                    const result = await Promise.resolve(operationAdminTools.fixScore({
+                        students,
+                        applyStudents: onApplyFixedStudents
+                    }));
+                    if (result?.ok) setOperationFeedback({ type: 'success', message: '手动修正积分已保存。' });
+                } catch (error) {
+                    setOperationFeedback({ type: 'error', message: `手动修正保存失败：${error?.message || '请检查网络后重试'}。` });
+                } finally {
+                    operationPendingRef.current = false;
+                    setOperationPending(false);
+                }
+            };
 
             useEffect(() => {
                 setSelectedIds(prev => {
@@ -473,38 +514,68 @@
                 disciplineConfig,
                 disciplineCommissionerMap,
                 disciplineCommissionerNamesMap,
-                setDisciplineSelectedIds
+                setDisciplineSelectedIds,
+                operationPendingRef,
+                setOperationPending,
+                setOperationFeedback
             });
 
             return h("div", { className: "space-y-6 animate-fade-in" },
-                h(SelectionPanel, {
-                    filterGroup: filterGroupState,
-                    setFilterGroup,
-                    filterDorm: filterDormState,
-                    setFilterDorm,
-                    groupsConfig,
-                    dormsConfig,
-                    filteredStudents,
-                    allFilteredSelected,
-                    onToggleSelectAll: toggleSelectAll,
-                    onHandleWage: handleWage
-                }),
-                h(StudentSelectionGrid, {
-                    filteredStudents,
-                    selectedIds: selectedIdsState,
-                    groupsConfig,
-                    onToggleSelection: toggleSelection
-                }),
-                h(ReasonToolbar, {
-                    selectedCount: selectedIdsState.size,
-                    opTab: opTabState,
-                    setOpTab,
-                    onClearSelection: () => setSelectedIds(new Set()),
-                    reasons,
-                    onReasonClick: handleReasonClick,
-                    onCustomReason: handleCustomReason
-                }),
-                h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
+                h("div", { className: "bg-white rounded-xl border border-gray-200 p-2 flex flex-wrap gap-2", role: 'group', 'aria-label': '积分工作区' }, [
+                    { id: 'quick', label: '快速积分', icon: 'star' },
+                    { id: 'registers', label: '日常登记', icon: 'tasks' },
+                    { id: 'history', label: '积分历史', icon: 'history' },
+                    { id: 'settings', label: '设置', icon: 'settings' }
+                ].map(item => h("button", {
+                    key: item.id,
+                    'aria-pressed': workspaceSection === item.id,
+                    onClick: () => setWorkspaceSection(item.id),
+                    className: `min-h-11 px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 transition ${workspaceSection === item.id ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100'}`
+                }, h(Icon, { name: item.icon, size: 16 }), item.label))),
+                operationFeedback && h("div", {
+                    role: operationFeedback.type === 'error' ? 'alert' : 'status',
+                    'aria-live': operationFeedback.type === 'error' ? 'assertive' : 'polite',
+                    className: `rounded-lg border px-4 py-3 flex items-center justify-between gap-3 text-sm ${operationFeedback.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : operationFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`
+                },
+                    h("span", null, operationFeedback.message),
+                    operationFeedback.type !== 'pending' && h("button", {
+                        type: 'button',
+                        onClick: () => setOperationFeedback(null),
+                        className: "min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg hover:bg-black/5",
+                        'aria-label': '关闭积分操作提示'
+                    }, h(Icon, { name: 'x', size: 16 }))
+                ),
+                workspaceSection === 'quick' && h("section", { className: "space-y-6", 'aria-label': '快速积分' },
+                    h(SelectionPanel, {
+                        filterGroup: filterGroupState,
+                        setFilterGroup,
+                        filterDorm: filterDormState,
+                        setFilterDorm,
+                        groupsConfig,
+                        dormsConfig,
+                        filteredStudents,
+                        allFilteredSelected,
+                        onToggleSelectAll: toggleSelectAll,
+                        onHandleWage: handleWageClick,
+                        wagePending: operationPending
+                    }),
+                    h(StudentSelectionGrid, {
+                        filteredStudents,
+                        selectedIds: selectedIdsState,
+                        groupsConfig,
+                        onToggleSelection: toggleSelection
+                    }),
+                    h(ReasonToolbar, {
+                        selectedCount: selectedIdsState.size,
+                        opTab: opTabState,
+                        setOpTab,
+                        onClearSelection: () => setSelectedIds(new Set()),
+                        reasons,
+                        onReasonClick: handleReasonClick,
+                        onCustomReason: handleCustomReason
+                    })
+                ),
+                workspaceSection === 'settings' && h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
                     h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                         h("div", { className: "space-y-1" },
                             h("div", { className: "flex items-center gap-2 text-gray-800" },
@@ -530,20 +601,13 @@
                                     className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm"
                                 }, "导出积分 Excel"),
                                 h("button", {
-                                    onClick: () => operationAdminTools.fixScore({
-                                        students,
-                                        applyStudents: onApplyFixedStudents
-                                    }),
-                                    className: "px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm"
-                                }, "手动修正积分")
+                                    onClick: handleFixScore,
+                                    disabled: operationPending,
+                                    'aria-busy': operationPending ? 'true' : undefined,
+                                    className: "min-h-11 px-3 py-2 border border-amber-500 text-amber-600 rounded hover:bg-amber-50 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                                }, operationPending ? "正在保存…" : "手动修正积分")
                             )
                         ),
-                        h(OperationHistorySection, {
-                            students,
-                            history,
-                            onUndo: handleUndo,
-                            embedded: true
-                        }),
                         h(ReasonsConfigSection, {
                             config,
                             setConfig,
@@ -585,7 +649,7 @@
                         })
                     )
                 ),
-                h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+                workspaceSection === 'registers' && h("section", { className: "grid grid-cols-1 md:grid-cols-2 gap-4", 'aria-label': '日常登记' },
                     h(HomeworkPanel, {
                         students: Array.isArray(students) ? students : [],
                         homeworkSubjects,
@@ -642,16 +706,20 @@
                         disabled: false
                     })
                 ),
-                h(RecentHistoryPanel, {
-                    recentHistory,
-                    onUndo: handleUndo
+                workspaceSection === 'history' && h(OperationHistorySection, {
+                    students,
+                    history,
+                    onUndo: handleUndo,
+                    embedded: true
                 }),
                 h(BatchAdjustModalView, {
                     batchAdjustModal,
                     setBatchAdjustModal,
                     onConfirm: handleBatchConfirm,
                     onUpdateAllValues: updateAllBatchValues,
-                    onUpdateStudentValue: updateStudentBatchValue
+                    onUpdateStudentValue: updateStudentBatchValue,
+                    isPending: operationPending,
+                    errorMessage: batchAdjustModal.open && operationFeedback?.type === 'error' ? operationFeedback.message : ''
                 })
             );
         };

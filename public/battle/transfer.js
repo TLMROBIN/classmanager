@@ -187,7 +187,17 @@
             return { applied: false, count: updates.length, skipped: true };
         }
         const count = batchUpdatePoints(updates);
-        return { applied: true, count };
+        const verifyCount = (savedCount) => {
+            const numericCount = Number(savedCount);
+            if (!Number.isFinite(numericCount) || numericCount !== updates.length) {
+                throw new Error('主积分入账条数不完整，双子星结算未生效');
+            }
+            return { applied: true, count: numericCount };
+        };
+        if (count && typeof count.then === 'function') {
+            return Promise.resolve(count).then(verifyCount);
+        }
+        return verifyCount(count);
     };
 
     window.BattleTransfer = {

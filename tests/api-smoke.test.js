@@ -408,6 +408,8 @@ test('API smoke flows', async (t) => {
             assert.equal(checkInResponse.body.checkIn.studentName, '张三');
             assert.equal(checkInResponse.body.checkIn.sessionId, 'morning');
             assert.equal(checkInResponse.body.checkIn.status, 'ok');
+            assert.equal(checkInResponse.body.checkIn.newBalance, 0);
+            assert.equal(checkInResponse.body.checkIn.recordedAt, mondayMorningMs);
 
             const attendanceResponse = await requestJson(baseUrl, '/api/attendance', {
                 headers: {
@@ -482,6 +484,7 @@ test('API smoke flows', async (t) => {
             assert.equal(checkInResponse.body.checkIn.sessionId, 'morning');
             assert.equal(checkInResponse.body.checkIn.status, 'late');
             assert.equal(checkInResponse.body.checkIn.pointsDelta, -1);
+            assert.equal(checkInResponse.body.checkIn.newBalance, 9);
             assert.equal(checkInResponse.body.students[0].zizai, 10);
             assert.equal(checkInResponse.body.students[0].balance, 9);
             assert.equal(checkInResponse.body.students[0].penalty, 1);

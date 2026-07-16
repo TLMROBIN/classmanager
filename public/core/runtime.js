@@ -272,7 +272,7 @@
         }
     };
 
-    const buildAccessAuthError = (res, data) => {
+    const buildAccessAuthError = (res, data, options = {}) => {
         const authErrorType = res && res.headers && typeof res.headers.get === 'function'
             ? res.headers.get('x-auth-error')
             : '';
@@ -284,10 +284,12 @@
         );
         if (!isAccessAuthError) return null;
 
-        if (typeof window.__clearAuthAndRedirect__ === 'function') {
-            window.__clearAuthAndRedirect__();
-        } else if (window.__handleAuthError__(res)) {
-            // no-op: global handler already redirected
+        if (options.deferRedirect !== true) {
+            if (typeof window.__clearAuthAndRedirect__ === 'function') {
+                window.__clearAuthAndRedirect__();
+            } else if (window.__handleAuthError__(res)) {
+                // no-op: global handler already redirected
+            }
         }
 
         const error = new Error('登录已失效，请重新登录');
@@ -333,8 +335,10 @@
 
     const requestAttendanceJson = async (url, options = {}) => {
         const includeMaintenanceAuth = options?.includeMaintenanceAuth === true;
+        const deferAuthRedirect = options?.deferAuthRedirect === true;
         const fetchOptions = { ...(options || {}) };
         delete fetchOptions.includeMaintenanceAuth;
+        delete fetchOptions.deferAuthRedirect;
 
         const res = await fetch(url, {
             ...fetchOptions,
@@ -352,7 +356,7 @@
             throw error;
         }
 
-        const accessAuthError = buildAccessAuthError(res, data);
+        const accessAuthError = buildAccessAuthError(res, data, { deferRedirect: deferAuthRedirect });
         if (accessAuthError) throw accessAuthError;
 
         if (res.status === 403 && data?.code === 'MAINTENANCE_AUTH_REQUIRED') {

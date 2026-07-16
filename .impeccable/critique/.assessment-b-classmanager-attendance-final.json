@@ -1,0 +1,154 @@
+{
+  "assessment": "B",
+  "phase": "final-frozen-source-lightweight-adversarial",
+  "generated_at": "2026-07-17T07:37:32+08:00",
+  "target": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+  "scope": [
+    "积分服务端确认、失败保留与防重复",
+    "工资、撤销与手动修正的统一提交语义",
+    "全勤奖与双子星的保存条数完整性",
+    "积分设置重复控件对象级名称",
+    "考勤工作区按钮组语义"
+  ],
+  "method": {
+    "source_only": true,
+    "browser_run_this_pass": false,
+    "full_test_run_this_pass": false,
+    "external_test_signal": "主线程报告 44/44 通过；本轮按要求未重复运行。",
+    "assessment_a_read": false,
+    "prior_assessment_json_used_for_scoring": false
+  },
+  "verdict": {
+    "score": 39,
+    "maximum": 40,
+    "rating": "Excellent",
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count_in_targeted_regressions": 0,
+    "summary": "冻结源码中未发现残留 P0/P1。工资、撤销、手动修正与主批量积分均在服务端确认后才提交本地及关联状态；调用方提供 pending、disabled 与错误反馈。全勤奖和双子星严格拒绝 0 或部分保存条数；纪律设置及其他重复控件具备对象级名称；考勤伪 tab 已改为普通 aria-pressed 按钮组。"
+  },
+  "nielsen": [
+    {
+      "id": 1,
+      "name": "Visibility of system status",
+      "score": 4,
+      "key_evidence": "工资、撤销、手动修正、全勤奖和双子星均有提交中状态、禁用状态及成功或失败反馈。"
+    },
+    {
+      "id": 2,
+      "name": "Match between system and real world",
+      "score": 4,
+      "key_evidence": "积分、工资、全勤奖、撤销和结算文案贴合班主任实际工作语言。"
+    },
+    {
+      "id": 3,
+      "name": "User control and freedom",
+      "score": 4,
+      "key_evidence": "失败不会提前改动本地或关联状态，快速积分失败仍保留操作现场，可安全重试。"
+    },
+    {
+      "id": 4,
+      "name": "Consistency and standards",
+      "score": 4,
+      "key_evidence": "积分写入入口统一采用服务端确认后提交；工作区切换采用标准按钮组与 aria-pressed。"
+    },
+    {
+      "id": 5,
+      "name": "Error prevention",
+      "score": 4,
+      "key_evidence": "各高风险入口具有 pending 防重复；全勤奖和双子星要求 savedCount 与预期条数完全一致。"
+    },
+    {
+      "id": 6,
+      "name": "Recognition rather than recall",
+      "score": 4,
+      "key_evidence": "学科、理由、纪律规则与积分记录等重复控件均提供对象或行级名称。"
+    },
+    {
+      "id": 7,
+      "name": "Flexibility and efficiency",
+      "score": 4,
+      "key_evidence": "批量积分、工资、全勤奖和双子星维持高效批处理，同时补齐可靠性保护。"
+    },
+    {
+      "id": 8,
+      "name": "Aesthetic and minimalist design",
+      "score": 4,
+      "key_evidence": "状态反馈集中且文案克制；普通按钮组避免伪装成不完整的 tab 组件。"
+    },
+    {
+      "id": 9,
+      "name": "Error recovery",
+      "score": 4,
+      "key_evidence": "服务端拒绝、网络失败和条数不完整均阻止本地提交，并向用户提供明确错误反馈。"
+    },
+    {
+      "id": 10,
+      "name": "Help and documentation",
+      "score": 3,
+      "key_evidence": "局部错误与恢复文案充分；本次冻结源码复核未覆盖全局帮助体系。"
+    }
+  ],
+  "p0": [],
+  "p1": [],
+  "targeted_p2": [],
+  "confirmed_closures": {
+    "server_confirmed_point_commit": {
+      "pass": true,
+      "evidence": [
+        "public/points/controller.js:7-20 的 persistThenCommit 拒绝 skipped:true/success:false，仅在持久化完成后执行 commit。",
+        "public/points/controller.js:130、264、353 的批量积分、撤销和工资均走同一提交门。",
+        "public/script.js 的批量、撤销、工资 onPersist 均 return persistManagedPatch Promise；public/script.js:1339-1346 的手动修正确认保存后才 setStudents。"
+      ]
+    },
+    "pending_duplicate_and_error_ui": {
+      "pass": true,
+      "evidence": [
+        "public/operations/module.js:371-408 的工资与手动修正共享 operationPendingRef，提供 pending/success/error。",
+        "public/operations/history-section.js:119-133 的撤销等待 Promise，失败明确说明原记录未改动。",
+        "public/operations/views.js:68-75、public/operations/module.js:600-609 与 public/operations/history-section.js:243-250 将 pending 映射为 disabled/aria-busy。"
+      ]
+    },
+    "perfect_attendance_count_integrity": {
+      "pass": true,
+      "evidence": [
+        "public/attendance/points.js:10-16 要求 savedCount === targetIds.size，否则抛出可恢复错误。",
+        "public/attendance/module.js:495-515 等待保存完成后才宣布成功，并用 perfectBonusPending 防重复。"
+      ]
+    },
+    "battle_count_integrity": {
+      "pass": true,
+      "evidence": [
+        "public/battle/transfer.js:190-197 要求 numericCount === updates.length，0 或部分条数均拒绝。",
+        "public/battle/module.js:316-377 在 rejection 时不让双子星结算生效，并用 settlementPending 防重复。"
+      ]
+    },
+    "settings_programmatic_names": {
+      "pass": true,
+      "evidence": [
+        "public/operations/settings.js:102-141 的学科字段与课代表具有行或对象级名称。",
+        "public/operations/settings.js:229-340 的理由字段、开关、倍率及删除操作具有理由对象级名称。",
+        "public/operations/settings.js:686、701 的纪律扣分和专员加分包含具体纪律项目名称。",
+        "public/operations/settings.js:826-864 的记录检索、筛选与逐条选择具有明确名称。"
+      ]
+    },
+    "button_group_semantics": {
+      "pass": true,
+      "evidence": [
+        "public/attendance/module.js:538 使用 role=group 与 aria-pressed 按钮；定向搜索未发现 attendance/operations/battle 中残留 role=tab、tablist 或 aria-selected。"
+      ]
+    }
+  },
+  "regression_check": {
+    "new_p0": false,
+    "new_p1": false,
+    "previous_p1_closed": true,
+    "previous_targeted_p2_closed": true,
+    "syntax_or_test_claim": "本轮未运行浏览器或测试；44/44 来自主线程提供的外部验证信号。"
+  },
+  "limitations": [
+    "本次只做冻结源码定向反例复核，不代表全应用重新审计。",
+    "39/40 为指定积分与考勤表面的源码级 Nielsen 评分；未借此声称新的浏览器可见性证据。"
+  ],
+  "output_path": ".impeccable/critique/.assessment-b-classmanager-attendance-final.json"
+}

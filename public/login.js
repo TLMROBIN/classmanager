@@ -10,7 +10,21 @@
     const showLoginButton = document.getElementById('showLoginButton');
     const showChangePasswordButton = document.getElementById('showChangePasswordButton');
     const showLoginFromChangeButton = document.getElementById('showLoginFromChangeButton');
+    const attendanceResumeNotice = document.getElementById('attendanceResumeNotice');
     let activeView = 'login';
+
+    try {
+        const hasPendingAttendance = Boolean(sessionStorage.getItem('classmanager:pending-attendance'));
+        const hasExpiredSession = Boolean(sessionStorage.getItem('classmanager:auth-expired'));
+        if (attendanceResumeNotice && (hasPendingAttendance || hasExpiredSession)) {
+            attendanceResumeNotice.textContent = hasPendingAttendance
+                ? '登录状态已失效。重新登录后，系统会保留刚才的考勤对象，供你确认后重试。'
+                : '登录状态已失效，请重新登录。此前未完成的操作没有写入。';
+            attendanceResumeNotice.classList.remove('hidden');
+        }
+    } catch (_) {
+        // Storage may be unavailable in locked-down browser contexts.
+    }
 
     const showOnly = (target) => {
         activeView = target;
@@ -58,6 +72,11 @@
     };
 
     const handleAuthSuccess = (user) => {
+        try {
+            sessionStorage.removeItem('classmanager:auth-expired');
+        } catch (_) {
+            // Ignore storage errors after successful login.
+        }
         window.__resetUserPrivateCaches__();
         window.__setCurrentUser__(user);
         window.__redirectByRole__(user);

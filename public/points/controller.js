@@ -4,6 +4,21 @@
         return String(left) === String(right);
     };
 
+    const persistThenCommit = ({ onPersist, payload, commit }) => {
+        const verifyAndCommit = (saved) => {
+            if (saved?.skipped || saved?.success === false) {
+                throw new Error('服务端未确认保存，请恢复会话后重试');
+            }
+            return commit();
+        };
+        if (typeof onPersist !== 'function') return commit();
+        const persistenceResult = onPersist(payload);
+        if (persistenceResult && typeof persistenceResult.then === 'function') {
+            return Promise.resolve(persistenceResult).then(verifyAndCommit);
+        }
+        return verifyAndCommit(persistenceResult);
+    };
+
     const buildBatchPointState = ({
         updates,
         students,
@@ -102,17 +117,21 @@
 
         if (result.count === 0) return 0;
 
-        if (typeof setStudents === 'function') {
-            setStudents(result.nextStudents);
-        }
-        if (typeof setHistory === 'function') {
-            setHistory(result.nextHistory);
-        }
-        if (typeof onPersist === 'function') {
-            onPersist(result);
-        }
+        const commitLocalState = () => {
+            if (typeof setStudents === 'function') {
+                setStudents(result.nextStudents);
+            }
+            if (typeof setHistory === 'function') {
+                setHistory(result.nextHistory);
+            }
+            return result.count;
+        };
 
-        return result.count;
+        return persistThenCommit({
+            onPersist,
+            payload: result,
+            commit: commitLocalState
+        });
     };
 
     const updatePoints = ({
@@ -157,12 +176,13 @@
         normalizePointScene,
         normalizePointCategory,
         applyRelatedUndo,
-        onPersist
+        onPersist,
+        onCommitRelated
     }) => {
         const record = (Array.isArray(history) ? history : []).find(item => item.id === recordId);
         if (!record || record.isUndoLog) return false;
 
-        const nextStudents = [...(Array.isArray(students) ? students : [])];
+        const nextStudents = (Array.isArray(students) ? students : []).map(student => ({ ...student }));
         const idx = nextStudents.findIndex(student => student.id === record.studentId);
         let undoSnapshot = null;
 
@@ -236,16 +256,21 @@
             }
         }
 
-        setStudents(finalStudents);
-        setHistory(finalHistory);
-        if (typeof onPersist === 'function') {
-            onPersist({
-                nextStudents: finalStudents,
-                nextHistory: finalHistory,
-                ...relatedPatch
-            });
-        }
-        return true;
+        const persistencePayload = {
+            nextStudents: finalStudents,
+            nextHistory: finalHistory,
+            ...relatedPatch
+        };
+        return persistThenCommit({
+            onPersist,
+            payload: persistencePayload,
+            commit: () => {
+                setStudents(finalStudents);
+                setHistory(finalHistory);
+                if (typeof onCommitRelated === 'function') onCommitRelated(relatedPatch);
+                return true;
+            }
+        });
     };
 
     const handleWage = ({
@@ -321,23 +346,22 @@
             normalizePointCategory
         });
 
-        if (typeof setStudents === 'function') {
-            setStudents(result.nextStudents);
-        }
-        if (typeof setHistory === 'function') {
-            setHistory(result.nextHistory);
-        }
-        if (typeof onPersist === 'function') {
-            onPersist({
+        const persistencePayload = {
                 nextStudents: result.nextStudents,
                 nextHistory: result.nextHistory
-            });
-        }
-
-        const extraNotes = [];
-        if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
-        alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
-        return result.count;
+        };
+        return persistThenCommit({
+            onPersist,
+            payload: persistencePayload,
+            commit: () => {
+                if (typeof setStudents === 'function') setStudents(result.nextStudents);
+                if (typeof setHistory === 'function') setHistory(result.nextHistory);
+                const extraNotes = [];
+                if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
+                alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
+                return result.count;
+            }
+        });
     };
 
     window.PointsController = {

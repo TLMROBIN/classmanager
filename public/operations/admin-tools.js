@@ -55,11 +55,16 @@
                     : { ...item, zizai: nextZizai, balance: nextBalance, penalty: nextPenalty }
             ));
 
-            if (typeof applyStudents === 'function') {
-                applyStudents(nextStudents);
+            const confirmApplied = () => {
+                alert("已修正并保存");
+                return { ok: true };
+            };
+            if (typeof applyStudents !== 'function') return { ok: false, message: "保存接口未就绪" };
+            const applyResult = applyStudents(nextStudents);
+            if (applyResult && typeof applyResult.then === 'function') {
+                return Promise.resolve(applyResult).then(confirmApplied);
             }
-            alert("已修正");
-            return { ok: true };
+            return confirmApplied();
         };
 
         return {

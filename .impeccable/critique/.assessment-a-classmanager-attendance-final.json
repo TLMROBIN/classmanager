@@ -1,0 +1,392 @@
+{
+  "assessment": {
+    "id": "assessment-a-classmanager-attendance-final",
+    "variant": "A-final",
+    "title": "ClassManager 考勤与积分主流程最终 Impeccable critique",
+    "date": "2026-07-17",
+    "target": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+    "scope": [
+      "public/attendance",
+      "public/operations",
+      "public/points/controller.js",
+      "public/ui/modal.js",
+      "public/styles.css",
+      "public/battle/module.js",
+      "public/battle/transfer.js",
+      "相关客户端持久化与测试"
+    ],
+    "method": "对最新冻结源码做最终轻量复核：只重新取证 P0/P1 发布门槛、关联回归与最新完整自动化测试；既有 P2 作为评分背景保留",
+    "source_modified_by_assessment": false
+  },
+  "result": {
+    "score": 35,
+    "max_score": 40,
+    "rating": "Good",
+    "priority_counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 5
+    },
+    "summary": "最终发布门槛复核未发现 P0/P1。工资、撤销和手动积分修正的旧持久化路径均已改为服务端确认后才提交本地或关联状态；失败保留原数据，操作入口提供 pending、disabled 与 error 反馈。全勤奖和双子星会拒绝 0 条或部分条数的伪成功。纪律重复字段已有对象级名称，原伪 tab 已改为语义正确的 aria-pressed 按钮组。完整测试 44/44 通过。"
+  },
+  "requested_verifications": {
+    "previous_a_p1_points_persistence": {
+      "status": "fixed",
+      "evidence": [
+        "public/points/controller.js:105-131 先调用 onPersist，仅在服务端确认成功后 commitLocalState；skipped 或 success:false 视为失败",
+        "public/script.js:1097-1102 将 persistManagedPatch Promise 返回给控制器",
+        "public/operations/actions.js:185-225 等待保存，失败保留上下文，成功后才关闭模态框与清空选择",
+        "public/operations/views.js:542-565 保存中禁用确认、取消、Escape 与遮罩关闭，并显示行内错误",
+        "public/operations/module.js:499-510 提供 pending/success/error 的 aria-live 动作级反馈"
+      ],
+      "tests": [
+        "tests/points-controller.test.js:166-200 waits for persistence before local commit",
+        "tests/points-controller.test.js:202-223 preserves local state on persistence failure",
+        "tests/points-controller.test.js:225-246 treats skipped server save as failure",
+        "tests/ui-contract.test.js:45-55 checks editing context and busy state"
+      ]
+    },
+    "legacy_points_callers": {
+      "status": "fixed",
+      "evidence": [
+        "public/points/controller.js:7-20 统一 persistThenCommit：skipped 或 success:false 拒绝提交，Promise 成功后才 commit",
+        "public/points/controller.js:259-273 撤销先持久化学生、历史及关联域补丁，再统一提交本地与 storage/liquidatedTreasures/logs 状态",
+        "public/points/controller.js:349-364 工资先持久化，确认后才更新学生、历史并宣告发放完成",
+        "public/script.js:1339-1347 手动修正等待 persistManagedPatch 确认，失败不 setStudents",
+        "public/operations/module.js:371-409 工资和手动修正具有互斥 pending、禁用与动作级成功/错误反馈",
+        "public/operations/history-section.js:119-134,245-250 撤销具有 pending/disabled/error，失败明确原记录未改动"
+      ],
+      "tests": [
+        "tests/points-controller.test.js:247-286 wage persistence failure leaves local state unchanged and does not announce success",
+        "tests/points-controller.test.js:288-318 undo persistence failure leaves record and related state unchanged",
+        "tests/async-points-flows.test.js:59-80 manual correction announces success only after persistence resolves"
+      ]
+    },
+    "async_callers": {
+      "status": "fixed",
+      "perfect_attendance": [
+        "public/attendance/points.js:2-20 传播 updatePoints Promise，并要求保存条数严格等于目标学生数；0 条或部分条数直接报错",
+        "public/attendance/module.js:495-515 等待保存后才提示成功，失败提示保存失败",
+        "public/attendance/module.js:779-784 保存中禁用全勤奖按钮并设置 aria-busy"
+      ],
+      "battle_settlement": [
+        "public/battle/transfer.js:178-200 传播异步保存成功或拒绝，并要求保存条数严格等于结算更新数",
+        "public/battle/module.js:316-377 等待主积分入账；失败立即返回，不写入双子星结算状态",
+        "public/battle/module.js:607-615 保存中禁用确认结算并显示正在入账"
+      ],
+      "tests": [
+        "tests/async-points-flows.test.js:15-34 full attendance waits for persistence",
+        "tests/async-points-flows.test.js:36-57 battle propagates persistence success and failure",
+        "tests/async-points-flows.test.js:82-105 full attendance and battle reject incomplete point-save counts"
+      ]
+    },
+    "b_repeated_points_settings_accessible_names": {
+      "status": "fixed",
+      "fixed": [
+        "学科标识、学科名称和课代表下拉框包含序号或学科名",
+        "积分理由名称、分值、类型、场景、类别、备注和倍率数值包含序号或理由名",
+        "积分记录检索、场景筛选和类别筛选具有不同 aria-label",
+        "学科与积分理由删除按钮包含具体对象名",
+        "每条理由的可编辑/倍率复选框包含理由名，理由行具有命名 group",
+        "积分记录选择复选框包含学生、时间和事项，表头明确为“选择”",
+        "纪律登记的重复扣分与专员加分字段包含纪律对象名",
+        "考勤、积分工作区及内部切换均改用命名按钮组与 aria-pressed，不再冒充 tab 模式"
+      ],
+      "remaining": [],
+      "evidence": [
+        "public/operations/settings.js:122-130 删除学科按钮使用对象级 aria-label",
+        "public/operations/settings.js:226-230 理由行使用带对象名的 role=group",
+        "public/operations/settings.js:299-324 理由复选框包含理由名和具体动作",
+        "public/operations/settings.js:339-347 删除理由按钮包含理由名",
+        "public/operations/settings.js:674-710 纪律重复数值字段包含纪律对象名",
+        "public/operations/settings.js:845-865 表头为选择，记录复选框包含学生、时间和事项",
+        "public/attendance/module.js:538 与 public/operations/module.js:524-536 使用 aria-pressed 按钮组"
+      ],
+      "test": "tests/ui-contract.test.js 覆盖按钮组语义与重复积分设置控件对象级名称；本轮完整测试中相关契约均通过。"
+    }
+  },
+  "nielsen_heuristics": [
+    {
+      "id": 1,
+      "heuristic": "Visibility of system status",
+      "score": 4,
+      "rationale": "考勤具备提交中、成功回执、结构化错误和恢复入口；快速积分、日常登记、全勤奖与双子星均在异步保存期间显示忙碌状态，成功或失败后给出明确结果，且不会提前宣告成功。",
+      "evidence": [
+        "public/attendance/module.js:195-249",
+        "public/attendance/module.js:549-601",
+        "public/operations/actions.js:185-225",
+        "public/operations/module.js:499-510",
+        "public/battle/module.js:316-377"
+      ]
+    },
+    {
+      "id": 2,
+      "heuristic": "Match between system and real world",
+      "score": 4,
+      "rationale": "准点、迟到、积分余额、全勤奖、保存失败、操作内容已保留、主积分入账等文案符合班主任日常语言，成功与失败语义诚实。",
+      "evidence": [
+        "public/attendance/module.js:557-572",
+        "public/operations/actions.js:189-204",
+        "public/battle/module.js:337-377"
+      ]
+    },
+    {
+      "id": 3,
+      "heuristic": "User control and freedom",
+      "score": 4,
+      "rationale": "学生选择可切换、全选和清空；模态框支持取消、Escape、焦点陷阱与焦点归还；保存失败保留编辑上下文；历史提供撤销，考勤回执可关闭或进入修正。",
+      "evidence": [
+        "public/operations/views.js:65-96",
+        "public/ui/modal.js:48-95",
+        "public/operations/actions.js:200-225",
+        "public/attendance/module.js:565-577"
+      ]
+    },
+    {
+      "id": 4,
+      "heuristic": "Consistency and standards",
+      "score": 3,
+      "rationale": "任务区、共享模态框、颜色语义、按钮 busy 状态、aria-live 反馈与重复控件的“对象 + 动作”名称已较统一；原伪 tab 已纠正为 aria-pressed 按钮组，但主流程仍混用原生 alert/confirm 与共享反馈组件。",
+      "evidence": [
+        "public/ui/modal.js:97-128",
+        "public/attendance/module.js:437-515",
+        "public/operations/actions.js:232-420",
+        "public/operations/settings.js:226-347"
+      ]
+    },
+    {
+      "id": 5,
+      "heuristic": "Error prevention",
+      "score": 4,
+      "rationale": "并发锁、重复打卡禁用、保存中禁用、服务器确认后才提交本地及关联状态和结算前确认显著减少错误；全勤奖与双子星还拒绝 0 或部分保存条数，设置中的重复高影响控件均包含对象级名称。",
+      "evidence": [
+        "public/attendance/module.js:195-203",
+        "public/points/controller.js:105-122",
+        "public/ui/modal.js:36-38",
+        "public/operations/settings.js:226-347",
+        "public/operations/settings.js:845-865"
+      ]
+    },
+    {
+      "id": 6,
+      "heuristic": "Recognition rather than recall",
+      "score": 3,
+      "rationale": "当前时段、规则、学生状态、已选人数、理由分值和工作区均直接可见；设置重复控件已提供对象级名称和分组。仍因理由轨隐藏滚动条且无溢出提示而保留 3 分。",
+      "evidence": [
+        "public/attendance/module.js:518-548",
+        "public/operations/views.js:187-237",
+        "public/styles.css:2-8",
+        "public/operations/settings.js:225-341"
+      ]
+    },
+    {
+      "id": 7,
+      "heuristic": "Flexibility and efficiency of use",
+      "score": 3,
+      "rationale": "支持组/宿舍筛选、全选、批量操作、自定义理由和日常登记；模态支持键盘。大名单仍缺少姓名搜索或快捷键，理由轨对非触控板用户的发现效率一般。",
+      "evidence": [
+        "public/operations/views.js:25-96",
+        "public/operations/views.js:187-237",
+        "public/attendance/module.js:590-601"
+      ]
+    },
+    {
+      "id": 8,
+      "heuristic": "Aesthetic and minimalist design",
+      "score": 4,
+      "rationale": "考勤按学生打卡、统计、教师工具、修正分区；积分按快速积分、日常登记、历史、设置分区。核心界面采用克制蓝白灰、短促状态动效和语义色，管理配置不会持续挤占高频任务。",
+      "evidence": [
+        "public/attendance/module.js:528-539",
+        "public/operations/module.js:486-555",
+        "public/styles.css:9-16",
+        "public/styles.css:67-74"
+      ]
+    },
+    {
+      "id": 9,
+      "heuristic": "Help users recognize, diagnose, and recover from errors",
+      "score": 4,
+      "rationale": "考勤按错误类型给出登录、重试或关闭路径；批量积分、工资、撤销与手动修正保存失败都会说明原因并保留原状态；全勤奖和双子星在失败、0 条或部分条数时不会产生虚假成功或继续结算。",
+      "evidence": [
+        "public/attendance/module.js:225-249",
+        "public/attendance/module.js:571-577",
+        "public/operations/actions.js:200-225",
+        "public/battle/module.js:327-342"
+      ]
+    },
+    {
+      "id": 10,
+      "heuristic": "Help and documentation",
+      "score": 2,
+      "rationale": "今日规则、设置用途和表单标签提供了基础就地帮助，但没有可搜索、任务导向的帮助入口；跨标签冲突、批量保存语义和横向理由浏览主要依赖用户自行理解。",
+      "evidence": [
+        "public/attendance/module.js:531-548",
+        "public/operations/module.js:541-559",
+        "public/operations/views.js:542-642"
+      ]
+    }
+  ],
+  "priority_issues": {
+    "P0": [],
+    "P1": [],
+    "P2": [
+      {
+        "id": "A-FINAL-P2-01",
+        "title": "批量积分滑块的可见焦点被更高特异性规则移除",
+        "evidence": [
+          "public/styles.css:62-65 定义全局 focus-visible",
+          "public/styles.css:145-149 的 input[type=range]:focus { outline: none; } 覆盖该轮廓",
+          "public/operations/views.js:597-613 使用该滑块"
+        ],
+        "recommendation": "为 range 单独增加高特异性的 :focus-visible 轮廓，不要仅移除 outline。"
+      },
+      {
+        "id": "A-FINAL-P2-02",
+        "title": "积分理由横向轨隐藏滚动条且无溢出提示",
+        "evidence": [
+          "public/styles.css:2-8",
+          "public/operations/views.js:209-237"
+        ],
+        "recommendation": "在溢出时显示边缘渐隐、更多理由按钮或可见滚动条。"
+      },
+      {
+        "id": "A-FINAL-P2-03",
+        "title": "为下一名学生提交考勤时上一条成功回执仍保持为主状态",
+        "evidence": [
+          "public/attendance/module.js:195-205 开始新提交时未清空或降级 checkInReceipt",
+          "public/attendance/module.js:549-601 旧回执可与新学生的提交中状态同时出现"
+        ],
+        "recommendation": "新提交开始时清空旧回执，或将旧回执移入历史区并显示当前正在提交的学生。"
+      },
+      {
+        "id": "A-FINAL-P2-04",
+        "title": "考勤维护与部分积分登记仍混用原生 alert/confirm",
+        "evidence": [
+          "public/attendance/module.js:437-515",
+          "public/operations/actions.js:232-420"
+        ],
+        "recommendation": "逐步迁移到共享可访问确认/反馈组件，统一焦点管理、错误位置与恢复路径。"
+      },
+      {
+        "id": "A-FINAL-P2-05",
+        "title": "积分设置仍有多组低于 44px 的次级按钮",
+        "evidence": [
+          "public/operations/settings.js:88-93 新增学科使用 py-1",
+          "public/operations/settings.js:334-341 删除理由使用紧凑按钮",
+          "public/operations/settings.js:808-812 记录维护批量按钮使用 py-1"
+        ],
+        "recommendation": "将独立操作目标统一为至少 44×44px；密集表格可通过行高或不可见内边距扩大命中区。"
+      }
+    ]
+  },
+  "original_remediation_status": [
+    {
+      "item": "数据与操作信任加固",
+      "status": "complete",
+      "detail": "考勤防重复、登录恢复、诚实回执、批量积分等待持久化、全勤奖与双子星异步传播均已落地并有测试。"
+    },
+    {
+      "item": "主任务与教师工具/设置分层",
+      "status": "complete",
+      "detail": "考勤和积分均使用互斥任务区，主流程不再与设置编辑同时展示。"
+    },
+    {
+      "item": "无障碍与语义规范",
+      "status": "complete_with_p2_followups",
+      "detail": "模态焦点、ARIA 状态、主要按钮语义、重复控件对象级名称与理由分组已完成；仅剩 range 焦点等 P2 收尾项。"
+    },
+    {
+      "item": "视觉语气收敛与减少动态",
+      "status": "complete",
+      "detail": "核心流程使用克制系统字体、蓝白灰与语义色，短动效并支持 prefers-reduced-motion。"
+    }
+  ],
+  "regression_review": {
+    "new_regressions_found": 0,
+    "status": "none_found",
+    "notes": [
+      "batchUpdatePoints 异步化对全勤奖和双子星的调用方影响已在本轮最新源码中修正，并由新增测试覆盖。",
+      "工资、撤销和手动修正的旧持久化路径已统一为确认后提交，关联域不会在服务端失败前泄漏到本地状态。",
+      "全勤奖与双子星的数量契约、纪律重复字段名称及 aria-pressed 按钮组语义均已由契约测试覆盖。",
+      "重复控件读屏名称问题已完成对象级命名与分组，唯一 P1 归零。",
+      "现存 P2 均可在上一版结构中找到对应来源，没有发现异步改造引入的新 UI 回归。"
+    ]
+  },
+  "detector": {
+    "command": "node /Users/binyu/.agents/skills/impeccable/scripts/detect.mjs --json public/attendance/module.js public/attendance/settings.js public/operations/module.js public/operations/views.js public/operations/settings.js public/ui/modal.js",
+    "raw_findings": 21,
+    "real_findings": 0,
+    "false_positives": 21,
+    "classification": "全部是检测器将模板字符串中的互斥选中/未选中分支错误配对为 gray-on-color；人工逐行核对后没有同一实际状态同时生效的灰字彩底。",
+    "groups": [
+      {
+        "file": "public/attendance/module.js",
+        "lines": [601, 787],
+        "count": 2
+      },
+      {
+        "file": "public/attendance/settings.js",
+        "lines": [143, 362],
+        "count": 2
+      },
+      {
+        "file": "public/operations/module.js",
+        "lines": [497, 552],
+        "count": 2
+      },
+      {
+        "file": "public/operations/views.js",
+        "lines": [261, 269, 289, 358, 412, 457, 465, 489],
+        "count": 8
+      },
+      {
+        "file": "public/operations/settings.js",
+        "lines": [80, 198, 375, 450, 558, 650, 798],
+        "count": 7
+      }
+    ]
+  },
+  "test_results": {
+    "command": "npm test",
+    "status": "pass",
+    "tests_passed": 44,
+    "tests_failed": 0,
+    "relevant_passes": [
+      "batchUpdatePoints waits for persistence before committing local state",
+      "batchUpdatePoints preserves local state when persistence fails",
+      "batchUpdatePoints treats a skipped server save as a failure",
+      "handleWage does not commit or announce success when persistence fails",
+      "handleUndo keeps the original record and related state when persistence fails",
+      "manual score correction announces success only after persistence resolves",
+      "perfect attendance award resolves only after points persistence succeeds",
+      "battle settlement waits for main points persistence and propagates failures",
+      "attendance and battle reject incomplete point-save counts",
+      "points persistence keeps the editing context until the server confirms",
+      "repeated points settings controls have programmatic names"
+    ],
+    "targeted_recheck": "npm test：44/44 通过；新增回归覆盖工资、撤销、手动修正、完整条数契约、重复字段命名与按钮组语义。"
+  },
+  "personas": [
+    {
+      "persona": "高频批量操作的班主任",
+      "result": "保存链可信，失败不会丢选择或产生虚假成功；主要任务可高效完成。"
+    },
+    {
+      "persona": "键盘与屏幕阅读器用户",
+      "result": "主流程、模态和积分设置重复控件均具有可区分语义；原唯一 P1 已关闭。"
+    },
+    {
+      "persona": "弱网与多标签环境中的教师",
+      "result": "积分、全勤奖和双子星均等待持久化；失败保持或中止业务状态，恢复路径可靠。"
+    }
+  ],
+  "browser_validation": {
+    "performed": false,
+    "reason": "本次按要求只做 P0/P1 最终轻量复核；变更集中于持久化语义、动作状态与静态可访问语义，使用最新源码和 44 项自动化测试取证，未把旧浏览器结果当作当前证据。"
+  },
+  "completion": {
+    "output_path": ".impeccable/critique/.assessment-a-classmanager-attendance-final.json",
+    "json_validated": true,
+    "source_files_changed": false
+  }
+}

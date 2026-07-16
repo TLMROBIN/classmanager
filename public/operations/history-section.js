@@ -71,11 +71,13 @@
             onUndo,
             embedded = false
         }) {
-            const [isOpen, setIsOpen] = useState(false);
+            const [isOpen, setIsOpen] = useState(Boolean(embedded));
             const [startDate, setStartDate] = useState('');
             const [endDate, setEndDate] = useState('');
             const [studentName, setStudentName] = useState('');
             const [showUndoLogs, setShowUndoLogs] = useState(false);
+            const [pendingUndoId, setPendingUndoId] = useState(null);
+            const [undoFeedback, setUndoFeedback] = useState(null);
 
             const historyList = Array.isArray(history) ? history : [];
             const isVisible = isOpen;
@@ -114,7 +116,22 @@
                 setShowUndoLogs(false);
             };
 
-            return h('div', { className: 'bg-white p-4 rounded-xl shadow-sm border space-y-4' },
+            const handleUndoClick = async (item) => {
+                if (pendingUndoId != null || typeof onUndo !== 'function') return;
+                setPendingUndoId(item.id);
+                setUndoFeedback({ type: 'pending', message: `正在撤销 ${item.studentName || '该学生'} 的积分记录…` });
+                try {
+                    const ok = await Promise.resolve(onUndo(item.id));
+                    if (!ok) throw new Error('该记录当前无法撤销');
+                    setUndoFeedback({ type: 'success', message: '积分撤销已保存。' });
+                } catch (error) {
+                    setUndoFeedback({ type: 'error', message: `撤销失败：${error?.message || '请检查网络后重试'}。原记录未改动。` });
+                } finally {
+                    setPendingUndoId(null);
+                }
+            };
+
+            return h('div', { className: 'bg-white p-4 rounded-xl border border-gray-200 space-y-4' },
                 h('div', { className: 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between' },
                     h('div', { className: 'space-y-1' },
                         h('div', { className: 'flex items-center gap-2 text-gray-800' },
@@ -125,7 +142,7 @@
                     ),
                     h('button', {
                         onClick: toggleSection,
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? '收起积分变动历史' : '打开积分变动历史')
                 ),
                 isVisible && h('div', { className: 'bg-gray-50 border rounded-lg p-4 space-y-3 border-t pt-4' },
@@ -135,7 +152,7 @@
                             h('div', { className: 'text-xs text-gray-500 mt-1' }, `共 ${filteredHistoryRecords.length} 条，当前展示 ${visibleHistoryRecords.length} 条`)
                         ),
                         h('div', { className: 'flex flex-wrap gap-2' },
-                            h('label', { className: 'flex items-center gap-2 px-3 py-1 bg-white border rounded text-xs text-gray-600' },
+                            h('label', { className: 'min-h-11 flex items-center gap-2 px-3 py-2 bg-white border rounded-lg text-xs text-gray-700' },
                                 h('input', {
                                     type: 'checkbox',
                                     checked: showUndoLogs,
@@ -145,7 +162,7 @@
                             ),
                             h('button', {
                                 onClick: resetFilters,
-                                className: 'px-3 py-1 bg-white border rounded text-xs hover:bg-gray-100'
+                                className: 'min-h-11 px-3 py-2 bg-white border rounded-lg text-xs hover:bg-gray-100'
                             }, '清空筛选')
                         )
                     ),
@@ -184,6 +201,11 @@
                         )
                     ),
                     hasInvalidDateRange && h('div', { className: 'rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700' }, '结束日期不能早于开始日期。'),
+                    undoFeedback && h('div', {
+                        role: undoFeedback.type === 'error' ? 'alert' : 'status',
+                        'aria-live': undoFeedback.type === 'error' ? 'assertive' : 'polite',
+                        className: `rounded-lg border px-3 py-2 text-sm ${undoFeedback.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : undoFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`
+                    }, undoFeedback.message),
                     h('div', { className: 'max-h-96 overflow-y-auto border rounded bg-white' },
                         h('table', { className: 'w-full text-xs text-left' },
                             h('thead', { className: 'bg-gray-50 sticky top-0' },
@@ -210,7 +232,7 @@
                                     h('td', { className: 'p-2 text-gray-600 min-w-[180px]' }, item.reason || '-'),
                                     h('td', { className: 'p-2' },
                                         h('span', {
-                                            className: `inline-flex px-2 py-1 rounded-full text-[11px] font-medium ${getRecordTypeClassName(item)}`
+                                            className: `inline-flex px-2 py-1 rounded-full text-xs font-medium ${getRecordTypeClassName(item)}`
                                         }, getRecordTypeLabel(item))
                                     ),
                                     h('td', { className: 'p-2 text-gray-500 whitespace-nowrap' }, normalizePointScene(item.scene)),
@@ -220,9 +242,11 @@
                                         item.isUndoLog
                                             ? h('span', { className: 'text-gray-300' }, '-')
                                             : h('button', {
-                                                onClick: () => typeof onUndo === 'function' && onUndo(item.id),
-                                                className: 'text-blue-500 hover:underline'
-                                            }, '撤销')
+                                                onClick: () => handleUndoClick(item),
+                                                disabled: pendingUndoId != null,
+                                                'aria-busy': pendingUndoId === item.id ? 'true' : undefined,
+                                                className: 'min-h-11 px-2 text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60'
+                                            }, pendingUndoId === item.id ? '正在撤销…' : '撤销')
                                     )
                                 ))
                             )

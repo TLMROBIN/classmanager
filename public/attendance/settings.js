@@ -140,7 +140,7 @@
                         ),
                         h("button", {
                             onClick: () => togglePanelWithAuth('attendance'),
-                            className: `px-3 py-2 rounded-lg text-sm font-medium ${isAttendanceOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                            className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isAttendanceOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                         }, isAttendanceOpen ? "收起考勤设置" : "打开考勤设置")
                     ),
                     isAttendanceOpen && h("div", { className: "space-y-6 border-t pt-4" },
@@ -159,7 +159,7 @@
                                         });
                                         return { ...currentAttendance, schedule: nextSchedule };
                                     }),
-                                    className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
+                                    className: "min-h-11 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-xs"
                                 }, "新增时段")
                             ),
                             h("div", { className: "space-y-3" },
@@ -168,12 +168,14 @@
                                     className: "grid grid-cols-1 md:grid-cols-6 gap-2 bg-white p-3 rounded border"
                                 },
                                     h("input", {
+                                        'aria-label': `时段 ${idx + 1} 标识`,
                                         className: "border rounded p-2 text-sm md:col-span-1",
                                         value: period.id || "",
                                         onChange: e => updateScheduleItem(idx, { id: e.target.value }),
                                         placeholder: "id"
                                     }),
                                     h("input", {
+                                        'aria-label': `时段 ${idx + 1} 名称`,
                                         className: "border rounded p-2 text-sm md:col-span-1",
                                         value: period.name || "",
                                         onChange: e => updateScheduleItem(idx, { name: e.target.value }),
@@ -181,18 +183,21 @@
                                     }),
                                     h("input", {
                                         type: "time",
+                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 开始时间`,
                                         className: "border rounded p-2 text-sm",
                                         value: period.start || "",
                                         onChange: e => updateScheduleItem(idx, { start: e.target.value })
                                     }),
                                     h("input", {
                                         type: "time",
+                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 结束时间`,
                                         className: "border rounded p-2 text-sm",
                                         value: period.end || "",
                                         onChange: e => updateScheduleItem(idx, { end: e.target.value })
                                     }),
                                     h("input", {
                                         type: "time",
+                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 迟到起算时间`,
                                         className: "border rounded p-2 text-sm",
                                         value: period.lateTime || "",
                                         onChange: e => updateScheduleItem(idx, { lateTime: e.target.value })
@@ -203,7 +208,7 @@
                                             nextSchedule.splice(idx, 1);
                                             return { ...currentAttendance, schedule: nextSchedule };
                                         }),
-                                        className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs"
+                                        className: "min-h-11 px-3 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 text-xs"
                                     }, "删除")
                                 ))
                             )
@@ -251,6 +256,7 @@
                                     h("span", { className: "text-xs text-gray-500 w-24" }, period.name || period.id || idx),
                                     h("input", {
                                         type: "time",
+                                        'aria-label': `${period.name || period.id || idx} 周日特殊迟到时间`,
                                         className: "border rounded p-2 text-sm flex-1",
                                         value: sundaySpecialLateTime[period.id] || "",
                                         onChange: e => updateAttendance(currentAttendance => {
@@ -266,7 +272,7 @@
                                             delete nextSpecialTime[period.id];
                                             return { ...currentAttendance, sundaySpecialLateTime: nextSpecialTime };
                                         }),
-                                        className: "px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs"
+                                        className: "min-h-11 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs"
                                     }, "清除")
                                 ))
                             )
@@ -278,6 +284,7 @@
                                     h("label", { className: "block text-xs text-gray-500 mb-1" }, "准点加分"),
                                     h("input", {
                                         type: "number",
+                                        'aria-label': "准点加分",
                                         className: "w-full border rounded p-2 text-sm",
                                         value: penaltyRules.punctual ?? 0,
                                         onChange: e => updateAttendance(currentAttendance => ({
@@ -293,6 +300,7 @@
                                     h("label", { className: "block text-xs text-gray-500 mb-1" }, "迟到扣分"),
                                     h("input", {
                                         type: "number",
+                                        'aria-label': "迟到扣分",
                                         className: "w-full border rounded p-2 text-sm",
                                         value: penaltyRules.late ?? 0,
                                         onChange: e => updateAttendance(currentAttendance => ({
@@ -308,6 +316,7 @@
                                     h("label", { className: "block text-xs text-gray-500 mb-1" }, "缺勤扣分"),
                                     h("input", {
                                         type: "number",
+                                        'aria-label': "缺勤扣分",
                                         className: "w-full border rounded p-2 text-sm",
                                         value: penaltyRules.absent ?? 0,
                                         onChange: e => updateAttendance(currentAttendance => ({
@@ -323,6 +332,7 @@
                                     h("label", { className: "block text-xs text-gray-500 mb-1" }, "全勤奖"),
                                     h("input", {
                                         type: "number",
+                                        'aria-label': "全勤奖分值",
                                         className: "w-full border rounded p-2 text-sm",
                                         value: penaltyRules.perfectAttendance ?? 0,
                                         onChange: e => updateAttendance(currentAttendance => ({
@@ -349,7 +359,7 @@
                         ),
                         h("button", {
                             onClick: () => togglePanelWithAuth('quotes'),
-                            className: `px-3 py-2 rounded-lg text-sm font-medium ${isQuotesOpen ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                            className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isQuotesOpen ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                         }, isQuotesOpen ? "收起语录设置" : "打开语录设置")
                     ),
                     isQuotesOpen && h("div", { className: "space-y-4 border-t pt-4" },
@@ -379,6 +389,7 @@
                                 className: "flex gap-2"
                             },
                                 h("input", {
+                                    'aria-label': `第 ${idx + 1} 条语录`,
                                     className: "flex-1 border rounded-lg p-2 text-sm",
                                     value: quote,
                                     onChange: e => updateQuotes(currentQuotes => {

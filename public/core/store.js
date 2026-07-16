@@ -73,7 +73,13 @@
         );
 
         return function useClassManagerStore() {
-            const [activeTab, setActiveTab] = useState('dashboard');
+            const [activeTab, setActiveTab] = useState(() => {
+                try {
+                    return sessionStorage.getItem('classmanager:pending-attendance') ? 'attendance' : 'dashboard';
+                } catch (_) {
+                    return 'dashboard';
+                }
+            });
             const [students, setStudents] = useState([]);
             const [studentProfiles, setStudentProfiles] = useState(() => buildNormalizedStudentProfiles());
             const [history, setHistory] = useState([]);

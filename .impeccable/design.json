@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-16T21:46:58Z",
+  "title": "Design System: ClassManager Multi",
+  "extensions": {
+    "colorMeta": {
+      "action-blue": {
+        "role": "primary",
+        "displayName": "可信行动蓝",
+        "tonalRamp": ["#172554", "#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#BFDBFE", "#EFF6FF"]
+      },
+      "action-blue-hover": {
+        "role": "primary",
+        "displayName": "深水操作蓝",
+        "tonalRamp": ["#172554", "#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#BFDBFE", "#EFF6FF"]
+      },
+      "focus-blue": {
+        "role": "primary",
+        "displayName": "清晰焦点蓝",
+        "tonalRamp": ["#172554", "#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#BFDBFE", "#EFF6FF"]
+      },
+      "canvas-mist": {
+        "role": "neutral",
+        "displayName": "雾灰画布",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "surface-white": {
+        "role": "neutral",
+        "displayName": "白板白",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#FFFFFF"]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "微光灰面",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "border-soft": {
+        "role": "neutral",
+        "displayName": "柔和分隔灰",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "text-strong": {
+        "role": "neutral",
+        "displayName": "深墨",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "text-default": {
+        "role": "neutral",
+        "displayName": "稳定正文灰",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "辅助灰",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#E5E7EB", "#F9FAFB"]
+      },
+      "info-soft": {
+        "role": "primary",
+        "displayName": "信息浅蓝面",
+        "tonalRamp": ["#172554", "#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#BFDBFE", "#EFF6FF"]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "成功绿",
+        "tonalRamp": ["#14532D", "#166534", "#15803D", "#16A34A", "#22C55E", "#4ADE80", "#BBF7D0", "#F0FDF4"]
+      },
+      "success-soft": {
+        "role": "secondary",
+        "displayName": "柔和成功面",
+        "tonalRamp": ["#14532D", "#166534", "#15803D", "#16A34A", "#22C55E", "#4ADE80", "#BBF7D0", "#F0FDF4"]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "提醒琥珀",
+        "tonalRamp": ["#78350F", "#92400E", "#B45309", "#D97706", "#F59E0B", "#FBBF24", "#FDE68A", "#FFFBEB"]
+      },
+      "warning-soft": {
+        "role": "secondary",
+        "displayName": "柔和提醒面",
+        "tonalRamp": ["#78350F", "#92400E", "#B45309", "#D97706", "#F59E0B", "#FBBF24", "#FDE68A", "#FFFBEB"]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "风险红",
+        "tonalRamp": ["#7F1D1D", "#991B1B", "#B91C1C", "#DC2626", "#EF4444", "#F87171", "#FECACA", "#FEF2F2"]
+      },
+      "danger-soft": {
+        "role": "secondary",
+        "displayName": "柔和风险面",
+        "tonalRamp": ["#7F1D1D", "#991B1B", "#B91C1C", "#DC2626", "#EF4444", "#F87171", "#FECACA", "#FEF2F2"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "登录标题与极少数页面级标题。" },
+      "headline": { "displayName": "Headline", "purpose": "页面主标题与重要结果摘要。" },
+      "title": { "displayName": "Title", "purpose": "模块、卡片和弹窗标题。" },
+      "body": { "displayName": "Body", "purpose": "说明、连续文本和标准界面内容。" },
+      "label": { "displayName": "Label", "purpose": "按钮、导航、表头与表单标签。" },
+      "micro": { "displayName": "Micro", "purpose": "时间戳、紧凑状态与次级元数据。" }
+    },
+    "shadows": [
+      {
+        "name": "ambient-low",
+        "value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        "purpose": "小型悬浮反馈或无边框轻量卡片。"
+      },
+      {
+        "name": "structural-low",
+        "value": "0 1px 3px 0 rgba(0, 0, 0, 0.10), 0 1px 2px -1px rgba(0, 0, 0, 0.10)",
+        "purpose": "菜单与需要轻微脱离底层背景的工具面。"
+      },
+      {
+        "name": "overlay",
+        "value": "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+        "purpose": "模态面板等真正离开文档流的顶层浮层。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "按钮、导航和表单状态切换。"
+      },
+      {
+        "name": "fade-in",
+        "value": "300ms ease-out",
+        "purpose": "非阻断内容和遮罩淡入。"
+      },
+      {
+        "name": "slide-up",
+        "value": "300ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "移动端面板与明确浮层进入。"
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "用于当前流程中唯一的主要动作。",
+      "html": "<button class=\"ds-btn-primary\">保存更改</button>",
+      "css": ".ds-btn-primary { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 16px; background: #2563EB; color: #FFFFFF; font: 500 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-primary:hover { background: #1D4ED8; } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid #3B82F6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "用于删除、重置和其他明确的破坏性操作。",
+      "html": "<button class=\"ds-btn-danger\">删除记录</button>",
+      "css": ".ds-btn-danger { min-height: 44px; border: 0; border-radius: 8px; padding: 8px 16px; background: #DC2626; color: #FFFFFF; font: 500 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-danger:hover { background: #B91C1C; } .ds-btn-danger:focus-visible { outline: 2px solid #EF4444; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "用于取消、返回和不会推进主流程的次要动作。",
+      "html": "<button class=\"ds-btn-secondary\">取消</button>",
+      "css": ".ds-btn-secondary { min-height: 44px; border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 16px; background: #FFFFFF; color: #374151; font: 500 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; cursor: pointer; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-secondary:hover { background: #F9FAFB; border-color: #D1D5DB; } .ds-btn-secondary:focus-visible { outline: 2px solid #3B82F6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "标准文本输入，保持高对比占位文字和清晰焦点。",
+      "html": "<label class=\"ds-field-label\" for=\"ds-name\">学生姓名</label><input class=\"ds-field\" id=\"ds-name\" placeholder=\"请输入姓名\">",
+      "css": ".ds-field-label { display: block; margin-bottom: 4px; color: #374151; font: 500 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-field { min-height: 48px; width: 100%; border: 1px solid #D1D5DB; border-radius: 8px; padding: 12px 16px; background: #FFFFFF; color: #374151; font: 400 16px/24px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-field::placeholder { color: #6B7280; opacity: 1; } .ds-field:hover { border-color: #9CA3AF; } .ds-field:focus-visible { border-color: #3B82F6; outline: 2px solid rgba(59, 130, 246, 0.35); outline-offset: 1px; }"
+    },
+    {
+      "name": "Navigation Tab",
+      "kind": "nav",
+      "refersTo": "nav-tab-active",
+      "description": "粘性顶部导航中的当前功能入口。",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-tab\">仪表盘</button><button class=\"ds-nav-tab ds-nav-tab-active\" aria-current=\"page\">考勤</button><button class=\"ds-nav-tab\">任务</button></nav>",
+      "css": ".ds-nav { display: flex; gap: 24px; border-bottom: 1px solid #E5E7EB; background: #FFFFFF; overflow-x: auto; } .ds-nav-tab { min-height: 52px; border: 0; border-bottom: 2px solid transparent; padding: 16px 8px; background: #FFFFFF; color: #6B7280; font: 500 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; white-space: nowrap; cursor: pointer; } .ds-nav-tab:hover { color: #374151; } .ds-nav-tab-active { border-bottom-color: #3B82F6; color: #2563EB; } .ds-nav-tab:focus-visible { outline: 2px solid #3B82F6; outline-offset: -2px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "用文字和色面共同表达非紧急信息状态。",
+      "html": "<span class=\"ds-status-chip\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z\"/></svg>已同步</span>",
+      "css": ".ds-status-chip { display: inline-flex; min-height: 28px; align-items: center; gap: 4px; border-radius: 9999px; padding: 4px 8px; background: #EFF6FF; color: #2563EB; font: 500 12px/16px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-status-chip svg { width: 14px; height: 14px; } .ds-status-chip:focus-visible { outline: 2px solid #3B82F6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Standard Surface",
+      "kind": "card",
+      "refersTo": "standard-surface",
+      "description": "承载一组相关高频操作的标准白色工作面。",
+      "html": "<section class=\"ds-surface\"><h3>今日考勤</h3><p>查看时段、打卡与异常状态。</p></section>",
+      "css": ".ds-surface { border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; background: #FFFFFF; color: #374151; } .ds-surface h3 { margin: 0 0 8px; color: #1F2937; font: 700 18px/28px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-surface p { margin: 0; color: #6B7280; font: 400 14px/20px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-surface:focus-within { border-color: #3B82F6; }"
+    },
+    {
+      "name": "Modal Panel",
+      "kind": "custom",
+      "refersTo": "modal-panel",
+      "description": "用于需要阻断当前流程并完成确认的顶层浮层。",
+      "html": "<section class=\"ds-modal\" role=\"dialog\" aria-labelledby=\"ds-modal-title\"><h3 id=\"ds-modal-title\">确认调整积分</h3><p>保存后会记录本次变更。</p><div><button class=\"ds-modal-cancel\">取消</button><button class=\"ds-modal-confirm\">确认</button></div></section>",
+      "css": ".ds-modal { max-width: 448px; border: 0; border-radius: 12px; padding: 24px; background: #FFFFFF; color: #374151; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; } .ds-modal h3 { margin: 0 0 8px; color: #1F2937; font-size: 18px; line-height: 28px; } .ds-modal p { margin: 0 0 24px; color: #4B5563; line-height: 24px; } .ds-modal > div { display: flex; justify-content: flex-end; gap: 12px; } .ds-modal button { min-height: 44px; border-radius: 8px; padding: 8px 16px; font-weight: 500; cursor: pointer; } .ds-modal-cancel { border: 1px solid #E5E7EB; background: #FFFFFF; color: #374151; } .ds-modal-confirm { border: 0; background: #2563EB; color: #FFFFFF; } .ds-modal button:focus-visible { outline: 2px solid #3B82F6; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "成长可见的班级工作台",
+    "overview": "ClassManager 是一张明亮、可靠、随时可以开始操作的班级工作台。可信行动蓝负责指向下一步，白板白与雾灰负责承载高频信息，语义色只在结果确实发生时出现。视觉层级必须帮助教师迅速判断，也让学生在触控与投屏场景中清楚看见自己的行动和反馈。\n\n系统可以在双子星、宠物等特定功能里形成有边界的主题氛围，但所有局部主题都必须保留统一的操作语法、状态含义和可读性。登录页的动画渐变与宠物舱的深色主题属于局部特例，不是新页面默认复制的全局风格。\n\n设计明确拒绝低幼手游式刺激、冰冷企业后台和培训机构营销页。活力来自及时、真实的反馈；亲切来自清楚的语言与触控；可信来自稳定的组件、克制的色彩和可核验的状态。",
+    "keyCharacteristics": [
+      "明亮的蓝白灰工作区，语义色按真实状态出现。",
+      "信息密度服务高频操作，不用装饰制造忙碌感。",
+      "触控友好、状态明确，键盘与投屏同样可用。",
+      "局部主题可以鲜明，全局操作语法必须一致。",
+      "动效只解释状态变化，并尊重减少动态效果设置。"
+    ],
+    "rules": [
+      { "name": "The Single Action Blue Rule", "body": "可信行动蓝只属于主要动作、当前选择和焦点，不得作为无意义的装饰色块。", "section": "colors" },
+      { "name": "The Semantic Honesty Rule", "body": "绿是成功，琥珀是提醒，红是风险；任何模块都不得为了“更活泼”而改写这套含义。", "section": "colors" },
+      { "name": "The One Family Rule", "body": "产品界面只使用一套系统无衬线字体；层级来自尺寸、字重和间距，不来自额外字体。", "section": "typography" },
+      { "name": "The Read-It-Across-the-Classroom Rule", "body": "投屏上的关键结果必须使用 Title 或更高层级，不能把学生需要看见的信息压成 Micro。", "section": "typography" },
+      { "name": "The Border-or-Lift Rule", "body": "普通容器选择结构边框或轻微抬升中的一种；禁止把一像素边框与宽阴影组合成幽灵卡片。", "section": "elevation" },
+      { "name": "The Overlay Earns Its Shadow Rule", "body": "只有离开正常文档流、覆盖其他内容的元素才能使用 Overlay 阴影。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 使用可信行动蓝指向主要动作、当前导航和焦点，把它限制在真正需要用户注意的位置。",
+      "Do 让绿、琥珀、红保持稳定语义，并同时提供文字或图标说明状态。",
+      "Do 保证主要触控目标至少 44×44px，键盘焦点清晰，200% 缩放和课堂投屏下的关键结果仍可读。",
+      "Do 使用边框、色面和间距建立普通层级，只把强阴影留给真正的浮层。",
+      "Do 让动效解释保存、选中、成功、失败或浮层进入，并为 prefers-reduced-motion 提供即时或淡入替代。",
+      "Do 允许宠物、双子星等模块有边界地使用主题色，但始终保留统一的按钮、状态和可访问性规则。"
+    ],
+    "donts": [
+      "Don't 做低幼卡通或手游式刺激；禁止过量闪光、抽卡感和奖励轰炸，游戏化反馈必须服务真实成长。",
+      "Don't 做冰冷的企业后台或密集数据大屏；禁止让信息压迫和指标堆叠取代清楚的班级任务。",
+      "Don't 做培训机构营销页或宣传海报；禁止让口号、动画渐变和装饰压过真实操作。",
+      "Don't 在同一静态容器上同时使用一像素完整边框与宽而软的阴影。",
+      "Don't 给普通卡片使用大于 rounded.dialog 的圆角；超大圆角只属于完整胶囊或圆形控件。",
+      "Don't 把登录页动画渐变或宠物深色舱体复制成全局默认主题。",
+      "Don't 依赖颜色单独表达正确、错误、选中、缺勤或同步状态。"
+    ]
+  }
+}

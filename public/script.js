@@ -302,7 +302,9 @@ const INITIAL_TREASURES = [
     }
     const Modal = createClassManagerModal({
         h,
-        Icon
+        Icon,
+        useEffect,
+        useRef
     });
 
     const getNavView = () => {
@@ -1093,7 +1095,7 @@ const INITIAL_TREASURES = [
             normalizePointScene,
             normalizePointCategory,
             onPersist: ({ nextStudents, nextHistory }) => {
-                persistManagedPatch({
+                return persistManagedPatch({
                     students: nextStudents,
                     history: nextHistory
                 });
@@ -1144,12 +1146,12 @@ const INITIAL_TREASURES = [
                     liquidatedTreasures,
                     logs
                 });
-                if (rollback?.changed) {
-                    setStorage(rollback.storage || {});
-                    setLiquidatedTreasures(rollback.liquidatedTreasures || []);
-                    setLogs(rollback.logs || []);
-                }
                 return rollback;
+            },
+            onCommitRelated: (undoPatch) => {
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'storage')) setStorage(undoPatch.storage || {});
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'liquidatedTreasures')) setLiquidatedTreasures(undoPatch.liquidatedTreasures || []);
+                if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'logs')) setLogs(undoPatch.logs || []);
             },
             onPersist: (undoPatch) => {
                 const patch = {
@@ -1159,7 +1161,7 @@ const INITIAL_TREASURES = [
                 if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'storage')) patch.storage = undoPatch.storage;
                 if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'liquidatedTreasures')) patch.liquidatedTreasures = undoPatch.liquidatedTreasures;
                 if (undoPatch && Object.prototype.hasOwnProperty.call(undoPatch, 'logs')) patch.logs = undoPatch.logs;
-                persistManagedPatch(patch);
+                return persistManagedPatch(patch);
             }
         });
 
@@ -1176,11 +1178,10 @@ const INITIAL_TREASURES = [
             GUEST_ROSTER,
             normalizePointScene,
             normalizePointCategory,
-            onPersist: ({ nextStudents, nextHistory, nextConfig }) => {
-                persistManagedPatch({
+            onPersist: ({ nextStudents, nextHistory }) => {
+                return persistManagedPatch({
                     students: nextStudents,
-                    history: nextHistory,
-                    config: nextConfig
+                    history: nextHistory
                 });
             }
         });
@@ -1335,9 +1336,13 @@ const INITIAL_TREASURES = [
             }
         };
 
-        const handleApplyFixedStudents = (nextStudents) => {
+        const handleApplyFixedStudents = async (nextStudents) => {
+            const saved = await persistManagedPatch({ students: nextStudents });
+            if (saved?.skipped || saved?.success === false) {
+                throw new Error('服务端未确认保存，请恢复会话后重试');
+            }
             setStudents(nextStudents);
-            persistManagedPatch({ students: nextStudents });
+            return true;
         };
 
         const handleImportTreasureData = (nextDomain) => {

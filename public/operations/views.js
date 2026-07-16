@@ -38,12 +38,14 @@
             filteredStudents,
             allFilteredSelected,
             onToggleSelectAll,
-            onHandleWage
-        }) => h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-center justify-between" },
+            onHandleWage,
+            wagePending = false
+        }) => h("div", { className: "bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-center justify-between" },
             h("div", { className: "flex gap-2 items-center" },
                 h(Icon, { name: "filter", className: "text-gray-400" }),
                 h("select", {
                     className: "border rounded p-2 text-sm",
+                    'aria-label': '按小组筛选学生',
                     value: filterGroup,
                     onChange: e => setFilterGroup(e.target.value)
                 },
@@ -52,6 +54,7 @@
                 ),
                 h("select", {
                     className: "border rounded p-2 text-sm",
+                    'aria-label': '按宿舍筛选学生',
                     value: filterDorm,
                     onChange: e => setFilterDorm(e.target.value)
                 },
@@ -60,13 +63,15 @@
                 )
             ),
             h("div", { className: "flex gap-2" },
-                h("button", { onClick: onToggleSelectAll, className: "text-blue-600 text-sm font-bold" },
+                h("button", { onClick: onToggleSelectAll, className: "min-h-11 px-3 text-blue-700 text-sm font-bold" },
                     allFilteredSelected && filteredStudents.length > 0 ? "取消全选" : "全选当前"
                 ),
                 h("button", {
                     onClick: onHandleWage,
-                    className: "bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
-                }, h(Icon, { name: "money", size: 16 }), "一键工资")
+                    disabled: wagePending,
+                    'aria-busy': wagePending ? 'true' : undefined,
+                    className: "min-h-11 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-60"
+                }, h(Icon, { name: "money", size: 16 }), wagePending ? "正在保存…" : "一键工资")
             )
         );
 
@@ -76,10 +81,12 @@
             filteredStudents.map(student => {
                 const isSelected = selectedIds.has(student.id);
                 const groupName = groupsConfig[student.group]?.name || student.group;
-                return h("div", {
+                return h("button", {
                     key: student.id,
                     onClick: () => onToggleSelection(student.id),
-                    className: `cursor-pointer p-3 rounded-lg border-2 transition relative overflow-hidden ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-transparent bg-white hover:shadow-md'}`
+                    'aria-pressed': isSelected,
+                    'aria-label': `${student.name}，${groupName}，${isSelected ? '已选择' : '未选择'}`,
+                    className: `min-h-[56px] w-full p-3 rounded-lg border-2 transition relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-400'}`
                 },
                     isSelected && h("div", { className: "absolute top-1 right-1 text-blue-500" }, h(Icon, { name: "check", size: 16 })),
                     h("div", { className: "text-center" },
@@ -180,7 +187,7 @@
                 callback();
             };
 
-            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
+            return h("div", { className: "bg-white p-4 rounded-xl border border-gray-200" },
                 h("div", { className: "flex flex-wrap items-center justify-between gap-3 mb-4" },
                     h("div", { className: "flex items-center gap-3" },
                         h("span", { className: "font-bold text-gray-700" }, `已选 ${selectedCount} 人`),
@@ -190,14 +197,16 @@
                         h("div", { className: "flex bg-gray-100 p-1 rounded-lg" },
                             h("button", {
                                 onClick: () => setOpTab('bonus'),
-                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'bonus' ? 'bg-white text-green-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
+                                'aria-pressed': opTab === 'bonus',
+                                className: `min-h-11 px-4 py-2 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'bonus' ? 'bg-white text-green-700 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:text-gray-800'}`
                             }, h(Icon, { name: "plus", size: 14 }), "奖励"),
                             h("button", {
                                 onClick: () => setOpTab('penalty'),
-                                className: `px-4 py-1.5 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'penalty' ? 'bg-white text-red-600 shadow ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`
+                                'aria-pressed': opTab === 'penalty',
+                                className: `min-h-11 px-4 py-2 rounded-md text-sm font-bold transition flex items-center gap-1 ${opTab === 'penalty' ? 'bg-white text-red-700 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:text-gray-800'}`
                             }, h(Icon, { name: "minus", size: 14 }), "扣分")
                         ),
-                        h("button", { onClick: onClearSelection, className: "text-gray-400 hover:text-gray-600 px-2" }, "清空")
+                        h("button", { onClick: onClearSelection, className: "min-h-11 text-gray-600 hover:text-gray-800 px-3" }, "清空")
                     )
                 ),
                 h("div", {
@@ -216,14 +225,14 @@
                         reasons.map((reason, idx) => h("button", {
                             key: idx,
                             onClick: () => runReasonAction(() => onReasonClick(reason)),
-                            className: `flex-shrink-0 px-4 py-3 rounded-xl border text-sm font-medium whitespace-nowrap transition flex flex-col items-center min-w-[100px] ${reason.type === 'bonus' ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'}`
+                            className: `flex-shrink-0 min-h-[56px] px-4 py-3 rounded-xl border text-sm font-medium whitespace-nowrap transition flex flex-col items-center min-w-[100px] ${reason.type === 'bonus' ? 'bg-green-50 border-green-200 text-green-800 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-800 hover:bg-red-100'}`
                         },
                             h("span", { className: "font-bold" }, reason.name),
                             h("span", { className: "text-xs opacity-70 mt-1" }, reason.val > 0 ? `+${reason.val}` : reason.val)
                         )),
                         h("button", {
                             onClick: () => runReasonAction(onCustomReason),
-                            className: `flex-shrink-0 px-4 py-3 rounded-xl border-2 border-dashed text-sm font-bold whitespace-nowrap transition flex flex-col items-center min-w-[100px] hover:bg-gray-50 ${opTab === 'bonus' ? 'border-green-300 text-green-600' : 'border-red-300 text-red-600'}`
+                            className: `flex-shrink-0 min-h-[56px] px-4 py-3 rounded-xl border-2 border-dashed text-sm font-bold whitespace-nowrap transition flex flex-col items-center min-w-[100px] hover:bg-gray-50 ${opTab === 'bonus' ? 'border-green-300 text-green-700' : 'border-red-300 text-red-700'}`
                         },
                             h("span", null, "自定义"),
                             h("span", { className: "text-xs opacity-70 mt-1" }, "输入理由")
@@ -245,29 +254,31 @@
             setHwSelectedIds,
             onToggleHomeworkSelection,
             onSubmit
-        }) => h("div", { className: "bg-white p-3 rounded-xl shadow-sm h-full flex flex-col" },
+        }) => h("div", { className: "bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col" },
             h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "book" }), "作业登记"),
             h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 homeworkSubjects.map(subject => h("button", {
                     key: subject,
                     onClick: () => setHwSubject(subject),
-                    className: `px-2 py-0.5 rounded-full text-xs font-bold border ${hwSubject === subject ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    'aria-pressed': hwSubject === subject,
+                    className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${hwSubject === subject ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                 }, subject))
             ),
             h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 homeworkDates.map(date => h("button", {
                     key: date,
                     onClick: () => setHwDate(date),
-                    className: `px-2 py-0.5 rounded-full text-xs font-bold border ${((hwDate || homeworkDates[0]) === date) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                    'aria-pressed': (hwDate || homeworkDates[0]) === date,
+                    className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${((hwDate || homeworkDates[0]) === date) ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                 }, date))
             ),
             h("div", { className: "flex justify-between items-center mb-1" },
                 h("div", { className: "text-sm text-gray-600" }, "选择未交学生"),
                 h("div", { className: "flex gap-2" },
-                    h("button", { onClick: () => setHwSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
+                    h("button", { onClick: () => setHwSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
                     h("button", {
                         onClick: () => setHwSelectedIds(new Set(students.map(student => student.id))),
-                        className: "text-xs text-blue-600"
+                        className: "min-h-11 px-2 text-xs text-blue-700"
                     }, "全选")
                 )
             ),
@@ -277,14 +288,15 @@
                     return h("button", {
                         key: student.id,
                         onClick: () => onToggleHomeworkSelection(student.id),
-                        className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                        'aria-pressed': chosen,
+                        className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
                     }, student.name);
                 })
             ),
             h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
                 h("button", {
                     onClick: onSubmit,
-                    className: "px-3 py-1.5 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                    className: "min-h-11 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
                 }, hwSelectedIds.size === 0 ? "提交（无人未交）" : `提交未交记录 (${hwSelectedIds.size}人)`)
             )
         );
@@ -303,8 +315,7 @@
         }) => {
             const primaryButtonStyle = {
                 backgroundColor: '#ea580c',
-                color: '#ffffff',
-                boxShadow: '0 8px 18px rgba(234, 88, 12, 0.18)'
+                color: '#ffffff'
             };
             const selectedDateStyle = {
                 backgroundColor: '#ea580c',
@@ -316,13 +327,14 @@
                 borderColor: '#e5e7eb',
                 color: '#374151'
             };
-            return h("div", { className: "bg-white p-3 rounded-xl shadow-sm h-full flex flex-col" },
+            return h("div", { className: "bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col" },
             h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
             h("div", { className: "flex flex-wrap gap-1 mb-2" },
                 runningExerciseDates.map(date => h("button", {
                     key: date,
                     onClick: () => setRunDate(date),
-                    className: "px-2 py-0.5 rounded-full text-xs font-bold border",
+                    'aria-pressed': (runDate || runningExerciseDates[0]) === date,
+                    className: "min-h-11 px-3 py-2 rounded-lg text-xs font-bold border",
                     style: ((runDate || runningExerciseDates[0]) === date) ? selectedDateStyle : defaultDateStyle
                 }, date))
             ),
@@ -332,10 +344,10 @@
             h("div", { className: "flex justify-between items-center mb-1" },
                 h("div", { className: "text-sm text-gray-600" }, "选择缺勤学生"),
                 h("div", { className: "flex gap-2" },
-                    h("button", { onClick: () => setRunSelectedAbsentIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
+                    h("button", { onClick: () => setRunSelectedAbsentIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
                     h("button", {
                         onClick: () => setRunSelectedAbsentIds(new Set(students.map(student => student.id))),
-                        className: "text-xs text-blue-600"
+                        className: "min-h-11 px-2 text-xs text-blue-700"
                     }, "全选缺勤")
                 )
             ),
@@ -345,14 +357,15 @@
                     return h("button", {
                         key: student.id,
                         onClick: () => onToggleRunningExerciseSelection(student.id),
-                        className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                        'aria-pressed': chosen,
+                        className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
                     }, student.name);
                 })
             ),
             h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
                 h("button", {
                     onClick: onSubmit,
-                    className: "px-3 py-1.5 rounded text-sm",
+                    className: "min-h-11 px-4 py-2 rounded-lg text-sm",
                     style: primaryButtonStyle
                 }, runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size}人缺勤)`)
             )
@@ -375,7 +388,7 @@
         }) => {
             const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
             const inspectorList = Array.isArray(inspectorNames) ? inspectorNames.filter(Boolean) : [];
-            return h("div", { className: `bg-white p-3 rounded-xl shadow-sm h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
+            return h("div", { className: `bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
                 h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "droplet" }), "卫生登记"),
                 h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
                     h("span", { className: "text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200" }, [date, sessionName || "时段判定中"].filter(Boolean).join(' ')),
@@ -387,8 +400,8 @@
                 h("div", { className: "flex justify-between items-center mb-1" },
                     h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
                     h("div", { className: "flex gap-2" },
-                        h("button", { onClick: () => setSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
-                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "text-xs text-blue-600" }, "全选")
+                        h("button", { onClick: () => setSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
+                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "min-h-11 px-2 text-xs text-blue-700" }, "全选")
                     )
                 ),
                 h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
@@ -397,7 +410,9 @@
                         return h("button", {
                             key: student.id,
                             onClick: () => !disabled && onToggleSelection(student.id),
-                            className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                            disabled,
+                            'aria-pressed': chosen,
+                            className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
                         }, student.name);
                     })
                 ),
@@ -405,7 +420,7 @@
                     h("button", {
                         onClick: onSubmit,
                         disabled: disabled,
-                        className: `px-3 py-1.5 rounded text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`
+                        className: `min-h-11 px-4 py-2 rounded-lg text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-green-700 text-white hover:bg-green-800'}`
                     }, selectedIds.size === 0 ? "提交（无问题）" : `提交卫生登记 (${selectedIds.size}人不合格)`)
                 )
             );
@@ -435,20 +450,22 @@
             ];
             const currentTab = tabs.find(t => t.key === activeTab) || tabs[0];
             const commissionerList = Array.isArray(commissionerNames) ? commissionerNames.filter(Boolean) : [];
-            return h("div", { className: `bg-white p-3 rounded-xl shadow-sm h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
+            return h("div", { className: `bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
                 h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "shield" }), "纪律登记"),
                 h("div", { className: "flex flex-wrap gap-1 mb-2" },
                     dates.map(d => h("button", {
                         key: d,
                         onClick: () => setDate(d),
-                        className: `px-2 py-0.5 rounded-full text-xs font-bold border ${(date || dates[0]) === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                        'aria-pressed': (date || dates[0]) === d,
+                        className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${(date || dates[0]) === d ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                     }, d))
                 ),
                 h("div", { className: "flex flex-wrap gap-1 mb-2" },
                     tabs.map(tab => h("button", {
                         key: tab.key,
                         onClick: () => setActiveTab(tab.key),
-                        className: `px-2 py-0.5 rounded text-xs font-bold border ${activeTab === tab.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 text-gray-700 border-gray-200'}`
+                        'aria-pressed': activeTab === tab.key,
+                        className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${activeTab === tab.key ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
                     }, tab.label))
                 ),
                 h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
@@ -460,8 +477,8 @@
                 h("div", { className: "flex justify-between items-center mb-1" },
                     h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
                     h("div", { className: "flex gap-2" },
-                        h("button", { onClick: () => setSelectedIds(new Set()), className: "text-xs text-gray-500" }, "清空"),
-                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "text-xs text-blue-600" }, "全选")
+                        h("button", { onClick: () => setSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
+                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "min-h-11 px-2 text-xs text-blue-700" }, "全选")
                     )
                 ),
                 h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
@@ -470,7 +487,9 @@
                         return h("button", {
                             key: student.id,
                             onClick: () => !disabled && onToggleSelection(student.id),
-                            className: `px-2 py-1 rounded text-xs border ${chosen ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white border-gray-200 text-gray-700'}`
+                            disabled,
+                            'aria-pressed': chosen,
+                            className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
                         }, student.name);
                     })
                 ),
@@ -478,7 +497,7 @@
                     h("button", {
                         onClick: onSubmit,
                         disabled: disabled,
-                        className: `px-3 py-1.5 rounded text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`
+                        className: `min-h-11 px-4 py-2 rounded-lg text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`
                     }, selectedIds.size === 0 ? "提交（无问题）" : `提交纪律登记 (${selectedIds.size}人)`)
                 )
             );
@@ -528,19 +547,29 @@
             setBatchAdjustModal,
             onConfirm,
             onUpdateAllValues,
-            onUpdateStudentValue
+            onUpdateStudentValue,
+            isPending = false,
+            errorMessage = ''
         }) => h(Modal, {
             isOpen: batchAdjustModal.open,
             title: batchAdjustModal.isCustom ? "自定义批量操作" : `批量调整: ${batchAdjustModal.reason?.name}`,
             onClose: () => setBatchAdjustModal(prev => ({ ...prev, open: false })),
             onConfirm,
-            confirmText: "确认应用",
+            confirmText: isPending ? "正在保存…" : "确认应用",
+            confirmDisabled: isPending,
+            confirmBusy: isPending,
+            dismissDisabled: isPending,
             type: batchAdjustModal.type === 'penalty' ? 'danger' : 'info'
         },
             h("div", { className: "space-y-4" },
+                errorMessage && h("div", {
+                    role: 'alert',
+                    className: "rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                }, errorMessage),
                 batchAdjustModal.isCustom && h("div", null,
-                    h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "理由名称"),
+                    h("label", { className: "block text-sm font-bold text-gray-700 mb-1", htmlFor: 'batch-adjust-reason' }, "理由名称"),
                     h("input", {
+                        id: 'batch-adjust-reason',
                         type: "text",
                         className: "w-full border rounded p-2",
                         placeholder: "例如: 好人好事",
@@ -550,16 +579,18 @@
                 ),
                 h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3" },
                     h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "场景"),
+                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1", htmlFor: 'batch-adjust-scene' }, "场景"),
                         h("select", {
+                            id: 'batch-adjust-scene',
                             className: "w-full border rounded p-2",
                             value: batchAdjustModal.scene || DEFAULT_POINT_SCENE,
                             onChange: e => setBatchAdjustModal(prev => ({ ...prev, scene: e.target.value }))
                         }, POINT_SCENES.map(scene => h("option", { key: scene, value: scene }, scene)))
                     ),
                     h("div", null,
-                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1" }, "类别"),
+                        h("label", { className: "block text-sm font-bold text-gray-700 mb-1", htmlFor: 'batch-adjust-category' }, "类别"),
                         h("select", {
+                            id: 'batch-adjust-category',
                             className: "w-full border rounded p-2",
                             value: batchAdjustModal.category || DEFAULT_POINT_CATEGORY,
                             onChange: e => setBatchAdjustModal(prev => ({ ...prev, category: e.target.value }))
@@ -567,15 +598,17 @@
                     )
                 ),
                 h("div", { className: "bg-gray-50 p-3 rounded-lg" },
-                    h("label", { className: "block text-sm font-bold text-gray-700 mb-2" },
+                    h("label", { className: "block text-sm font-bold text-gray-700 mb-2", htmlFor: 'batch-adjust-all-values' },
                         `统一调整 (${batchAdjustModal.isMulti ? '次数' : '分值'})`
                     ),
                     h("div", { className: "flex items-center gap-4" },
                         h("input", {
+                            id: 'batch-adjust-all-values',
                             type: "range",
                             min: "0",
                             max: batchAdjustModal.isMulti ? "20" : "50",
                             step: batchAdjustModal.isMulti ? "1" : "0.5",
+                            className: "w-full min-h-11 accent-blue-600",
                             defaultValue: batchAdjustModal.students[0]?.val || 0,
                             onChange: e => onUpdateAllValues(e.target.value)
                         }),
@@ -596,6 +629,7 @@
                                 h("td", { className: "p-2 flex items-center justify-center gap-2" },
                                     h("input", {
                                         type: "number",
+                                        'aria-label': `${student.name} 的${batchAdjustModal.isMulti ? '次数' : '分值'}`,
                                         className: "w-16 border rounded p-1 text-center font-mono font-bold",
                                         value: student.val,
                                         onChange: e => onUpdateStudentValue(student.id, e.target.value)

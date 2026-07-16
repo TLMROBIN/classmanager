@@ -1,0 +1,312 @@
+{
+  "target": {
+    "stable_path": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+    "surface": "core attendance check-in to points feedback flow, including adjacent main points-operation files",
+    "detector_scope": [
+      "public/attendance/module.js",
+      "public/operations"
+    ],
+    "ignore_list": []
+  },
+  "detector": {
+    "commands": [
+      {
+        "command": "node /Users/binyu/.agents/skills/impeccable/scripts/detect.mjs --json public/attendance/module.js public/operations",
+        "cwd": "/Users/binyu/Projects/classmanager",
+        "exit_code": 2,
+        "result": "findings"
+      }
+    ],
+    "fallback_attempted": false,
+    "fallback_reason": "The preferred multi-target invocation was supported and returned complete JSON.",
+    "count": {
+      "total": 22,
+      "warning": 20,
+      "advisory": 2
+    },
+    "rules": [
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+        "line": 534,
+        "message": "text-gray-500 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+        "line": 539,
+        "message": "text-gray-300 on bg-green-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+        "line": 668,
+        "message": "text-gray-400 on bg-green-50"
+      },
+      {
+        "rule": "design-system-font-size",
+        "name": "Font size outside DESIGN.md",
+        "severity": "advisory",
+        "file": "/Users/binyu/Projects/classmanager/public/attendance/module.js",
+        "line": 539,
+        "message": "text-[…] class: 10px is off the DESIGN.md type ramp",
+        "ignore_value": "10px"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/history-section.js",
+        "line": 128,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "design-system-font-size",
+        "name": "Font size outside DESIGN.md",
+        "severity": "advisory",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/history-section.js",
+        "line": 213,
+        "message": "text-[…] class: 11px is off the DESIGN.md type ramp",
+        "ignore_value": "11px"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/module.js",
+        "line": 518,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 80,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 195,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 365,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 440,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 548,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 640,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/settings.js",
+        "line": 788,
+        "message": "text-gray-700 on bg-blue-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 254,
+        "message": "text-gray-700 on bg-blue-600"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 261,
+        "message": "text-gray-700 on bg-emerald-600"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 280,
+        "message": "text-gray-700 on bg-red-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 348,
+        "message": "text-gray-700 on bg-red-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 400,
+        "message": "text-gray-700 on bg-red-50"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 444,
+        "message": "text-gray-700 on bg-blue-600"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 451,
+        "message": "text-gray-700 on bg-indigo-600"
+      },
+      {
+        "rule": "gray-on-color",
+        "name": "Gray text on colored background",
+        "severity": "warning",
+        "file": "/Users/binyu/Projects/classmanager/public/operations/views.js",
+        "line": 473,
+        "message": "text-gray-700 on bg-red-50"
+      }
+    ],
+    "errors": []
+  },
+  "browser": {
+    "attempted": true,
+    "fresh_tab": true,
+    "browser": "Chrome selected by Browser skill for http://127.0.0.1:3212/",
+    "url": "http://127.0.0.1:3212/",
+    "auth_data_setup": {
+      "isolated": true,
+      "temporary_database": "/tmp/classmanager-impeccable-b.VWHf8x/classmanager.sqlite3",
+      "startup_note": "The first server start exited 1 because the empty database had no admin. A temporary admin was bootstrapped, a temporary user account was registered, maintenance access was configured, and five temporary students plus an all-day attendance period were written only to the temporary database.",
+      "login_result": "Temporary user login succeeded and the authenticated application root loaded.",
+      "visible_attendance_state": "The attendance navigation became active. The page visibly exposed 打卡, 统计, 修正 tabs; an active 早读 session; five named student check-in buttons; teacher notice and student message inputs; and attendance settings sections."
+    },
+    "mutation_preflight": {
+      "attempted": true,
+      "success": false,
+      "title_change": false,
+      "script_append": false,
+      "method": "Browser Tab.goto with a javascript: URL that would change document.title and append a script element, followed by read-only verification.",
+      "error": "Browser Use rejected the javascript: navigation because the URL is blocked by the Browser use URL security policy and explicitly prohibited workaround or alternate execution.",
+      "verification": {
+        "script_present": false,
+        "observed_title": "登录 - 班级管理系统"
+      }
+    },
+    "visibility": {
+      "attempted": false,
+      "visible": null,
+      "reason": "The critique protocol allows visibility presentation only after mutable injection succeeds; preflight failed."
+    },
+    "overlay_injected": false,
+    "console_findings": [],
+    "screenshots": [],
+    "fallback": {
+      "type": "visible DOM state",
+      "signal": "An authenticated DOM snapshot captured the active attendance surface and its concrete controls immediately before mutation preflight. No screenshot file was retained because the Browser security block redirected the tab before a relevant screenshot was captured.",
+      "overlay_claimed": false
+    },
+    "tab_cleanup": "browser.tabs.finalize({keep: []}) completed; the fresh tab was closed."
+  },
+  "false_positives": [
+    {
+      "rule": "gray-on-color",
+      "locations": [
+        "public/attendance/module.js:539",
+        "public/attendance/module.js:668"
+      ],
+      "reason": "The detector paired classes across mutually exclusive runtime branches. At line 539 text-gray-300 belongs to the disabled bg-gray-50 branch, while bg-green-50 uses text-green-700. At line 668 text-gray-400 belongs to the empty-state branch, while bg-green-50 belongs to populated name chips using text-green-700."
+    },
+    {
+      "rule": "gray-on-color",
+      "locations": [
+        "public/operations/history-section.js:128",
+        "public/operations/module.js:518",
+        "public/operations/settings.js:80",
+        "public/operations/settings.js:195",
+        "public/operations/settings.js:365",
+        "public/operations/settings.js:440",
+        "public/operations/settings.js:548",
+        "public/operations/settings.js:640",
+        "public/operations/settings.js:788"
+      ],
+      "reason": "Each toggle template has mutually exclusive branches: the open branch is bg-blue-50 with text-blue-700, while text-gray-700 occurs only with bg-gray-100."
+    },
+    {
+      "rule": "gray-on-color",
+      "locations": [
+        "public/operations/views.js:254",
+        "public/operations/views.js:261",
+        "public/operations/views.js:280",
+        "public/operations/views.js:348",
+        "public/operations/views.js:400",
+        "public/operations/views.js:444",
+        "public/operations/views.js:451",
+        "public/operations/views.js:473"
+      ],
+      "reason": "The detector paired classes across selected/unselected branches. Saturated or red-tinted selected backgrounds use white or red text; text-gray-700 appears only on the inactive bg-gray-50 or bg-white branch."
+    }
+  ],
+  "cleanup": {
+    "app_server": {
+      "started": true,
+      "url": "http://127.0.0.1:3212/",
+      "session_id": 95044,
+      "stop_method": "functions.write_stdin(session_id=95044, chars=Ctrl-C)",
+      "stop_result": "SIGINT graceful shutdown completed with exit code 0; a subsequent lsof check found no listener on TCP 3212."
+    },
+    "live_server": {
+      "started": false,
+      "stop_method": null,
+      "reason": "Not started because mutable injection preflight failed."
+    },
+    "temp_data": {
+      "path": "/tmp/classmanager-impeccable-b.VWHf8x",
+      "contents": "Temporary SQLite database, WAL/SHM files if created, curl cookie jar and response headers, temporary credentials/data.",
+      "cleanup_method": "rm -rf /tmp/classmanager-impeccable-b.VWHf8x",
+      "removed": true,
+      "verification": "test ! -e /tmp/classmanager-impeccable-b.VWHf8x exited 0."
+    },
+    "temp_files": {
+      "removed": true,
+      "remaining": []
+    }
+  }
+}

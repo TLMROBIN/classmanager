@@ -69,7 +69,10 @@
             disciplineConfig,
             disciplineCommissionerMap,
             disciplineCommissionerNamesMap,
-            setDisciplineSelectedIds
+            setDisciplineSelectedIds,
+            operationPendingRef,
+            setOperationPending,
+            setOperationFeedback
         } = deps || {};
 
         if (
@@ -96,7 +99,10 @@
             !buildDisciplineConfirmMessage ||
             typeof getTodayStr !== 'function' ||
             typeof setHygieneSelectedIds !== 'function' ||
-            typeof setDisciplineSelectedIds !== 'function'
+            typeof setDisciplineSelectedIds !== 'function' ||
+            !operationPendingRef ||
+            typeof setOperationPending !== 'function' ||
+            typeof setOperationFeedback !== 'function'
         ) {
             throw new Error('Operation action dependencies are missing');
         }
@@ -115,6 +121,7 @@
 
         const handleReasonClick = (reason) => {
             if (selectedIdsState.size === 0) return alert("请先选择学生");
+            setOperationFeedback(null);
             const modalStudents = buildModalStudents({
                 selectedIds: selectedIdsState,
                 studentMap,
@@ -137,6 +144,7 @@
 
         const handleCustomReason = () => {
             if (selectedIdsState.size === 0) return alert("请先选择学生");
+            setOperationFeedback(null);
             const modalStudents = buildModalStudents({
                 selectedIds: selectedIdsState,
                 studentMap,
@@ -174,7 +182,34 @@
             }));
         };
 
-        const handleBatchConfirm = () => {
+        const persistPointUpdates = async (updates, successMessage) => {
+            if (operationPendingRef.current) return 0;
+            operationPendingRef.current = true;
+            setOperationPending(true);
+            setOperationFeedback({ type: 'pending', message: '正在保存积分变动…' });
+            try {
+                const count = await Promise.resolve(batchUpdatePoints(updates));
+                if (!Number.isFinite(Number(count)) || Number(count) <= 0) {
+                    throw new Error('没有生成可保存的积分记录');
+                }
+                setOperationFeedback({
+                    type: 'success',
+                    message: successMessage || `已保存 ${count} 条积分记录。`
+                });
+                return Number(count);
+            } catch (error) {
+                setOperationFeedback({
+                    type: 'error',
+                    message: `保存失败：${error?.message || '请检查网络后重试'}。操作内容已保留。`
+                });
+                return 0;
+            } finally {
+                operationPendingRef.current = false;
+                setOperationPending(false);
+            }
+        };
+
+        const handleBatchConfirm = async () => {
             if (batchAdjustModal.isCustom && !batchAdjustModal.customReasonName) return alert("请输入理由");
             if (!batchAdjustModal.scene || !batchAdjustModal.category) return alert("请先选择场景与类别");
 
@@ -184,7 +219,8 @@
                 normalizePointCategory
             });
 
-            batchUpdatePoints(updates);
+            const count = await persistPointUpdates(updates, `积分变动已保存，共 ${updates.length} 名学生、${updates.length} 条记录。`);
+            if (!count) return;
             setBatchAdjustModal(prev => ({ ...prev, open: false }));
             setSelectedIds(new Set());
         };
@@ -193,7 +229,7 @@
             setHwSelectedIds(prev => toggleIdInSet(prev, id));
         };
 
-        const handleHomeworkSubmit = () => {
+        const handleHomeworkSubmit = async () => {
             if (!hwSubject) return alert("请选择学科");
             const dateVal = hwDate || homeworkDates[0];
             if (!dateVal) return alert("请选择日期");
@@ -229,7 +265,8 @@
 
             if (!confirm(confirmMsg)) return;
 
-            batchUpdatePoints(updates);
+            const count = await persistPointUpdates(updates, `${hwSubject} ${dateVal} 作业登记已保存，共 ${updates.length} 条记录。`);
+            if (!count) return;
             setHwSelectedIds(new Set());
             setHwSubject("");
         };
@@ -242,7 +279,7 @@
             setHygieneSelectedIds(prev => toggleIdInSet(prev, id));
         };
 
-        const handleHygieneSubmit = () => {
+        const handleHygieneSubmit = async () => {
             if (!hygieneSession) return alert("当前非卫生登记时段");
             const dateVal = getTodayStr();
             if (!dateVal) return alert("无法确定当前日期");
@@ -281,7 +318,8 @@
             });
             if (!confirm(confirmMsg)) return;
 
-            batchUpdatePoints(updates);
+            const count = await persistPointUpdates(updates, `${dateVal} ${hygieneSession.name} 卫生登记已保存，共 ${updates.length} 条记录。`);
+            if (!count) return;
             setHygieneSelectedIds(new Set());
         };
 
@@ -289,7 +327,7 @@
             setDisciplineSelectedIds(prev => toggleIdInSet(prev, id));
         };
 
-        const handleDisciplineSubmit = () => {
+        const handleDisciplineSubmit = async () => {
             const dateVal = disciplineDate;
             if (!dateVal) return alert("请选择日期");
 
@@ -340,11 +378,12 @@
             });
             if (!confirm(confirmMsg)) return;
 
-            batchUpdatePoints(updates);
+            const count = await persistPointUpdates(updates, `${dateVal} ${reasonLabel} 登记已保存，共 ${updates.length} 条记录。`);
+            if (!count) return;
             setDisciplineSelectedIds(new Set());
         };
 
-        const handleRunningExerciseSubmit = () => {
+        const handleRunningExerciseSubmit = async () => {
             const dateVal = runDate || homeworkDates[0];
             if (!dateVal) return alert("请选择日期");
 
@@ -380,7 +419,8 @@
             });
             if (!confirm(confirmMsg)) return;
 
-            batchUpdatePoints(updates);
+            const count = await persistPointUpdates(updates, `${dateVal} 跑操登记已保存，共 ${updates.length} 条记录。`);
+            if (!count) return;
             setRunSelectedAbsentIds(new Set());
         };
 

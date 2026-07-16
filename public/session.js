@@ -91,6 +91,11 @@
     window.__verifySession__ = verifySession;
     window.__resetUserPrivateCaches__ = clearUserPrivateCaches;
     window.__clearAuthAndRedirect__ = function () {
+        try {
+            sessionStorage.setItem('classmanager:auth-expired', String(Date.now()));
+        } catch (_) {
+            // The login page still works when storage is unavailable.
+        }
         clearAuthArtifacts();
         window.location.replace(LOGIN_URL);
     };

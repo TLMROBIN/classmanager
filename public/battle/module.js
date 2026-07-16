@@ -20,6 +20,7 @@
 
         return function BattleView({ students, battle, examArchives, setExamArchives, setBattle, onApplySettlementPoints }) {
             const [results, setResults] = useState(null);
+            const [settlementPending, setSettlementPending] = useState(false);
             const [examUnlocked, setExamUnlocked] = useState(false);
             const [moreMenuOpen, setMoreMenuOpen] = useState(false);
             const [challengeForm, setChallengeForm] = useState({ from: '', to: '', stake: 0 });
@@ -312,7 +313,8 @@
                 setResults(simulation.results);
             };
 
-            const confirmSettlement = () => {
+            const confirmSettlement = async () => {
+                if (settlementPending) return;
                 if (!results) return alert("请先进行结算模拟");
                 if (!confirm("确定生效？")) return;
                 const settlementTs = Date.now();
@@ -323,13 +325,21 @@
                 const updates = battleBuildSettlementPointUpdates(teams, results);
                 let applyResult = { applied: false, count: 0, skipped: true };
                 if (updates.length > 0 && typeof onApplySettlementPoints === 'function') {
-                    applyResult = onApplySettlementPoints({
-                        updates,
-                        source: 'battle',
-                        settlementExamId: settleExamId,
-                        teamBaseExamId,
-                        summaryText: `本次双子星结算将向主积分系统写入 ${updates.length} 条记录，是否现在同步入账？`
-                    });
+                    setSettlementPending(true);
+                    try {
+                        applyResult = await Promise.resolve(onApplySettlementPoints({
+                            updates,
+                            source: 'battle',
+                            settlementExamId: settleExamId,
+                            teamBaseExamId,
+                            summaryText: `本次双子星结算将向主积分系统写入 ${updates.length} 条记录，是否现在同步入账？`
+                        }));
+                    } catch (error) {
+                        alert(`主积分入账失败：${error?.message || '请检查网络后重试'}。双子星结算尚未生效。`);
+                        return;
+                    } finally {
+                        setSettlementPending(false);
+                    }
                 }
                 const logTxt = results.pBattles.map(b => {
                     const A = teams.find(t => t.id === b.teamAId);
@@ -596,7 +606,12 @@
                             ),
                             h("div", { className: "flex gap-2" },
                                 h("button", { onClick: () => setResults(null), className: "px-3 py-2 rounded-xl bg-slate-500/30 border border-slate-400/40 text-slate-100 text-xs" }, "重新模拟"),
-                                h("button", { onClick: confirmSettlement, className: "flex-1 px-3 py-2 rounded-xl bg-emerald-500/30 border border-emerald-400/40 text-emerald-100 text-xs" }, "确认结算"),
+                                h("button", {
+                                    onClick: confirmSettlement,
+                                    disabled: settlementPending,
+                                    'aria-busy': settlementPending ? 'true' : undefined,
+                                    className: "flex-1 min-h-11 px-3 py-2 rounded-xl bg-emerald-500/30 border border-emerald-400/40 text-emerald-100 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                                }, settlementPending ? "正在入账…" : "确认结算"),
                                 h("button", { onClick: startNewSeason, className: "flex-1 px-3 py-2 rounded-xl bg-indigo-500/30 border border-indigo-400/40 text-indigo-100 text-xs" }, "归档并开启新赛季")
                             )
                         )

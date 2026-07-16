@@ -750,7 +750,8 @@
                 const data = await requestAttendanceJson('/api/attendance/check-in', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ studentName })
+                    body: JSON.stringify({ studentName }),
+                    deferAuthRedirect: true
                 });
                 applyAttendanceServerPayload(data, { mergeAttendance: false });
                 return data;
