@@ -314,21 +314,38 @@
             onToggleSelection,
             selectionLabel,
             selectAllLabel,
+            submitTargetId,
             disabled = false
         }) => {
+            const INITIAL_VISIBLE_STUDENT_COUNT = 24;
             const [query, setQuery] = useState('');
             const [groupFilter, setGroupFilter] = useState('all');
             const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+            const [visibleLimit, setVisibleLimit] = useState(INITIAL_VISIBLE_STUDENT_COUNT);
             const safeStudents = Array.isArray(students) ? students : [];
             const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
             const groupIds = Array.from(new Set(safeStudents.map(student => student.group).filter(Boolean)));
+            const selectedStudents = safeStudents.filter(student => selectedIds.has(student.id));
             const visibleStudents = safeStudents.filter(student => {
                 const matchesQuery = !normalizedQuery || String(student?.name || '').toLocaleLowerCase('zh-CN').includes(normalizedQuery);
                 const matchesGroup = groupFilter === 'all' || String(student?.group || '') === groupFilter;
                 const matchesSelected = !showSelectedOnly || selectedIds.has(student.id);
                 return matchesQuery && matchesGroup && matchesSelected;
             });
+            const displayedStudents = visibleStudents.slice(0, visibleLimit);
+            const remainingStudentCount = Math.max(0, visibleStudents.length - displayedStudents.length);
             const allVisibleSelected = visibleStudents.length > 0 && visibleStudents.every(student => selectedIds.has(student.id));
+            const selectedOnlyButtonClass = showSelectedOnly
+                ? 'border-blue-700 bg-blue-700 text-white'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50';
+            const selectedSummary = selectedStudents.length <= 6
+                ? selectedStudents.map(student => student.name).join('、')
+                : `${selectedStudents.slice(0, 6).map(student => student.name).join('、')} 等 ${selectedStudents.length} 人`;
+
+            useEffect(() => {
+                setVisibleLimit(INITIAL_VISIBLE_STUDENT_COUNT);
+            }, [normalizedQuery, groupFilter, showSelectedOnly]);
+
             const selectVisible = () => {
                 setSelectedIds(previous => {
                     const next = new Set(previous);
@@ -338,6 +355,12 @@
                     });
                     return next;
                 });
+            };
+            const jumpToSubmit = () => {
+                if (!submitTargetId || typeof document === 'undefined') return;
+                const submitButton = document.getElementById(submitTargetId);
+                submitButton?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                submitButton?.focus({ preventScroll: true });
             };
 
             return h("div", { className: "space-y-3" },
@@ -370,12 +393,27 @@
                         onClick: () => setShowSelectedOnly(previous => !previous),
                         disabled,
                         'aria-pressed': showSelectedOnly,
-                        className: `min-h-11 self-end rounded-lg border px-3 py-2 text-sm font-medium ${showSelectedOnly ? 'border-blue-700 bg-blue-700 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`
+                        className: `min-h-11 self-end rounded-lg border px-3 py-2 text-sm font-medium ${selectedOnlyButtonClass}`
                     }, `仅看已选 (${selectedIds.size})`)
+                ),
+                selectedStudents.length > 0 && h("div", {
+                    className: "flex flex-col gap-2 rounded-lg bg-gray-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                    role: 'status',
+                    'aria-live': 'polite'
+                },
+                    h("div", { className: "min-w-0 text-sm text-gray-700" },
+                        h("span", { className: "font-medium text-gray-900" }, "已选："),
+                        h("span", null, selectedSummary)
+                    ),
+                    submitTargetId && h("button", {
+                        type: 'button',
+                        onClick: jumpToSubmit,
+                        className: "min-h-11 shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                    }, "前往提交")
                 ),
                 h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
                     h("div", { className: "text-sm font-medium text-gray-700", role: 'status', 'aria-live': 'polite' },
-                        `${selectionLabel} · 已选 ${selectedIds.size} 人 · 当前显示 ${visibleStudents.length} 人`
+                        `${selectionLabel} · 已选 ${selectedIds.size} 人 · 匹配 ${visibleStudents.length} 人 · 已显示 ${displayedStudents.length} 人`
                     ),
                     h("div", { className: "flex gap-2" },
                         h("button", {
@@ -398,9 +436,12 @@
                             ? "还没有选择学生。关闭“仅看已选”后可继续选择。"
                             : "当前筛选没有匹配学生，请调整姓名或小组。"
                     )
-                    : h("div", { className: "grid max-h-64 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2 md:grid-cols-5 lg:grid-cols-6" },
-                        visibleStudents.map(student => {
+                    : h("div", { className: "register-student-grid grid max-h-64 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2 md:grid-cols-5 lg:grid-cols-6" },
+                        displayedStudents.map(student => {
                             const chosen = selectedIds.has(student.id);
+                            const studentButtonStateClass = chosen
+                                ? 'border-red-500 bg-red-50 font-medium text-red-800'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-blue-400';
                             return h("button", {
                                 key: student.id,
                                 type: 'button',
@@ -408,19 +449,34 @@
                                 disabled,
                                 'aria-pressed': chosen,
                                 'aria-label': `${student.name}，${chosen ? '已选择' : '未选择'}`,
-                                className: `min-h-11 rounded-lg border px-2 py-2 text-sm ${chosen ? 'border-red-500 bg-red-50 font-medium text-red-800' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-400'}`
+                                className: `min-h-11 rounded-lg border px-2 py-2 text-sm ${studentButtonStateClass}`
                             }, student.name);
-                        })
+                        }),
+                        remainingStudentCount > 0 && h("button", {
+                            type: 'button',
+                            onClick: () => setVisibleLimit(previous => previous + INITIAL_VISIBLE_STUDENT_COUNT),
+                            className: "col-span-full min-h-11 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm font-medium text-blue-700 hover:border-blue-400 hover:bg-blue-50"
+                        }, `继续显示 (${remainingStudentCount} 人)`),
+                        visibleLimit > INITIAL_VISIBLE_STUDENT_COUNT && remainingStudentCount === 0 && h("button", {
+                            type: 'button',
+                            onClick: () => setVisibleLimit(INITIAL_VISIBLE_STUDENT_COUNT),
+                            className: "col-span-full min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        }, "收起名单")
                     )
             );
         };
 
-        const ContextOptionButton = ({ active, onClick, children }) => h("button", {
-            type: 'button',
-            onClick,
-            'aria-pressed': active,
-            className: `min-h-11 rounded-lg border px-3 py-2 text-sm font-medium ${active ? 'border-blue-700 bg-blue-700 text-white' : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-400'}`
-        }, children);
+        const ContextOptionButton = ({ active, onClick, children }) => {
+            const stateClassName = active
+                ? 'border-blue-700 bg-blue-700 text-white'
+                : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-400';
+            return h("button", {
+                type: 'button',
+                onClick,
+                'aria-pressed': active,
+                className: `min-h-11 rounded-lg border px-3 py-2 text-sm font-medium ${stateClassName}`
+            }, children);
+        };
 
         const HomeworkPanel = ({
             students, groupsConfig, homeworkSubjects, hwSubject, setHwSubject, homeworkDates, hwDate, setHwDate,
@@ -442,10 +498,11 @@
             ),
             h(RegisterStudentPicker, {
                 students, groupsConfig, selectedIds: hwSelectedIds, setSelectedIds: setHwSelectedIds,
-                onToggleSelection: onToggleHomeworkSelection, selectionLabel: "未交学生", selectAllLabel: "全选当前范围"
+                onToggleSelection: onToggleHomeworkSelection, selectionLabel: "未交学生", selectAllLabel: "全选当前范围",
+                submitTargetId: 'homework-register-submit'
             }),
             h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
-                h("button", { onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
+                h("button", { id: 'homework-register-submit', onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
                     hwSelectedIds.size === 0 ? "提交作业登记（全员已交）" : `提交未交记录 (${hwSelectedIds.size} 人)`
                 )
             )
@@ -468,10 +525,11 @@
             ),
             h(RegisterStudentPicker, {
                 students, groupsConfig, selectedIds: runSelectedAbsentIds, setSelectedIds: setRunSelectedAbsentIds,
-                onToggleSelection: onToggleRunningExerciseSelection, selectionLabel: "缺勤学生", selectAllLabel: "全选当前范围"
+                onToggleSelection: onToggleRunningExerciseSelection, selectionLabel: "缺勤学生", selectAllLabel: "全选当前范围",
+                submitTargetId: 'running-register-submit'
             }),
             h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
-                h("button", { onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
+                h("button", { id: 'running-register-submit', onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
                     runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size} 人缺勤)`
                 )
             )
@@ -497,10 +555,12 @@
                 disabled && disabledReason && h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" }, disabledReason),
                 h(RegisterStudentPicker, {
                     students, groupsConfig, selectedIds, setSelectedIds, onToggleSelection,
-                    selectionLabel: "卫生不合格学生", selectAllLabel: "全选当前范围", disabled
+                    selectionLabel: "卫生不合格学生", selectAllLabel: "全选当前范围",
+                    submitTargetId: 'hygiene-register-submit', disabled
                 }),
                 h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
                     h("button", {
+                        id: 'hygiene-register-submit',
                         onClick: onSubmit,
                         disabled,
                         className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
@@ -544,10 +604,12 @@
                 ),
                 h(RegisterStudentPicker, {
                     students, groupsConfig, selectedIds, setSelectedIds, onToggleSelection,
-                    selectionLabel: `${currentTab.fullLabel}学生`, selectAllLabel: "全选当前范围", disabled
+                    selectionLabel: `${currentTab.fullLabel}学生`, selectAllLabel: "全选当前范围",
+                    submitTargetId: 'discipline-register-submit', disabled
                 }),
                 h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
                     h("button", {
+                        id: 'discipline-register-submit',
                         onClick: onSubmit,
                         disabled,
                         className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"

@@ -137,9 +137,34 @@ test('daily registers share one searchable student workbench without losing per-
     assert.match(views, /输入姓名中的任意文字/);
     assert.match(views, /按小组筛选/);
     assert.match(views, /仅看已选/);
-    assert.match(views, /当前显示 \$\{visibleStudents\.length\} 人/);
+    assert.match(views, /匹配 \$\{visibleStudents\.length\} 人 · 已显示 \$\{displayedStudents\.length\} 人/);
     assert.match(views, /setSelectedIds\(previous =>/);
     assert.doesNotMatch(views, /gap-1\.5|py-0\.5|bg-indigo-700|bg-emerald-700|#ea580c/);
+});
+
+test('P3 daily register limits visual density and keeps selected context actionable', () => {
+    const views = read('public/operations/views.js');
+    const styles = read('public/styles.css');
+
+    assert.match(views, /INITIAL_VISIBLE_STUDENT_COUNT = 24/);
+    assert.match(views, /visibleStudents\.slice\(0, visibleLimit\)/);
+    assert.match(views, /继续显示 \(\$\{remainingStudentCount\} 人\)/);
+    assert.match(views, /收起名单/);
+    assert.match(views, /已选：/);
+    assert.match(views, /前往提交/);
+    assert.match(views, /scrollIntoView\(\{ block: 'center', behavior: 'smooth' \}\)/);
+    assert.match(styles, /\.register-student-grid \{[\s\S]*contain: layout paint style/);
+});
+
+test('P3 global decorative motion uses restrained static treatments', () => {
+    const styles = read('public/styles.css');
+
+    assert.doesNotMatch(styles, /animate-bounce-in|cubic-bezier\(0\.34, 1\.56, 0\.64, 1\)/);
+    assert.doesNotMatch(styles, /@keyframes (twinkle|meteor|float|pulse-glow|gradient-x|shimmer)/);
+    assert.match(styles, /\.meteor-shower \{\s*display: none/);
+    assert.match(styles, /\.animate-float,[\s\S]*\.animate-pulse-glow \{ animation: none; \}/);
+    assert.match(styles, /\.frame-diamond \{ border: 2px solid #3b82f6; box-shadow: none; \}/);
+    assert.match(styles, /border-radius: 4px/);
 });
 
 test('attendance statistics prioritize action before recognition and explain empty states', () => {
