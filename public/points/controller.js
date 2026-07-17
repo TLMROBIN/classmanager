@@ -286,8 +286,12 @@
         GUEST_ROSTER,
         normalizePointScene,
         normalizePointCategory,
-        onPersist
+        onPersist,
+        onFeedback
     }) => {
+        const notify = (type, message) => {
+            if (typeof onFeedback === 'function') onFeedback({ type, message });
+        };
         const now = typeof getNow === 'function' ? getNow() : new Date();
         const today = getLocalDateKey(now);
         const alreadyIssuedToday = (Array.isArray(history) ? history : []).some(item => (
@@ -297,7 +301,7 @@
             getLocalDateKey(item.ts) === today
         ));
         if (alreadyIssuedToday) {
-            alert("今日一键工资已发放，每天只能发一次");
+            notify('warning', "今日一键工资已发放，每天只能发一次。");
             return 0;
         }
 
@@ -312,7 +316,7 @@
         const paidCustomRoles = customRoles.filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
 
         if (targets.length === 0 && paidCustomRoles.length === 0) {
-            alert("没有找到可发放工资或津贴的对象");
+            notify('warning', "没有找到可发放工资或津贴的对象，请检查工资小组和班级职务配置。");
             return 0;
         }
 
@@ -356,9 +360,6 @@
             commit: () => {
                 if (typeof setStudents === 'function') setStudents(result.nextStudents);
                 if (typeof setHistory === 'function') setHistory(result.nextHistory);
-                const extraNotes = [];
-                if (paidCustomRoles.length > 0) extraNotes.push(`${paidCustomRoles.length}个班级职务津贴`);
-                alert(`发放完成${extraNotes.length > 0 ? `（含${extraNotes.join("，")}）` : ''}`);
                 return result.count;
             }
         });

@@ -77,10 +77,15 @@
                                 promptText: "请输入维护密码以打开课代表设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起课代表设置" : "打开课代表设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { id: 'points-taxonomy-help', className: "rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900" },
+                        h("div", { className: "font-medium" }, "场景与类别如何使用"),
+                        h("p", null, "场景回答“事情在哪里发生”，类别回答“属于哪类班级管理”。它们用于积分历史筛选和统计，不会改变分值。"),
+                        h("p", null, "例如：课堂回答问题，可设为场景“课堂”、类别“学习”。")
+                    ),
                     h("div", { className: "flex justify-between items-center" },
                         h("span", { className: "text-sm font-medium text-gray-700" }, "学科列表"),
                         h("button", {
@@ -89,7 +94,7 @@
                                 list.push({ id: `subject_${Date.now()}`, name: "新学科", representatives: [] });
                                 return { ...sc, subjects: list };
                             }),
-                            className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
+                            className: "min-h-11 px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
                         }, "新增学科")
                     ),
                     subjects.map((subject, idx) => h("div", {
@@ -126,7 +131,7 @@
                                     list.splice(idx, 1);
                                     return { ...sc, subjects: list };
                                 }),
-                                className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs"
+                                className: "min-h-11 px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs"
                             }, "删除学科")
                         ),
                         h("div", { className: "border-t pt-2" },
@@ -196,7 +201,7 @@
                                 promptText: "请输入维护密码以打开积分理由设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起积分理由设置" : "打开积分理由设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
@@ -220,7 +225,7 @@
                                     }
                                 };
                             }),
-                            className: "px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
+                            className: "min-h-11 px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
                         }, "新增理由")
                     ),
                     reasons.map((reason, idx) => h("div", {
@@ -268,6 +273,7 @@
                         h("select", {
                             className: "border rounded p-2 text-sm",
                             'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的场景`,
+                            'aria-describedby': 'points-taxonomy-help',
                             value: normalizePointScene(reason.scene),
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -278,6 +284,7 @@
                         h("select", {
                             className: "border rounded p-2 text-sm",
                             'aria-label': `${reason.name || `第 ${idx + 1} 个积分理由`}的类别`,
+                            'aria-describedby': 'points-taxonomy-help',
                             value: normalizePointCategory(reason.category),
                             onChange: e => updateSystemConfig(config, setConfig, sc => {
                                 const list = [...(((sc || {}).points || {}).reasons || [])];
@@ -343,7 +350,7 @@
                                     list.splice(idx, 1);
                                     return { ...sc, points: { ...(sc.points || {}), reasons: list } };
                                 }),
-                                className: "px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs"
+                                className: "min-h-11 px-3 py-2 bg-red-50 text-red-600 rounded hover:bg-red-100 text-xs"
                             }, "删除")
                         )
                     ))
@@ -378,7 +385,7 @@
                                 promptText: "请输入维护密码以打开扣分衰减设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起扣分衰减设置" : "打开扣分衰减设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
@@ -453,7 +460,7 @@
                                 promptText: "请输入维护密码以打开跑操考勤设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起跑操设置" : "打开跑操设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
@@ -561,7 +568,7 @@
                                 promptText: "请输入维护密码以打开卫生登记设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起卫生登记设置" : "打开卫生登记设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
@@ -653,7 +660,7 @@
                                 promptText: "请输入维护密码以打开纪律登记设置："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起纪律登记设置" : "打开纪律登记设置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
@@ -803,7 +810,7 @@
                                 promptText: "请输入维护密码以打开积分记录属性维护："
                             });
                         },
-                        className: `px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                     }, isOpen ? "收起记录属性维护" : "打开记录属性维护")
                 ),
                 isVisible && h("div", { className: "bg-gray-50 border rounded-lg p-4 space-y-3 border-t pt-4" },
@@ -813,11 +820,11 @@
                             h("div", { className: "text-xs text-gray-500 mt-1" }, `共 ${filteredHistoryRecords.length} 条，当前展示 ${visibleHistoryRecords.length} 条`)
                         ),
                         h("div", { className: "flex flex-wrap gap-2" },
-                            h("button", { onClick: selectFilteredRecords, className: "px-3 py-1 bg-white border rounded text-xs hover:bg-gray-100" }, "全选筛选"),
-                            h("button", { onClick: clearRecordSelection, className: "px-3 py-1 bg-white border rounded text-xs hover:bg-gray-100" }, "清空选择"),
-                            h("button", { onClick: () => setShowPendingOnly(v => !v), className: `px-3 py-1 border rounded text-xs ${showPendingOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white hover:bg-gray-100'}` }, "仅显示待定类别记录"),
-                            h("button", { onClick: applyRecordAttributes, className: "px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700" }, "应用到已选"),
-                            h("button", { onClick: deleteSelectedRecords, className: "px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除已选")
+                            h("button", { onClick: selectFilteredRecords, className: "min-h-11 px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "全选筛选"),
+                            h("button", { onClick: clearRecordSelection, className: "min-h-11 px-3 py-2 bg-white border rounded text-xs hover:bg-gray-100" }, "清空选择"),
+                            h("button", { onClick: () => setShowPendingOnly(v => !v), className: `min-h-11 px-3 py-2 border rounded text-xs ${showPendingOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white hover:bg-gray-100'}` }, "仅显示待定类别记录"),
+                            h("button", { onClick: applyRecordAttributes, className: "min-h-11 px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700" }, "应用到已选"),
+                            h("button", { onClick: deleteSelectedRecords, className: "min-h-11 px-3 py-2 bg-red-500 text-white rounded text-xs hover:bg-red-600" }, "删除已选")
                         )
                     ),
                     h("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-2" },

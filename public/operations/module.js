@@ -127,6 +127,8 @@
             BatchAdjustModalView
         } = createOperationViews({
             h,
+            useState,
+            useEffect,
             useRef,
             Modal,
             Icon,
@@ -186,10 +188,13 @@
             const [filterDormState, setFilterDormState] = useState(() => initialUiState.filterDorm);
             const [opTabState, setOpTabState] = useState(() => initialUiState.opTab);
             const [workspaceSection, setWorkspaceSection] = useState('quick');
+            const [registerMode, setRegisterMode] = useState('homework');
             const [settingsOpen, setSettingsOpen] = useState(false);
             const operationPendingRef = useRef(false);
             const [operationPending, setOperationPending] = useState(false);
             const [operationFeedback, setOperationFeedback] = useState(null);
+            const operationConfirmResolverRef = useRef(null);
+            const [operationConfirm, setOperationConfirm] = useState(null);
             const [batchAdjustModal, setBatchAdjustModal] = useState({
                 open: false,
                 reason: null,
@@ -211,6 +216,29 @@
             const [disciplineDate, setDisciplineDate] = useState("");
             const [disciplineActiveTab, setDisciplineActiveTabState] = useState("noise");
             const [disciplineSelectedIds, setDisciplineSelectedIds] = useState(new Set());
+
+            const settleOperationConfirmation = (confirmed) => {
+                const resolver = operationConfirmResolverRef.current;
+                operationConfirmResolverRef.current = null;
+                setOperationConfirm(null);
+                resolver?.(confirmed);
+            };
+
+            const requestOperationConfirmation = (options) => new Promise(resolve => {
+                operationConfirmResolverRef.current?.(false);
+                operationConfirmResolverRef.current = resolve;
+                setOperationConfirm({
+                    title: options?.title || '确认操作',
+                    message: options?.message || '',
+                    confirmText: options?.confirmText || '确认',
+                    type: options?.type || 'info'
+                });
+            });
+
+            useEffect(() => () => {
+                operationConfirmResolverRef.current?.(false);
+                operationConfirmResolverRef.current = null;
+            }, []);
             const setDisciplineActiveTab = (tab) => {
                 setDisciplineActiveTabState(tab);
                 setDisciplineSelectedIds(new Set());
@@ -370,15 +398,43 @@
             });
             const handleWageClick = async () => {
                 if (operationPendingRef.current) return;
+                const wageGroups = Array.isArray(systemConfig.points?.dailyWageGroups)
+                    ? systemConfig.points.dailyWageGroups
+                    : [];
+                const wageTargets = (Array.isArray(students) ? students : []).filter(student => wageGroups.includes(student.group));
+                const paidRoles = (Array.isArray(systemConfig.organization?.customRoles) ? systemConfig.organization.customRoles : [])
+                    .filter(role => role && role.studentId != null && Number(role.dailyWage) !== 0);
+                const expectedRecords = wageTargets.length + paidRoles.length;
+                if (expectedRecords === 0) {
+                    setOperationFeedback({
+                        type: 'warning',
+                        message: '没有找到可发放工资或津贴的对象，请检查工资小组和班级职务配置。'
+                    });
+                    return;
+                }
+                const baseWage = Number(systemConfig.points?.dailyWageAmount);
+                const dailyWage = Number.isFinite(baseWage) ? baseWage : 5;
+                const confirmed = await requestOperationConfirmation({
+                    title: '确认发放一键工资',
+                    message: `将按当前配置生成 ${expectedRecords} 条工资积分记录。\n工资小组 ${wageTargets.length} 人，每人 ${dailyWage} 分（组长加 1 分）；班级职务津贴 ${paidRoles.length} 条。\n每天只能发放一次，请核对后继续。`,
+                    confirmText: '确认发放'
+                });
+                if (!confirmed) return;
                 operationPendingRef.current = true;
                 setOperationPending(true);
                 setOperationFeedback({ type: 'pending', message: '正在保存工资积分…' });
                 try {
-                    const count = await Promise.resolve(handleWage());
+                    let wageFeedback = null;
+                    const count = await Promise.resolve(handleWage({
+                        onFeedback: feedback => { wageFeedback = feedback; }
+                    }));
                     if (Number(count) > 0) {
                         setOperationFeedback({ type: 'success', message: `工资积分已保存，共 ${count} 条记录。` });
                     } else {
-                        setOperationFeedback(null);
+                        setOperationFeedback(wageFeedback || {
+                            type: 'warning',
+                            message: '本次没有生成工资积分记录，请检查今日是否已发放或工资配置是否完整。'
+                        });
                     }
                 } catch (error) {
                     setOperationFeedback({ type: 'error', message: `工资积分保存失败：${error?.message || '请检查网络后重试'}。` });
@@ -517,25 +573,37 @@
                 setDisciplineSelectedIds,
                 operationPendingRef,
                 setOperationPending,
-                setOperationFeedback
+                setOperationFeedback,
+                requestOperationConfirmation
             });
 
+            const registerModes = [
+                { id: 'homework', label: '作业', icon: 'book', count: hwSelectedIds.size, enabled: true },
+                { id: 'running', label: '跑操', icon: 'tasks', count: runSelectedAbsentIds.size, enabled: true },
+                { id: 'hygiene', label: '卫生', icon: 'droplet', count: hygieneSelectedIds.size, enabled: !!systemConfig.enabledFeatures?.hygieneRegister },
+                { id: 'discipline', label: '纪律', icon: 'shield', count: disciplineSelectedIds.size, enabled: !!systemConfig.enabledFeatures?.disciplineRegister }
+            ].filter(item => item.enabled);
+            const activeRegisterMode = registerModes.some(item => item.id === registerMode) ? registerMode : 'homework';
+
             return h("div", { className: "space-y-6 animate-fade-in" },
-                h("div", { className: "bg-white rounded-xl border border-gray-200 p-2 flex flex-wrap gap-2", role: 'group', 'aria-label': '积分工作区' }, [
+                h("div", { className: "bg-white rounded-xl border border-gray-200 p-2 flex flex-wrap gap-2", role: 'tablist', 'aria-label': '积分工作区' }, [
                     { id: 'quick', label: '快速积分', icon: 'star' },
                     { id: 'registers', label: '日常登记', icon: 'tasks' },
                     { id: 'history', label: '积分历史', icon: 'history' },
                     { id: 'settings', label: '设置', icon: 'settings' }
                 ].map(item => h("button", {
                     key: item.id,
-                    'aria-pressed': workspaceSection === item.id,
+                    id: `operations-tab-${item.id}`,
+                    role: 'tab',
+                    'aria-selected': workspaceSection === item.id,
+                    'aria-controls': `operations-panel-${item.id}`,
                     onClick: () => setWorkspaceSection(item.id),
                     className: `min-h-11 px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 transition ${workspaceSection === item.id ? 'bg-blue-700 text-white' : 'text-gray-700 hover:bg-gray-100'}`
                 }, h(Icon, { name: item.icon, size: 16 }), item.label))),
                 operationFeedback && h("div", {
                     role: operationFeedback.type === 'error' ? 'alert' : 'status',
                     'aria-live': operationFeedback.type === 'error' ? 'assertive' : 'polite',
-                    className: `rounded-lg border px-4 py-3 flex items-center justify-between gap-3 text-sm ${operationFeedback.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : operationFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`
+                    className: `rounded-lg border px-4 py-3 flex items-center justify-between gap-3 text-sm ${operationFeedback.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : operationFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : operationFeedback.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-800'}`
                 },
                     h("span", null, operationFeedback.message),
                     operationFeedback.type !== 'pending' && h("button", {
@@ -545,7 +613,7 @@
                         'aria-label': '关闭积分操作提示'
                     }, h(Icon, { name: 'x', size: 16 }))
                 ),
-                workspaceSection === 'quick' && h("section", { className: "space-y-6", 'aria-label': '快速积分' },
+                workspaceSection === 'quick' && h("section", { id: 'operations-panel-quick', role: 'tabpanel', 'aria-labelledby': 'operations-tab-quick', className: "space-y-6" },
                     h(SelectionPanel, {
                         filterGroup: filterGroupState,
                         setFilterGroup,
@@ -575,7 +643,7 @@
                         onCustomReason: handleCustomReason
                     })
                 ),
-                workspaceSection === 'settings' && h("div", { className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
+                workspaceSection === 'settings' && h("div", { id: 'operations-panel-settings', role: 'tabpanel', 'aria-labelledby': 'operations-tab-settings', className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
                     h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                         h("div", { className: "space-y-1" },
                             h("div", { className: "flex items-center gap-2 text-gray-800" },
@@ -586,7 +654,7 @@
                         ),
                         h("button", {
                             onClick: toggleSettingsPanel,
-                            className: `px-3 py-2 rounded-lg text-sm font-medium ${settingsOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                            className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${settingsOpen ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
                         }, settingsOpen ? "收起设置" : "打开设置")
                     ),
                     h("div", { className: settingsOpen ? "space-y-4 border-t pt-4" : "hidden" },
@@ -598,7 +666,7 @@
                             h("div", { className: "flex flex-wrap gap-2" },
                                 h("button", {
                                     onClick: handleExportScoreExcel,
-                                    className: "px-3 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50 text-sm"
+                                    className: "min-h-11 px-3 py-2 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 text-sm"
                                 }, "导出积分 Excel"),
                                 h("button", {
                                     onClick: handleFixScore,
@@ -649,69 +717,66 @@
                         })
                     )
                 ),
-                workspaceSection === 'registers' && h("section", { className: "grid grid-cols-1 md:grid-cols-2 gap-4", 'aria-label': '日常登记' },
-                    h(HomeworkPanel, {
-                        students: Array.isArray(students) ? students : [],
-                        homeworkSubjects,
-                        hwSubject,
-                        setHwSubject,
-                        homeworkDates,
-                        hwDate,
-                        setHwDate,
-                        hwSelectedIds,
-                        setHwSelectedIds,
-                        onToggleHomeworkSelection: toggleHomeworkSelection,
-                        onSubmit: handleHomeworkSubmit
-                    }),
-                    h(RunningExercisePanel, {
-                        students: Array.isArray(students) ? students : [],
-                        runningExerciseDates: homeworkDates,
-                        runDate,
-                        setRunDate,
-                        runSelectedAbsentIds,
-                        setRunSelectedAbsentIds,
-                        runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
-                        runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
-                        onToggleRunningExerciseSelection: toggleRunningExerciseSelection,
-                        onSubmit: handleRunningExerciseSubmit
-                    }),
-                    systemConfig.enabledFeatures?.hygieneRegister && h(HygienePanel, {
-                        students: Array.isArray(students) ? students : [],
-                        sessionName: hygieneSession ? hygieneSession.name : null,
-                        date: getTodayStr(),
-                        inspectorNames: hygieneInspectorNames,
-                        inspectorBonus: hygieneInspectorBonus,
-                        areaPenalty: hygieneAreaPenalty,
-                        selectedIds: hygieneSelectedIds,
-                        setSelectedIds: setHygieneSelectedIds,
-                        onToggleSelection: toggleHygieneSelection,
-                        onSubmit: handleHygieneSubmit,
-                        disabled: !hygieneSession,
-                        disabledReason: hygieneSession ? null : "当前非卫生登记时段（请于早读/午练/放学期间登记）"
-                    }),
-                    systemConfig.enabledFeatures?.disciplineRegister && h(DisciplinePanel, {
-                        students: Array.isArray(students) ? students : [],
-                        dates: homeworkDates,
-                        date: disciplineDate || homeworkDates[1] || homeworkDates[0],
-                        setDate: setDisciplineDate,
-                        activeTab: disciplineActiveTab,
-                        setActiveTab: setDisciplineActiveTab,
-                        selectedIds: disciplineSelectedIds,
-                        setSelectedIds: setDisciplineSelectedIds,
-                        commissionerNames: disciplineCommissionerNamesMap[disciplineActiveTab] || [],
-                        commissionerBonus: disciplineConfig[disciplineActiveTab]?.commissionerBonus ?? 1,
-                        penalty: disciplineConfig[disciplineActiveTab]?.penalty ?? 1,
-                        onToggleSelection: toggleDisciplineSelection,
-                        onSubmit: handleDisciplineSubmit,
-                        disabled: false
+                workspaceSection === 'registers' && h("section", { id: 'operations-panel-registers', role: 'tabpanel', 'aria-labelledby': 'operations-tab-registers', className: "space-y-4" },
+                    h("div", { className: "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" },
+                        h("div", null,
+                            h("h2", { className: "text-lg font-bold text-gray-900" }, "日常登记"),
+                            h("p", { className: "mt-1 text-sm text-gray-600" }, "先选择登记类型，再筛选学生。切换类型不会清空各自的已选名单。")
+                        ),
+                        h("div", { className: "flex flex-wrap gap-2", role: 'tablist', 'aria-label': '日常登记类型' },
+                            registerModes.map(item => h("button", {
+                                key: item.id,
+                                id: `register-mode-tab-${item.id}`,
+                                role: 'tab',
+                                'aria-selected': activeRegisterMode === item.id,
+                                'aria-controls': 'register-workbench-panel',
+                                onClick: () => setRegisterMode(item.id),
+                                className: `min-h-11 rounded-lg border px-4 py-2 text-sm font-medium inline-flex items-center gap-2 ${activeRegisterMode === item.id ? 'border-blue-700 bg-blue-700 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-400'}`
+                            }, h(Icon, { name: item.icon, size: 16 }), item.label, item.count > 0 && h("span", { className: `rounded-full px-2 py-1 text-xs ${activeRegisterMode === item.id ? 'bg-white text-blue-800' : 'bg-red-50 text-red-700'}` }, item.count)))
+                        )
+                    ),
+                    h("div", { id: 'register-workbench-panel', role: 'tabpanel', 'aria-labelledby': `register-mode-tab-${activeRegisterMode}` },
+                        activeRegisterMode === 'homework' && h(HomeworkPanel, {
+                            students: Array.isArray(students) ? students : [], groupsConfig, homeworkSubjects, hwSubject, setHwSubject,
+                            homeworkDates, hwDate, setHwDate, hwSelectedIds, setHwSelectedIds,
+                            onToggleHomeworkSelection: toggleHomeworkSelection, onSubmit: handleHomeworkSubmit
+                        }),
+                        activeRegisterMode === 'running' && h(RunningExercisePanel, {
+                            students: Array.isArray(students) ? students : [], groupsConfig, runningExerciseDates: homeworkDates,
+                            runDate, setRunDate, runSelectedAbsentIds, setRunSelectedAbsentIds,
+                            runningExerciseAbsentPenalty: (systemConfig.points || {}).runningExerciseAbsentPenalty,
+                            runningExercisePresentBonus: (systemConfig.points || {}).runningExercisePresentBonus,
+                            onToggleRunningExerciseSelection: toggleRunningExerciseSelection, onSubmit: handleRunningExerciseSubmit
+                        }),
+                        activeRegisterMode === 'hygiene' && h(HygienePanel, {
+                            students: Array.isArray(students) ? students : [], groupsConfig,
+                            sessionName: hygieneSession ? hygieneSession.name : null, date: getTodayStr(),
+                            inspectorNames: hygieneInspectorNames, inspectorBonus: hygieneInspectorBonus, areaPenalty: hygieneAreaPenalty,
+                            selectedIds: hygieneSelectedIds, setSelectedIds: setHygieneSelectedIds,
+                            onToggleSelection: toggleHygieneSelection, onSubmit: handleHygieneSubmit,
+                            disabled: !hygieneSession,
+                            disabledReason: hygieneSession ? null : "当前非卫生登记时段。请在早读、午练或放学时段登记。"
+                        }),
+                        activeRegisterMode === 'discipline' && h(DisciplinePanel, {
+                            students: Array.isArray(students) ? students : [], groupsConfig, dates: homeworkDates,
+                            date: disciplineDate || homeworkDates[1] || homeworkDates[0], setDate: setDisciplineDate,
+                            activeTab: disciplineActiveTab, setActiveTab: setDisciplineActiveTab,
+                            selectedIds: disciplineSelectedIds, setSelectedIds: setDisciplineSelectedIds,
+                            commissionerNames: disciplineCommissionerNamesMap[disciplineActiveTab] || [],
+                            commissionerBonus: disciplineConfig[disciplineActiveTab]?.commissionerBonus ?? 1,
+                            penalty: disciplineConfig[disciplineActiveTab]?.penalty ?? 1,
+                            onToggleSelection: toggleDisciplineSelection, onSubmit: handleDisciplineSubmit, disabled: false
+                        })
+                    )
+                ),
+                workspaceSection === 'history' && h("section", { id: 'operations-panel-history', role: 'tabpanel', 'aria-labelledby': 'operations-tab-history' },
+                    h(OperationHistorySection, {
+                        students,
+                        history,
+                        onUndo: handleUndo,
+                        embedded: true
                     })
                 ),
-                workspaceSection === 'history' && h(OperationHistorySection, {
-                    students,
-                    history,
-                    onUndo: handleUndo,
-                    embedded: true
-                }),
                 h(BatchAdjustModalView, {
                     batchAdjustModal,
                     setBatchAdjustModal,
@@ -719,8 +784,18 @@
                     onUpdateAllValues: updateAllBatchValues,
                     onUpdateStudentValue: updateStudentBatchValue,
                     isPending: operationPending,
-                    errorMessage: batchAdjustModal.open && operationFeedback?.type === 'error' ? operationFeedback.message : ''
-                })
+                    errorMessage: batchAdjustModal.open && ['error', 'warning'].includes(operationFeedback?.type) ? operationFeedback.message : ''
+                }),
+                h(Modal, {
+                    isOpen: !!operationConfirm,
+                    title: operationConfirm?.title || '确认操作',
+                    onClose: () => settleOperationConfirmation(false),
+                    onConfirm: () => settleOperationConfirmation(true),
+                    confirmText: operationConfirm?.confirmText || '确认',
+                    type: operationConfirm?.type || 'info'
+                },
+                    h("p", { className: "whitespace-pre-line text-sm leading-6 text-gray-700" }, operationConfirm?.message || '')
+                )
             );
         };
     };

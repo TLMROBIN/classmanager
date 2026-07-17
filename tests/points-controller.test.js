@@ -67,7 +67,7 @@ test('handleWage pays custom role wage when role student id is a string and stud
     assert.equal(nextHistory[0].reason, '班级职务津贴: 班长');
     assert.equal(nextConfig, 'not-called');
     assert.ok(!Object.prototype.hasOwnProperty.call(persistedPatch, 'nextConfig'));
-    assert.deepEqual(alerts, ['发放完成（含1个班级职务津贴）']);
+    assert.deepEqual(alerts, []);
 });
 
 test('handleWage pays wages when stale lastWageDate exists but no wage history exists today', () => {
@@ -120,7 +120,32 @@ test('handleWage pays wages when stale lastWageDate exists but no wage history e
     assert.equal(nextHistory[1].reason, '每日工资');
     assert.equal(nextConfig, 'not-called');
     assert.ok(!Object.prototype.hasOwnProperty.call(persistedPatch, 'nextConfig'));
-    assert.deepEqual(alerts, ['发放完成']);
+    assert.deepEqual(alerts, []);
+});
+
+test('handleWage reports a blocked reason without using a browser alert', () => {
+    const { controller, alerts } = loadPointsController();
+    const feedback = [];
+    const result = controller.handleWage({
+        config: { systemConfig: { organization: { customRoles: [] }, points: { dailyWageAmount: 5, dailyWageGroups: [] } } },
+        students: [],
+        history: [],
+        getNow: () => new Date('2026-07-17T08:00:00+08:00'),
+        getSystemConfig: schema.getSystemConfig,
+        getCustomRoles: schema.getCustomRoles,
+        setStudents: () => {},
+        setHistory: () => {},
+        GUEST_ROSTER: [],
+        normalizePointScene: value => value,
+        normalizePointCategory: value => value,
+        onFeedback: notice => feedback.push(notice)
+    });
+
+    assert.equal(result, 0);
+    assert.deepEqual(alerts, []);
+    assert.equal(feedback.length, 1);
+    assert.equal(feedback[0].type, 'warning');
+    assert.match(feedback[0].message, /检查工资小组和班级职务配置/);
 });
 
 test('handleUndo persists related domain rollback when provided by caller', () => {

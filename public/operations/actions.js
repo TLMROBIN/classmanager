@@ -72,7 +72,8 @@
             setDisciplineSelectedIds,
             operationPendingRef,
             setOperationPending,
-            setOperationFeedback
+            setOperationFeedback,
+            requestOperationConfirmation
         } = deps || {};
 
         if (
@@ -102,10 +103,15 @@
             typeof setDisciplineSelectedIds !== 'function' ||
             !operationPendingRef ||
             typeof setOperationPending !== 'function' ||
-            typeof setOperationFeedback !== 'function'
+            typeof setOperationFeedback !== 'function' ||
+            typeof requestOperationConfirmation !== 'function'
         ) {
             throw new Error('Operation action dependencies are missing');
         }
+
+        const showWarning = (message) => {
+            setOperationFeedback({ type: 'warning', message });
+        };
 
         const toggleSelection = (id) => {
             setSelectedIds(prev => toggleIdInSet(prev, id));
@@ -120,14 +126,14 @@
         };
 
         const handleReasonClick = (reason) => {
-            if (selectedIdsState.size === 0) return alert("请先选择学生");
+            if (selectedIdsState.size === 0) return showWarning("请先选择学生");
             setOperationFeedback(null);
             const modalStudents = buildModalStudents({
                 selectedIds: selectedIdsState,
                 studentMap,
                 getInitialValue: () => (reason.isMulti ? 1 : Math.abs(reason.val))
             });
-            if (modalStudents.length === 0) return alert("未找到有效的学生选择");
+            if (modalStudents.length === 0) return showWarning("未找到有效的学生选择");
             setBatchAdjustModal({
                 open: true,
                 reason,
@@ -143,14 +149,14 @@
         };
 
         const handleCustomReason = () => {
-            if (selectedIdsState.size === 0) return alert("请先选择学生");
+            if (selectedIdsState.size === 0) return showWarning("请先选择学生");
             setOperationFeedback(null);
             const modalStudents = buildModalStudents({
                 selectedIds: selectedIdsState,
                 studentMap,
                 getInitialValue: () => 0
             });
-            if (modalStudents.length === 0) return alert("未找到有效的学生选择");
+            if (modalStudents.length === 0) return showWarning("未找到有效的学生选择");
             setBatchAdjustModal({
                 open: true,
                 reason: { name: "", custom: true },
@@ -210,8 +216,8 @@
         };
 
         const handleBatchConfirm = async () => {
-            if (batchAdjustModal.isCustom && !batchAdjustModal.customReasonName) return alert("请输入理由");
-            if (!batchAdjustModal.scene || !batchAdjustModal.category) return alert("请先选择场景与类别");
+            if (batchAdjustModal.isCustom && !batchAdjustModal.customReasonName) return showWarning("请输入理由");
+            if (!batchAdjustModal.scene || !batchAdjustModal.category) return showWarning("请先选择场景与类别");
 
             const updates = buildBatchUpdates({
                 modalState: batchAdjustModal,
@@ -230,15 +236,15 @@
         };
 
         const handleHomeworkSubmit = async () => {
-            if (!hwSubject) return alert("请选择学科");
+            if (!hwSubject) return showWarning("请选择学科");
             const dateVal = hwDate || homeworkDates[0];
-            if (!dateVal) return alert("请选择日期");
+            if (!dateVal) return showWarning("请选择日期");
 
             const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
                 item.reason && item.reason.includes(`${hwSubject}作业`) && item.reason.includes(dateVal)
             ));
             if (alreadySubmitted) {
-                return alert(`${hwSubject} ${dateVal} 已完成登记，每科每天只能登记一次`);
+                return showWarning(`${hwSubject} ${dateVal} 已完成登记，每科每天只能登记一次`);
             }
 
             const subjectConfig = (Array.isArray(subjectsConfig) ? subjectsConfig : []).find(subject => subject.name === hwSubject);
@@ -252,7 +258,7 @@
             });
 
             if (updates.length === 0) {
-                return alert("没有需要登记的记录。请确保已设置课代表。");
+                return showWarning("没有需要登记的记录。请确保已设置课代表。");
             }
 
             const confirmMsg = buildHomeworkConfirmMessage({
@@ -263,7 +269,11 @@
                 studentMap
             });
 
-            if (!confirm(confirmMsg)) return;
+            if (!await requestOperationConfirmation({
+                title: "确认作业登记",
+                message: confirmMsg,
+                confirmText: "确认登记"
+            })) return;
 
             const count = await persistPointUpdates(updates, `${hwSubject} ${dateVal} 作业登记已保存，共 ${updates.length} 条记录。`);
             if (!count) return;
@@ -280,9 +290,9 @@
         };
 
         const handleHygieneSubmit = async () => {
-            if (!hygieneSession) return alert("当前非卫生登记时段");
+            if (!hygieneSession) return showWarning("当前非卫生登记时段");
             const dateVal = getTodayStr();
-            if (!dateVal) return alert("无法确定当前日期");
+            if (!dateVal) return showWarning("无法确定当前日期");
 
             const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
                 item.reason && (
@@ -291,7 +301,7 @@
                 )
             ));
             if (alreadySubmitted) {
-                return alert(`${dateVal} ${hygieneSession.name} 已完成卫生登记，每个时段每天只能登记一次`);
+                return showWarning(`${dateVal} ${hygieneSession.name} 已完成卫生登记，每个时段每天只能登记一次`);
             }
 
             const updates = buildHygieneUpdates({
@@ -304,7 +314,7 @@
             });
 
             if (updates.length === 0) {
-                return alert("当前卫生登记不会产生积分变动，请检查专员是否已设置。");
+                return showWarning("当前卫生登记不会产生积分变动，请检查专员是否已设置。");
             }
 
             const confirmMsg = buildHygieneConfirmMessage({
@@ -316,7 +326,12 @@
                 areaPenalty: hygieneAreaPenalty,
                 inspectorBonus: hygieneInspectorBonus
             });
-            if (!confirm(confirmMsg)) return;
+            if (!await requestOperationConfirmation({
+                title: "确认卫生登记",
+                message: confirmMsg,
+                confirmText: "确认登记",
+                type: "danger"
+            })) return;
 
             const count = await persistPointUpdates(updates, `${dateVal} ${hygieneSession.name} 卫生登记已保存，共 ${updates.length} 条记录。`);
             if (!count) return;
@@ -329,10 +344,10 @@
 
         const handleDisciplineSubmit = async () => {
             const dateVal = disciplineDate;
-            if (!dateVal) return alert("请选择日期");
+            if (!dateVal) return showWarning("请选择日期");
 
             const tabConfig = disciplineConfig[disciplineActiveTab];
-            if (!tabConfig) return alert("请选择登记理由");
+            if (!tabConfig) return showWarning("请选择登记理由");
 
             const reasonLabels = {
                 noise: '学习时间讲话',
@@ -346,7 +361,7 @@
                 item.reason && item.reason.includes(`${dateVal} ${reasonLabel}`)
             ));
             if (alreadySubmitted) {
-                return alert(`${dateVal} ${reasonLabel} 已完成登记，每天同一理由只能登记一次`);
+                return showWarning(`${dateVal} ${reasonLabel} 已完成登记，每天同一理由只能登记一次`);
             }
 
             const commissionerIds = Array.isArray(disciplineCommissionerMap[disciplineActiveTab])
@@ -364,7 +379,7 @@
             });
 
             if (updates.length === 0) {
-                return alert("当前纪律登记不会产生积分变动，请检查专员是否已设置。");
+                return showWarning("当前纪律登记不会产生积分变动，请检查专员是否已设置。");
             }
 
             const confirmMsg = buildDisciplineConfirmMessage({
@@ -376,7 +391,12 @@
                 penalty: tabConfig.penalty,
                 commissionerBonus: tabConfig.commissionerBonus
             });
-            if (!confirm(confirmMsg)) return;
+            if (!await requestOperationConfirmation({
+                title: "确认纪律登记",
+                message: confirmMsg,
+                confirmText: "确认登记",
+                type: "danger"
+            })) return;
 
             const count = await persistPointUpdates(updates, `${dateVal} ${reasonLabel} 登记已保存，共 ${updates.length} 条记录。`);
             if (!count) return;
@@ -385,13 +405,13 @@
 
         const handleRunningExerciseSubmit = async () => {
             const dateVal = runDate || homeworkDates[0];
-            if (!dateVal) return alert("请选择日期");
+            if (!dateVal) return showWarning("请选择日期");
 
             const alreadySubmitted = (Array.isArray(historyList) ? historyList : []).some(item => (
                 item.reason && item.reason.includes(dateVal) && item.reason.includes('跑操')
             ));
             if (alreadySubmitted) {
-                return alert(`${dateVal} 已完成跑操登记，每天只能登记一次`);
+                return showWarning(`${dateVal} 已完成跑操登记，每天只能登记一次`);
             }
 
             const updates = buildRunningExerciseUpdates({
@@ -404,7 +424,7 @@
                 commissionerBonus: runningExerciseCommissionerBonus
             });
             if (updates.length === 0) {
-                return alert("当前跑操登记不会产生积分变动，请先在积分操作设置里调整跑操分值。");
+                return showWarning("当前跑操登记不会产生积分变动，请先在积分操作设置里调整跑操分值。");
             }
 
             const confirmMsg = buildRunningExerciseConfirmMessage({
@@ -417,7 +437,12 @@
                 commissionerId: runningExerciseCommissionerStudentId,
                 commissionerBonus: runningExerciseCommissionerBonus
             });
-            if (!confirm(confirmMsg)) return;
+            if (!await requestOperationConfirmation({
+                title: "确认跑操登记",
+                message: confirmMsg,
+                confirmText: "确认登记",
+                type: "danger"
+            })) return;
 
             const count = await persistPointUpdates(updates, `${dateVal} 跑操登记已保存，共 ${updates.length} 条记录。`);
             if (!count) return;

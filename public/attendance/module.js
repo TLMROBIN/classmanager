@@ -6,6 +6,7 @@
             useEffect,
             useMemo,
             useRef,
+            Modal,
             Icon,
             requireAdminAuth,
             getNow,
@@ -31,6 +32,7 @@
             !useEffect ||
             !useMemo ||
             !useRef ||
+            !Modal ||
             !Icon ||
             !requireAdminAuth ||
             !getNow ||
@@ -78,11 +80,16 @@
 
             const [currentTime, setCurrentTime] = useState(getNow());
             const [view, setView] = useState('checkin');
+            const [checkInQuery, setCheckInQuery] = useState('');
             const [checkInReceipt, setCheckInReceipt] = useState(null);
             const [checkInError, setCheckInError] = useState(null);
             const [pendingStudentName, setPendingStudentName] = useState('');
             const pendingCheckInRef = useRef(new Set());
             const [perfectBonusPending, setPerfectBonusPending] = useState(false);
+            const [maintenancePending, setMaintenancePending] = useState('');
+            const [attendanceFeedback, setAttendanceFeedback] = useState(null);
+            const attendanceConfirmResolverRef = useRef(null);
+            const [attendanceConfirm, setAttendanceConfirm] = useState(null);
             const [startDate, setStartDate] = useState(() => getThisWeekRange().start);
             const [endDate, setEndDate] = useState(() => getThisWeekRange().end);
             const [selectedIssues, setSelectedIssues] = useState([]);
@@ -93,6 +100,33 @@
             const [newStudentMsg, setNewStudentMsg] = useState("");
             const [queryStudentName, setQueryStudentName] = useState("");
             const records = attendanceRecords || {};
+
+            const settleAttendanceConfirmation = (confirmed) => {
+                const resolver = attendanceConfirmResolverRef.current;
+                attendanceConfirmResolverRef.current = null;
+                setAttendanceConfirm(null);
+                resolver?.(confirmed);
+            };
+
+            const requestAttendanceConfirmation = (options) => new Promise(resolve => {
+                attendanceConfirmResolverRef.current?.(false);
+                attendanceConfirmResolverRef.current = resolve;
+                setAttendanceConfirm({
+                    title: options?.title || '确认考勤操作',
+                    message: options?.message || '',
+                    confirmText: options?.confirmText || '确认',
+                    type: options?.type || 'info'
+                });
+            });
+
+            const showAttendanceFeedback = (message, type = 'warning') => {
+                setAttendanceFeedback({ message, type });
+            };
+
+            useEffect(() => () => {
+                attendanceConfirmResolverRef.current?.(false);
+                attendanceConfirmResolverRef.current = null;
+            }, []);
 
             useEffect(() => {
                 const timer = setInterval(() => {
@@ -201,6 +235,7 @@
                 }
                 pendingCheckInRef.current.add(studentName);
                 setPendingStudentName(studentName);
+                setCheckInReceipt(null);
                 setCheckInError(null);
                 try {
                     const result = await onAttendanceCheckIn(studentName);
@@ -208,6 +243,8 @@
                     if (!checkIn?.record) throw new Error('服务未返回有效打卡凭据');
                     const latestRecords = result?.attendanceRecords || records;
                     const streak = calculateStreak(studentName, latestRecords, currentTime);
+                    const newBalance = Number(checkIn.newBalance);
+                    if (!Number.isFinite(newBalance)) throw new Error('服务未返回有效积分余额');
                     setCheckInReceipt({
                         student: studentName,
                         sessionName: checkIn.sessionName || currentSession?.name || '当前时段',
@@ -216,7 +253,7 @@
                         status: checkIn.status,
                         usedMorningLateCard: checkIn.status === 'late' && checkIn.usedMorningLateCard,
                         pointsDelta: Number(checkIn.pointsDelta) || 0,
-                        newBalance: Number(checkIn.newBalance) || 0
+                        newBalance
                     });
                     try {
                         sessionStorage.removeItem('classmanager:pending-attendance');
@@ -339,7 +376,11 @@
                 return streak;
             };
 
+            const statsRangeInvalid = Boolean(startDate && endDate && startDate > endDate);
             const statsData = useMemo(() => {
+                if (!startDate || !endDate || startDate > endDate) {
+                    return { stats: {}, bestStreaks: [], mostLates: [], mostAbsents: [], perfects: [], dates: [] };
+                }
                 const start = new Date(startDate);
                 const end = new Date(endDate);
                 const list = [];
@@ -434,18 +475,27 @@
             const isAllSelected = abnormalRecords.length > 0 && selectedIssues.length === abnormalRecords.length;
 
             const handleBatchCorrect = async () => {
-                if (selectedIssues.length === 0) return;
-                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
-                if (!confirm(`确定将选中的 ${selectedIssues.length} 条记录修正为“正常”吗？\n迟到：返还扣分\n缺勤：补录为正常`)) return;
+                if (maintenancePending || selectedIssues.length === 0) return;
+                if (typeof onAttendanceMaintenance !== 'function') return showAttendanceFeedback("考勤维护接口未就绪");
+                if (!await requestAttendanceConfirmation({
+                    title: "确认修正考勤",
+                    message: `确定将选中的 ${selectedIssues.length} 条记录修正为“正常”吗？\n迟到：返还扣分\n缺勤：补录为正常`,
+                    confirmText: "确认修正"
+                })) return;
                 if (!await requireAdminAuth("请输入维护密码：")) return;
+                setMaintenancePending('correct');
+                showAttendanceFeedback("正在保存考勤修正…", 'pending');
                 try {
                     await onAttendanceMaintenance('correct', selectedIssues.map(id => abnormalRecords.find(item => item.id === id)).filter(Boolean));
                     setSelectedIssues([]);
-                    alert("修正成功");
+                    showAttendanceFeedback("考勤修正已保存。", 'success');
                 } catch (error) {
-                    if (error?.code !== 'AUTH_REQUIRED') {
-                        alert(error?.message || '考勤修正失败');
-                    }
+                    showAttendanceFeedback(
+                        error?.code === 'AUTH_REQUIRED' ? '维护权限已失效，请重新验证后再试。' : (error?.message || '考勤修正失败'),
+                        error?.code === 'AUTH_REQUIRED' ? 'warning' : 'error'
+                    );
+                } finally {
+                    setMaintenancePending('');
                 }
             };
 
@@ -453,53 +503,81 @@
                 const absentItems = selectedIssues
                     .map(id => abnormalRecords.find(item => item.id === id))
                     .filter(item => item && item.type === 'absent' && !item.settled);
-                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
-                if (isFrozen) return alert("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
-                if (absentItems.length === 0) return alert("请至少选择一条缺勤记录");
+                if (maintenancePending) return;
+                if (typeof onAttendanceMaintenance !== 'function') return showAttendanceFeedback("考勤维护接口未就绪");
+                if (isFrozen) return showAttendanceFeedback("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
+                if (absentItems.length === 0) return showAttendanceFeedback("请至少选择一条未结算的缺勤记录");
                 const penaltyRules = getPenaltyRules(config);
                 const absentPenalty = penaltyRules.absent || -5;
-                if (!confirm(`确定将选中的 ${absentItems.length} 条缺勤记录进行结算扣分吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`)) return;
+                if (!await requestAttendanceConfirmation({
+                    title: "确认结算缺勤",
+                    message: `确定将选中的 ${absentItems.length} 条缺勤记录进行结算扣分吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`,
+                    confirmText: "确认扣分",
+                    type: "danger"
+                })) return;
                 if (!await requireAdminAuth("请输入维护密码：")) return;
+                setMaintenancePending('settleSelected');
+                showAttendanceFeedback("正在结算所选缺勤…", 'pending');
                 try {
                     await onAttendanceMaintenance('settleAbsent', absentItems);
                     setSelectedIssues([]);
-                    alert("结算成功");
+                    showAttendanceFeedback(`已结算 ${absentItems.length} 条缺勤记录。`, 'success');
                 } catch (error) {
-                    if (error?.code !== 'AUTH_REQUIRED') {
-                        alert(error?.message || '缺勤结算失败');
-                    }
+                    showAttendanceFeedback(
+                        error?.code === 'AUTH_REQUIRED' ? '维护权限已失效，请重新验证后再试。' : (error?.message || '缺勤结算失败'),
+                        error?.code === 'AUTH_REQUIRED' ? 'warning' : 'error'
+                    );
+                } finally {
+                    setMaintenancePending('');
                 }
             };
 
             const handleSettleAllAbsent = async () => {
-                if (typeof onAttendanceMaintenance !== 'function') return alert("考勤维护接口未就绪");
-                if (isFrozen) return alert("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
+                if (maintenancePending) return;
+                if (typeof onAttendanceMaintenance !== 'function') return showAttendanceFeedback("考勤维护接口未就绪");
+                if (isFrozen) return showAttendanceFeedback("假期封存中，无法结算缺勤。请先在维护页面解除封存。");
                 const allAbsentItems = abnormalRecords.filter(item => item.type === 'absent' && !item.settled);
-                if (allAbsentItems.length === 0) return alert("当前没有待结算的缺勤记录");
+                if (allAbsentItems.length === 0) return showAttendanceFeedback("当前没有待结算的缺勤记录");
                 const penaltyRules = getPenaltyRules(config);
                 const absentPenalty = penaltyRules.absent || -5;
-                if (!confirm(`确定要一键结算当前列表中的 ${allAbsentItems.length} 条缺勤记录吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`)) return;
+                if (!await requestAttendanceConfirmation({
+                    title: "确认一键结算缺勤",
+                    message: `确定要一键结算当前列表中的 ${allAbsentItems.length} 条缺勤记录吗？\n每条扣除 ${Math.abs(absentPenalty)} 分。`,
+                    confirmText: "全部结算",
+                    type: "danger"
+                })) return;
                 if (!await requireAdminAuth("请输入维护密码：")) return;
+                setMaintenancePending('settleAll');
+                showAttendanceFeedback("正在批量结算缺勤…", 'pending');
                 try {
                     await onAttendanceMaintenance('settleAbsent', allAbsentItems);
                     const settledIds = new Set(allAbsentItems.map(item => item.id));
                     setSelectedIssues(selectedIssues.filter(id => !settledIds.has(id)));
-                    alert("批量结算成功");
+                    showAttendanceFeedback(`已批量结算 ${allAbsentItems.length} 条缺勤记录。`, 'success');
                 } catch (error) {
-                    if (error?.code !== 'AUTH_REQUIRED') {
-                        alert(error?.message || '批量结算失败');
-                    }
+                    showAttendanceFeedback(
+                        error?.code === 'AUTH_REQUIRED' ? '维护权限已失效，请重新验证后再试。' : (error?.message || '批量结算失败'),
+                        error?.code === 'AUTH_REQUIRED' ? 'warning' : 'error'
+                    );
+                } finally {
+                    setMaintenancePending('');
                 }
             };
 
             const handlePerfectBonus = async () => {
                 if (perfectBonusPending) return;
-                if (isFrozen) return alert("假期封存中，无法发放全勤奖。请先在维护页面解除封存。");
-                if (statsData.perfects.length === 0) return alert("当前名单无全勤学生");
+                if (isFrozen) return showAttendanceFeedback("假期封存中，无法发放全勤奖。请先在维护页面解除封存。");
+                if (statsRangeInvalid) return showAttendanceFeedback("开始日期不能晚于结束日期，请先修正统计区间。");
+                if (statsData.perfects.length === 0) return showAttendanceFeedback("当前名单无全勤学生");
                 const penaltyRules = getPenaltyRules(config);
                 const perfectAttendanceBonus = penaltyRules.perfectAttendance || 10;
-                if (!confirm(`确定为当前全勤名单中的 ${statsData.perfects.length} 人发放 +${perfectAttendanceBonus} 分"周全勤奖"吗？`)) return;
+                if (!await requestAttendanceConfirmation({
+                    title: "确认发放全勤奖",
+                    message: `确定为当前全勤名单中的 ${statsData.perfects.length} 人发放 +${perfectAttendanceBonus} 分“周全勤奖”吗？`,
+                    confirmText: "确认发放"
+                })) return;
                 setPerfectBonusPending(true);
+                showAttendanceFeedback("正在保存全勤奖励…", 'pending');
                 try {
                     await Promise.resolve(awardPerfectAttendance({
                         perfectNames: statsData.perfects,
@@ -507,13 +585,20 @@
                         perfectAttendanceBonus,
                         updatePoints
                     }));
-                    alert("全勤奖已保存");
+                    showAttendanceFeedback(`全勤奖已保存，共 ${statsData.perfects.length} 人。`, 'success');
                 } catch (error) {
-                    alert(`全勤奖保存失败：${error?.message || '请检查网络后重试'}`);
+                    showAttendanceFeedback(`全勤奖保存失败：${error?.message || '请检查网络后重试'}`, 'error');
                 } finally {
                     setPerfectBonusPending(false);
                 }
             };
+
+            const normalizedCheckInQuery = checkInQuery.trim().toLocaleLowerCase('zh-CN');
+            const checkInStudents = normalizedCheckInQuery
+                ? (Array.isArray(students) ? students : []).filter(student => (
+                    String(student?.name || '').toLocaleLowerCase('zh-CN').includes(normalizedCheckInQuery)
+                ))
+                : (Array.isArray(students) ? students : []);
 
             return h("div", { className: "space-y-4" },
                 h("div", { className: "bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative" },
@@ -535,8 +620,21 @@
                     h("div", { className: "attendance-quote-text" }, `“${todayQuote}”`)
                 ),
                 isFrozen && h("div", { className: "bg-amber-100 border-b border-amber-200 text-amber-900 text-sm py-2 px-4 text-center font-medium" }, "假期封存中：缺勤不记录、迟到不扣分、结算与全勤奖已暂停"),
-                h("div", { className: "flex border-b bg-gray-50", role: "group", 'aria-label': "考勤功能" }, [{ id: 'checkin', label: '学生打卡', icon: 'check' }, { id: 'stats', label: '统计', icon: 'chart' }, { id: 'tools', label: '教师工具', icon: 'settings' }, { id: 'revoke', label: '修正', icon: 'clipboard' }].map(item => h("button", { key: item.id, 'aria-pressed': view === item.id, onClick: () => item.id === 'revoke' ? handleRevokeAuth() : setView(item.id), className: `flex-1 min-h-11 py-3 px-2 flex justify-center items-center gap-2 text-sm font-medium transition ${view === item.id ? 'bg-white text-blue-700 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-100'}` }, h(Icon, { name: item.icon, size: 16 }), item.label))),
-                h("div", { className: "p-4 min-h-[400px]" },
+                h("div", { className: "flex border-b bg-gray-50", role: "tablist", 'aria-label': "考勤功能" }, [{ id: 'checkin', label: '学生打卡', icon: 'check' }, { id: 'stats', label: '统计', icon: 'chart' }, { id: 'tools', label: '教师工具', icon: 'settings' }, { id: 'revoke', label: '修正', icon: 'clipboard' }].map(item => h("button", { key: item.id, id: `attendance-tab-${item.id}`, role: 'tab', 'aria-selected': view === item.id, 'aria-controls': `attendance-panel-${item.id}`, onClick: () => item.id === 'revoke' ? handleRevokeAuth() : setView(item.id), className: `flex-1 min-h-11 py-3 px-2 flex justify-center items-center gap-2 text-sm font-medium transition ${view === item.id ? 'bg-white text-blue-700 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-100'}` }, h(Icon, { name: item.icon, size: 16 }), item.label))),
+                attendanceFeedback && h("div", {
+                    role: attendanceFeedback.type === 'error' ? 'alert' : 'status',
+                    'aria-live': attendanceFeedback.type === 'error' ? 'assertive' : 'polite',
+                    className: `mx-4 mt-4 rounded-lg border px-4 py-3 flex items-center justify-between gap-3 text-sm ${attendanceFeedback.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : attendanceFeedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : attendanceFeedback.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-800'}`
+                },
+                    h("span", null, attendanceFeedback.message),
+                    attendanceFeedback.type !== 'pending' && h("button", {
+                        type: 'button',
+                        onClick: () => setAttendanceFeedback(null),
+                        className: "min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg hover:bg-black/5",
+                        'aria-label': '关闭考勤操作提示'
+                    }, h(Icon, { name: 'x', size: 16 }))
+                ),
+                h("div", { id: `attendance-panel-${view}`, role: 'tabpanel', 'aria-labelledby': `attendance-tab-${view}`, className: "p-4 min-h-[400px]" },
                     view === 'checkin' && h("div", { className: "animate-fade-in space-y-4" },
                         h("section", { className: "bg-amber-50 border border-amber-200 rounded-xl p-4", 'aria-labelledby': 'attendance-notice-title' },
                             h("div", { className: "flex items-center gap-2 mb-3" },
@@ -587,7 +685,20 @@
                                 )
                             )
                         ),
-                        h("div", { className: "grid grid-cols-4 sm:grid-cols-5 gap-2" }, students.map(student => {
+                        h("label", { className: "block text-sm font-medium text-gray-700", htmlFor: 'attendance-checkin-search' },
+                            "快速查找姓名",
+                            h("input", {
+                                id: 'attendance-checkin-search',
+                                type: 'search',
+                                value: checkInQuery,
+                                onChange: event => setCheckInQuery(event.target.value),
+                                placeholder: '输入姓名中的任意文字',
+                                className: "mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            })
+                        ),
+                        checkInStudents.length === 0
+                            ? h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900", role: 'status' }, "没有匹配的学生，请检查姓名后重试。")
+                            : h("div", { className: "grid grid-cols-4 sm:grid-cols-5 gap-2" }, checkInStudents.map(student => {
                             const todayKey = getDateString(currentTime);
                             const isDone = currentSession && records[todayKey]?.[student.name]?.[currentSession.id];
                             const status = isDone?.status;
@@ -678,7 +789,7 @@
                                         onUpdateAttendanceConfig(nextSystemConfig);
                                         return;
                                     }
-                                    alert("考勤设置已修改，但当前页面未提供配置持久化回调。");
+                                    showAttendanceFeedback("考勤设置已修改，但当前页面未提供配置持久化回调。", 'error');
                                 }
                             })
                             : h("div", { className: "bg-white rounded-xl border border-gray-200 p-4 space-y-2" },
@@ -689,11 +800,11 @@
                     view === 'stats' && h("div", { className: "animate-fade-in space-y-6" },
                         h("div", { className: "flex items-end gap-2 text-sm bg-gray-50 p-3 rounded-lg flex-wrap" },
                             h("label", { className: "text-gray-700 font-medium", htmlFor: 'attendance-stats-start' }, "开始日期",
-                                h("input", { id: 'attendance-stats-start', type: "date", value: startDate, onChange: e => setStartDate(e.target.value), className: "block mt-1 min-h-11 border rounded-lg px-2" })
+                                h("input", { id: 'attendance-stats-start', type: "date", value: startDate, max: endDate || undefined, 'aria-describedby': statsRangeInvalid ? 'attendance-stats-range-error' : undefined, onChange: e => setStartDate(e.target.value), className: "block mt-1 min-h-11 border rounded-lg px-2" })
                             ),
                             h("span", null, "-"),
                             h("label", { className: "text-gray-700 font-medium", htmlFor: 'attendance-stats-end' }, "结束日期",
-                                h("input", { id: 'attendance-stats-end', type: "date", value: endDate, onChange: e => setEndDate(e.target.value), className: "block mt-1 min-h-11 border rounded-lg px-2" })
+                                h("input", { id: 'attendance-stats-end', type: "date", value: endDate, min: startDate || undefined, 'aria-describedby': statsRangeInvalid ? 'attendance-stats-range-error' : undefined, onChange: e => setEndDate(e.target.value), className: "block mt-1 min-h-11 border rounded-lg px-2" })
                             ),
                             h("label", { className: "text-gray-700 font-medium flex-1 min-w-[160px]", htmlFor: 'attendance-stats-student' }, "查询学生",
                                 h("input", {
@@ -702,9 +813,12 @@
                                     value: queryStudentName,
                                     onChange: e => setQueryStudentName(e.target.value),
                                     placeholder: "输入学生姓名",
+                                    list: 'attendance-student-options',
                                     className: "block mt-1 w-full min-h-11 border rounded-lg px-3 py-2"
                                 })
-                            )
+                            ),
+                            h("datalist", { id: 'attendance-student-options' }, (Array.isArray(students) ? students : []).map(student => h("option", { key: student.id, value: student.name }))),
+                            statsRangeInvalid && h("p", { id: 'attendance-stats-range-error', role: 'alert', className: "w-full text-sm font-medium text-red-700" }, "开始日期不能晚于结束日期，请调整统计区间。")
                         ),
                         queryStudentName ? (() => {
                             const student = students.find(item => item.name.trim() === queryStudentName.trim());
@@ -733,10 +847,10 @@
                                     h("table", { className: "w-full text-sm text-left" },
                                         h("thead", { className: "bg-gray-50 sticky top-0" },
                                             h("tr", null,
-                                                h("th", { className: "p-2 border-b" }, "日期"),
-                                                h("th", { className: "p-2 border-b" }, "时段"),
-                                                h("th", { className: "p-2 border-b" }, "状态"),
-                                                h("th", { className: "p-2 border-b" }, "打卡时间")
+                                                h("th", { scope: 'col', className: "p-2 border-b" }, "日期"),
+                                                h("th", { scope: 'col', className: "p-2 border-b" }, "时段"),
+                                                h("th", { scope: 'col', className: "p-2 border-b" }, "状态"),
+                                                h("th", { scope: 'col', className: "p-2 border-b" }, "打卡时间")
                                             )
                                         ),
                                         h("tbody", null,
@@ -769,26 +883,60 @@
                                 )
                             );
                         })() : null,
-                        h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
-                            h("div", { className: "bg-white border rounded-lg p-3 relative" },
-                                h("div", { className: "flex justify-between items-center mb-2" },
-                                    h("h4", { className: "font-bold text-green-600 flex items-center gap-2 text-sm" }, h(Icon, { name: "shield" }), "区间全勤"),
-                                    (() => {
-                                        const penaltyRules = getPenaltyRules(config);
-                                        const perfectAttendanceBonus = penaltyRules.perfectAttendance || 10;
-                                        return h("button", {
-                                            onClick: handlePerfectBonus,
-                                            disabled: perfectBonusPending,
-                                            'aria-busy': perfectBonusPending ? 'true' : undefined,
-                                            className: "min-h-11 px-3 py-2 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                        }, perfectBonusPending ? "正在保存…" : `全勤奖 +${perfectAttendanceBonus}`);
-                                    })()
+                        h("section", { className: "space-y-3", 'aria-labelledby': 'attendance-needs-attention-title' },
+                            h("div", { className: "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" },
+                                h("div", null,
+                                    h("h3", { id: 'attendance-needs-attention-title', className: "text-lg font-bold text-gray-900" }, "需要关注"),
+                                    h("p", { className: "mt-1 text-sm text-gray-600" }, "先查看区间内的迟到与缺勤，再进入修正处理。")
                                 ),
-                                h("div", { className: "flex flex-wrap gap-1" }, statsData.perfects.length > 0 ? statsData.perfects.map(name => h("span", { key: name, className: "text-xs bg-green-50 text-green-700 px-2 py-1 rounded" }, name)) : h("span", { className: "text-xs text-gray-400" }, "无"))
+                                h("button", { onClick: handleRevokeAuth, className: "min-h-11 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" }, "进入考勤修正")
                             ),
-                            h("div", { className: "bg-white border rounded-lg p-3" }, h("h4", { className: "font-bold text-orange-500 flex items-center gap-2 text-sm mb-2" }, h(Icon, { name: "flame" }), "连胜榜"), h("div", { className: "space-y-1 max-h-32 overflow-y-auto" }, statsData.bestStreaks.map((item, idx) => h("div", { key: item.name, className: "flex justify-between text-xs" }, h("span", null, `${idx + 1}. ${item.name}`), h("span", { className: "font-bold text-orange-600" }, `${item.val} 天`))))),
-                            h("div", { className: "bg-white border rounded-lg p-3" }, h("h4", { className: "font-bold text-red-500 flex items-center gap-2 text-sm mb-2" }, h(Icon, { name: "alert" }), "迟到预警"), h("div", { className: "space-y-1 max-h-32 overflow-y-auto" }, statsData.mostLates.map(item => h("div", { key: item.name, className: "flex justify-between text-xs" }, h("span", null, item.name), h("span", { className: "font-bold text-red-600" }, `${item.val} 次`))))),
-                            h("div", { className: "bg-white border rounded-lg p-3" }, h("h4", { className: "font-bold text-gray-600 flex items-center gap-2 text-sm mb-2" }, h(Icon, { name: "users" }), "缺勤统计"), h("div", { className: "space-y-1 max-h-32 overflow-y-auto" }, statsData.mostAbsents.map(item => h("div", { key: item.name, className: "flex justify-between text-xs" }, h("span", null, item.name), h("span", { className: "font-bold text-gray-700" }, `${item.val} 次`)))))
+                            h("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" },
+                                h("div", { className: "rounded-lg border border-red-200 bg-red-50 p-4" },
+                                    h("h4", { className: "mb-3 flex items-center gap-2 text-sm font-bold text-red-800" }, h(Icon, { name: "alert" }), "迟到记录"),
+                                    statsData.mostLates.length > 0
+                                        ? h("div", { className: "max-h-40 space-y-2 overflow-y-auto" }, statsData.mostLates.map(item => h("div", { key: item.name, className: "flex justify-between text-sm text-red-900" }, h("span", null, item.name), h("span", { className: "font-bold" }, `${item.val} 次`))))
+                                        : h("p", { className: "text-sm text-red-800" }, "本区间无迟到记录。")
+                                ),
+                                h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 p-4" },
+                                    h("h4", { className: "mb-3 flex items-center gap-2 text-sm font-bold text-amber-900" }, h(Icon, { name: "users" }), "缺勤记录"),
+                                    statsData.mostAbsents.length > 0
+                                        ? h("div", { className: "max-h-40 space-y-2 overflow-y-auto" }, statsData.mostAbsents.map(item => h("div", { key: item.name, className: "flex justify-between text-sm text-amber-950" }, h("span", null, item.name), h("span", { className: "font-bold" }, `${item.val} 次`))))
+                                        : h("p", { className: "text-sm text-amber-900" }, "本区间无缺勤记录。")
+                                )
+                            )
+                        ),
+                        h("section", { className: "space-y-3 border-t border-gray-200 pt-6", 'aria-labelledby': 'attendance-recognition-title' },
+                            h("div", null,
+                                h("h3", { id: 'attendance-recognition-title', className: "text-lg font-bold text-gray-900" }, "表扬与参考"),
+                                h("p", { className: "mt-1 text-sm text-gray-600" }, "确认全勤名单并查看连续出勤表现。")
+                            ),
+                            h("div", { className: "grid grid-cols-1 gap-4 md:grid-cols-2" },
+                                h("div", { className: "rounded-lg border border-green-200 bg-green-50 p-4" },
+                                    h("div", { className: "mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" },
+                                        h("h4", { className: "flex items-center gap-2 text-sm font-bold text-green-900" }, h(Icon, { name: "shield" }), "区间全勤"),
+                                        (() => {
+                                            const penaltyRules = getPenaltyRules(config);
+                                            const perfectAttendanceBonus = penaltyRules.perfectAttendance || 10;
+                                            return h("button", {
+                                                onClick: handlePerfectBonus,
+                                                disabled: perfectBonusPending || statsRangeInvalid,
+                                                'aria-busy': perfectBonusPending ? 'true' : undefined,
+                                                className: "min-h-11 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                            }, perfectBonusPending ? "正在保存…" : `发放全勤奖 +${perfectAttendanceBonus}`);
+                                        })()
+                                    ),
+                                    statsData.perfects.length > 0
+                                        ? h("div", { className: "flex flex-wrap gap-2" }, statsData.perfects.map(name => h("span", { key: name, className: "rounded-full border border-green-200 bg-white px-2 py-1 text-sm text-green-800" }, name)))
+                                        : h("p", { className: "text-sm text-green-900" }, "本区间暂无全勤学生。")
+                                ),
+                                h("div", { className: "rounded-lg border border-blue-200 bg-blue-50 p-4" },
+                                    h("h4", { className: "mb-3 flex items-center gap-2 text-sm font-bold text-blue-900" }, h(Icon, { name: "flame" }), "连续出勤"),
+                                    statsData.bestStreaks.length > 0
+                                        ? h("div", { className: "max-h-40 space-y-2 overflow-y-auto" }, statsData.bestStreaks.map((item, idx) => h("div", { key: item.name, className: "flex justify-between text-sm text-blue-900" }, h("span", null, `${idx + 1}. ${item.name}`), h("span", { className: "font-bold" }, `${item.val} 天`))))
+                                        : h("p", { className: "text-sm text-blue-900" }, "本区间暂无连续出勤排行。")
+                                )
+                            )
                         )
                     ),
                     view === 'revoke' && h("div", { className: "animate-fade-in" },
@@ -802,13 +950,13 @@
                                 ),
                                 h("div", { className: "flex items-center gap-1" },
                                     h("span", { className: "text-xs text-gray-500" }, "日期:"),
-                                    h("input", { type: "date", value: filterDate, onChange: e => setFilterDate(e.target.value), className: "border rounded text-xs p-1" })
+                                    h("input", { type: "date", value: filterDate, onChange: e => setFilterDate(e.target.value), 'aria-label': '按日期筛选异常考勤', className: "min-h-11 border rounded-lg text-xs px-2 py-1" })
                                 ),
-                                h("select", { value: filterSession, onChange: e => setFilterSession(e.target.value), className: "border rounded text-xs p-1" },
+                                h("select", { value: filterSession, onChange: e => setFilterSession(e.target.value), 'aria-label': '按时段筛选异常考勤', className: "min-h-11 border rounded-lg text-xs px-2 py-1" },
                                     h("option", { value: "all" }, "全部时段"),
                                     getScheduleConfig(config).map(item => h("option", { key: item.id, value: item.id }, item.name))
                                 ),
-                                h("select", { value: filterType, onChange: e => setFilterType(e.target.value), className: "border rounded text-xs p-1" },
+                                h("select", { value: filterType, onChange: e => setFilterType(e.target.value), 'aria-label': '按类型筛选异常考勤', className: "min-h-11 border rounded-lg text-xs px-2 py-1" },
                                     h("option", { value: "all" }, "全部类型"),
                                     h("option", { value: "late" }, "迟到"),
                                     h("option", { value: "absent" }, "缺勤")
@@ -816,18 +964,28 @@
                             ),
                             h("div", { className: "flex gap-2" },
                                 h("button", { onClick: handleExportAttendanceExcel, className: "min-h-11 bg-white border text-gray-700 text-xs px-3 py-2 rounded-lg hover:bg-gray-50" }, "导出 Excel"),
-                                h("button", { onClick: handleBatchCorrect, disabled: selectedIssues.length === 0, className: "min-h-11 bg-green-700 text-white text-xs px-3 py-2 rounded-lg hover:bg-green-800 disabled:opacity-50" }, `修正/补卡`),
+                                h("button", { onClick: handleBatchCorrect, disabled: selectedIssues.length === 0 || !!maintenancePending, 'aria-busy': maintenancePending === 'correct' ? 'true' : undefined, className: "min-h-11 bg-green-700 text-white text-xs px-3 py-2 rounded-lg hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50" }, maintenancePending === 'correct' ? "正在修正…" : `修正/补卡`),
                                 (() => {
                                     const penaltyRules = getPenaltyRules(config);
                                     const absentPenalty = penaltyRules.absent || -5;
-                                    return h("button", { onClick: handleBatchAbsent, disabled: selectedIssues.length === 0, className: "min-h-11 bg-red-700 text-white text-xs px-3 py-2 rounded-lg hover:bg-red-800 disabled:opacity-50" }, `结算缺勤 (${absentPenalty})`);
+                                    return h("button", { onClick: handleBatchAbsent, disabled: selectedIssues.length === 0 || !!maintenancePending, 'aria-busy': maintenancePending === 'settleSelected' ? 'true' : undefined, className: "min-h-11 bg-red-700 text-white text-xs px-3 py-2 rounded-lg hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50" }, maintenancePending === 'settleSelected' ? "正在结算…" : `结算缺勤 (${absentPenalty})`);
                                 })(),
-                                h("button", { onClick: handleSettleAllAbsent, className: "min-h-11 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-1" }, h(Icon, { name: "lightning", size: 12 }), `一键结算所有`)
+                                h("button", { onClick: handleSettleAllAbsent, disabled: !!maintenancePending, 'aria-busy': maintenancePending === 'settleAll' ? 'true' : undefined, className: "min-h-11 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-50" }, h(Icon, { name: "lightning", size: 12 }), maintenancePending === 'settleAll' ? "正在结算…" : `一键结算所有`)
                             )
                         ),
                         h("div", { className: "border rounded bg-white max-h-80 overflow-y-auto" }, abnormalRecords.map(item => h("label", { key: item.id, className: "min-h-11 flex items-center p-2 border-b last:border-0 hover:bg-gray-50 text-xs cursor-pointer" }, h("input", { type: "checkbox", checked: selectedIssues.includes(item.id), onChange: () => { const set = new Set(selectedIssues); if (set.has(item.id)) set.delete(item.id); else set.add(item.id); setSelectedIssues(Array.from(set)); }, className: "mr-2" }), h("span", { className: "sr-only" }, `选择 ${item.name} ${item.date} ${item.session} ${item.desc}`), h("div", { className: "flex-1 grid grid-cols-4 gap-1" }, h("span", null, item.date), h("span", { className: "font-bold" }, item.name), h("span", { className: "text-gray-500" }, item.session), h("span", { className: item.type === 'late' ? 'text-red-700' : 'text-gray-600' }, item.desc)))))
                     )
                 )
+                ),
+                h(Modal, {
+                    isOpen: !!attendanceConfirm,
+                    title: attendanceConfirm?.title || '确认考勤操作',
+                    onClose: () => settleAttendanceConfirmation(false),
+                    onConfirm: () => settleAttendanceConfirmation(true),
+                    confirmText: attendanceConfirm?.confirmText || '确认',
+                    type: attendanceConfirm?.type || 'info'
+                },
+                    h("p", { className: "whitespace-pre-line text-sm leading-6 text-gray-700" }, attendanceConfirm?.message || '')
                 )
             );
         };

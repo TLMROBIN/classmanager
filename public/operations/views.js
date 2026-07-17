@@ -2,6 +2,8 @@
     window.createOperationViews = function createOperationViews(deps) {
         const {
             h,
+            useState,
+            useEffect,
             useRef,
             Modal,
             Icon,
@@ -15,6 +17,8 @@
 
         if (
             !h ||
+            !useState ||
+            !useEffect ||
             !useRef ||
             !Modal ||
             !Icon ||
@@ -44,7 +48,7 @@
             h("div", { className: "flex gap-2 items-center" },
                 h(Icon, { name: "filter", className: "text-gray-400" }),
                 h("select", {
-                    className: "border rounded p-2 text-sm",
+                    className: "min-h-11 border rounded-lg px-3 py-2 text-sm",
                     'aria-label': '按小组筛选学生',
                     value: filterGroup,
                     onChange: e => setFilterGroup(e.target.value)
@@ -53,7 +57,7 @@
                     Object.entries(groupsConfig).map(([key, value]) => h("option", { key, value: key }, value.name))
                 ),
                 h("select", {
-                    className: "border rounded p-2 text-sm",
+                    className: "min-h-11 border rounded-lg px-3 py-2 text-sm",
                     'aria-label': '按宿舍筛选学生',
                     value: filterDorm,
                     onChange: e => setFilterDorm(e.target.value)
@@ -107,6 +111,7 @@
             onCustomReason
         }) => {
             const scrollRef = useRef(null);
+            const [scrollState, setScrollState] = useState({ canScrollLeft: false, canScrollRight: false });
             const dragStateRef = useRef({
                 active: false,
                 startX: 0,
@@ -114,6 +119,44 @@
                 moved: false,
                 suppressClick: false
             });
+
+            const updateScrollState = () => {
+                const el = scrollRef.current;
+                if (!el) return;
+                const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+                const nextState = {
+                    canScrollLeft: el.scrollLeft > 2,
+                    canScrollRight: el.scrollLeft < maxScrollLeft - 2
+                };
+                setScrollState(current => (
+                    current.canScrollLeft === nextState.canScrollLeft && current.canScrollRight === nextState.canScrollRight
+                        ? current
+                        : nextState
+                ));
+            };
+
+            useEffect(() => {
+                const el = scrollRef.current;
+                if (!el) return undefined;
+                updateScrollState();
+                el.addEventListener('scroll', updateScrollState, { passive: true });
+                const resizeObserver = typeof ResizeObserver === 'function'
+                    ? new ResizeObserver(updateScrollState)
+                    : null;
+                resizeObserver?.observe(el);
+                window.addEventListener('resize', updateScrollState);
+                return () => {
+                    el.removeEventListener('scroll', updateScrollState);
+                    resizeObserver?.disconnect();
+                    window.removeEventListener('resize', updateScrollState);
+                };
+            }, [reasons.length]);
+
+            const scrollReasons = (direction) => {
+                const el = scrollRef.current;
+                if (!el) return;
+                el.scrollBy({ left: direction * Math.max(220, el.clientWidth * 0.7), behavior: 'smooth' });
+            };
 
             const beginDrag = (clientX) => {
                 const el = scrollRef.current;
@@ -209,9 +252,30 @@
                         h("button", { onClick: onClearSelection, className: "min-h-11 text-gray-600 hover:text-gray-800 px-3" }, "清空")
                     )
                 ),
+                (scrollState.canScrollLeft || scrollState.canScrollRight) && h("div", {
+                    className: "mb-2 flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-xs text-blue-800"
+                },
+                    h("span", { className: "px-1" }, "左右浏览更多积分理由"),
+                    h("div", { className: "flex gap-1", role: "group", 'aria-label': "浏览积分理由" },
+                        h("button", {
+                            type: "button",
+                            onClick: () => scrollReasons(-1),
+                            disabled: !scrollState.canScrollLeft,
+                            className: "min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg bg-white text-blue-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35",
+                            'aria-label': "向左浏览更多积分理由"
+                        }, h(Icon, { name: "arrowLeft", size: 18 })),
+                        h("button", {
+                            type: "button",
+                            onClick: () => scrollReasons(1),
+                            disabled: !scrollState.canScrollRight,
+                            className: "min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg bg-white text-blue-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35",
+                            'aria-label': "向右浏览更多积分理由"
+                        }, h(Icon, { name: "arrowRight", size: 18 }))
+                    )
+                ),
                 h("div", {
                     ref: scrollRef,
-                    className: "overflow-x-auto scrollbar-hide pb-2 reason-scroll cursor-grab active:cursor-grabbing",
+                    className: "overflow-x-auto pb-2 reason-scroll cursor-grab active:cursor-grabbing",
                     onMouseDown: handleMouseDown,
                     onMouseMove: handleMouseMove,
                     onMouseUp: handleMouseUp,
@@ -242,263 +306,252 @@
             );
         };
 
-        const HomeworkPanel = ({
+        const RegisterStudentPicker = ({
             students,
-            homeworkSubjects,
-            hwSubject,
-            setHwSubject,
-            homeworkDates,
-            hwDate,
-            setHwDate,
-            hwSelectedIds,
-            setHwSelectedIds,
-            onToggleHomeworkSelection,
-            onSubmit
-        }) => h("div", { className: "bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col" },
-            h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "book" }), "作业登记"),
-            h("div", { className: "flex flex-wrap gap-1 mb-2" },
-                homeworkSubjects.map(subject => h("button", {
-                    key: subject,
-                    onClick: () => setHwSubject(subject),
-                    'aria-pressed': hwSubject === subject,
-                    className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${hwSubject === subject ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                }, subject))
-            ),
-            h("div", { className: "flex flex-wrap gap-1 mb-2" },
-                homeworkDates.map(date => h("button", {
-                    key: date,
-                    onClick: () => setHwDate(date),
-                    'aria-pressed': (hwDate || homeworkDates[0]) === date,
-                    className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${((hwDate || homeworkDates[0]) === date) ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                }, date))
-            ),
-            h("div", { className: "flex justify-between items-center mb-1" },
-                h("div", { className: "text-sm text-gray-600" }, "选择未交学生"),
-                h("div", { className: "flex gap-2" },
-                    h("button", { onClick: () => setHwSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
+            groupsConfig,
+            selectedIds,
+            setSelectedIds,
+            onToggleSelection,
+            selectionLabel,
+            selectAllLabel,
+            disabled = false
+        }) => {
+            const [query, setQuery] = useState('');
+            const [groupFilter, setGroupFilter] = useState('all');
+            const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+            const safeStudents = Array.isArray(students) ? students : [];
+            const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
+            const groupIds = Array.from(new Set(safeStudents.map(student => student.group).filter(Boolean)));
+            const visibleStudents = safeStudents.filter(student => {
+                const matchesQuery = !normalizedQuery || String(student?.name || '').toLocaleLowerCase('zh-CN').includes(normalizedQuery);
+                const matchesGroup = groupFilter === 'all' || String(student?.group || '') === groupFilter;
+                const matchesSelected = !showSelectedOnly || selectedIds.has(student.id);
+                return matchesQuery && matchesGroup && matchesSelected;
+            });
+            const allVisibleSelected = visibleStudents.length > 0 && visibleStudents.every(student => selectedIds.has(student.id));
+            const selectVisible = () => {
+                setSelectedIds(previous => {
+                    const next = new Set(previous);
+                    visibleStudents.forEach(student => {
+                        if (allVisibleSelected) next.delete(student.id);
+                        else next.add(student.id);
+                    });
+                    return next;
+                });
+            };
+
+            return h("div", { className: "space-y-3" },
+                h("div", { className: "flex flex-col gap-2 sm:flex-row" },
+                    h("label", { className: "flex-1 text-sm font-medium text-gray-700" },
+                        "查找学生",
+                        h("input", {
+                            type: 'search',
+                            value: query,
+                            onChange: event => setQuery(event.target.value),
+                            placeholder: '输入姓名中的任意文字',
+                            disabled,
+                            className: "mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        })
+                    ),
+                    h("label", { className: "text-sm font-medium text-gray-700 sm:w-40" },
+                        "按小组筛选",
+                        h("select", {
+                            value: groupFilter,
+                            onChange: event => setGroupFilter(event.target.value),
+                            disabled,
+                            className: "mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        },
+                            h("option", { value: 'all' }, "全部小组"),
+                            groupIds.map(groupId => h("option", { key: groupId, value: groupId }, groupsConfig?.[groupId]?.name || groupId))
+                        )
+                    ),
                     h("button", {
-                        onClick: () => setHwSelectedIds(new Set(students.map(student => student.id))),
-                        className: "min-h-11 px-2 text-xs text-blue-700"
-                    }, "全选")
+                        type: 'button',
+                        onClick: () => setShowSelectedOnly(previous => !previous),
+                        disabled,
+                        'aria-pressed': showSelectedOnly,
+                        className: `min-h-11 self-end rounded-lg border px-3 py-2 text-sm font-medium ${showSelectedOnly ? 'border-blue-700 bg-blue-700 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`
+                    }, `仅看已选 (${selectedIds.size})`)
+                ),
+                h("div", { className: "flex flex-wrap items-center justify-between gap-2" },
+                    h("div", { className: "text-sm font-medium text-gray-700", role: 'status', 'aria-live': 'polite' },
+                        `${selectionLabel} · 已选 ${selectedIds.size} 人 · 当前显示 ${visibleStudents.length} 人`
+                    ),
+                    h("div", { className: "flex gap-2" },
+                        h("button", {
+                            type: 'button',
+                            onClick: () => setSelectedIds(new Set()),
+                            disabled: disabled || selectedIds.size === 0,
+                            className: "min-h-11 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        }, "清空已选"),
+                        h("button", {
+                            type: 'button',
+                            onClick: selectVisible,
+                            disabled: disabled || visibleStudents.length === 0,
+                            className: "min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        }, allVisibleSelected ? "取消当前范围" : `${selectAllLabel} (${visibleStudents.length})`)
+                    )
+                ),
+                visibleStudents.length === 0
+                    ? h("div", { className: "rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700" },
+                        showSelectedOnly && selectedIds.size === 0
+                            ? "还没有选择学生。关闭“仅看已选”后可继续选择。"
+                            : "当前筛选没有匹配学生，请调整姓名或小组。"
+                    )
+                    : h("div", { className: "grid max-h-64 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2 md:grid-cols-5 lg:grid-cols-6" },
+                        visibleStudents.map(student => {
+                            const chosen = selectedIds.has(student.id);
+                            return h("button", {
+                                key: student.id,
+                                type: 'button',
+                                onClick: () => !disabled && onToggleSelection(student.id),
+                                disabled,
+                                'aria-pressed': chosen,
+                                'aria-label': `${student.name}，${chosen ? '已选择' : '未选择'}`,
+                                className: `min-h-11 rounded-lg border px-2 py-2 text-sm ${chosen ? 'border-red-500 bg-red-50 font-medium text-red-800' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-400'}`
+                            }, student.name);
+                        })
+                    )
+            );
+        };
+
+        const ContextOptionButton = ({ active, onClick, children }) => h("button", {
+            type: 'button',
+            onClick,
+            'aria-pressed': active,
+            className: `min-h-11 rounded-lg border px-3 py-2 text-sm font-medium ${active ? 'border-blue-700 bg-blue-700 text-white' : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-400'}`
+        }, children);
+
+        const HomeworkPanel = ({
+            students, groupsConfig, homeworkSubjects, hwSubject, setHwSubject, homeworkDates, hwDate, setHwDate,
+            hwSelectedIds, setHwSelectedIds, onToggleHomeworkSelection, onSubmit
+        }) => h("div", { className: "space-y-4 rounded-xl border border-gray-200 bg-white p-4" },
+            h("div", null,
+                h("h3", { className: "flex items-center gap-2 text-base font-bold text-gray-900" }, h(Icon, { name: "book" }), "作业登记"),
+                h("p", { className: "mt-1 text-sm text-gray-600" }, "选择学科和日期，再标记未交作业的学生。未选任何人表示全员已交。")
+            ),
+            h("div", { className: "space-y-3" },
+                h("div", null,
+                    h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "学科"),
+                    h("div", { className: "flex flex-wrap gap-2" }, homeworkSubjects.map(subject => h(ContextOptionButton, { key: subject, active: hwSubject === subject, onClick: () => setHwSubject(subject) }, subject)))
+                ),
+                h("div", null,
+                    h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "登记日期"),
+                    h("div", { className: "flex flex-wrap gap-2" }, homeworkDates.map(date => h(ContextOptionButton, { key: date, active: (hwDate || homeworkDates[0]) === date, onClick: () => setHwDate(date) }, date)))
                 )
             ),
-            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
-                students.map(student => {
-                    const chosen = hwSelectedIds.has(student.id);
-                    return h("button", {
-                        key: student.id,
-                        onClick: () => onToggleHomeworkSelection(student.id),
-                        'aria-pressed': chosen,
-                        className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
-                    }, student.name);
-                })
-            ),
-            h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
-                h("button", {
-                    onClick: onSubmit,
-                    className: "min-h-11 px-4 py-2 rounded-lg bg-red-700 text-white text-sm hover:bg-red-800"
-                }, hwSelectedIds.size === 0 ? "提交（无人未交）" : `提交未交记录 (${hwSelectedIds.size}人)`)
+            h(RegisterStudentPicker, {
+                students, groupsConfig, selectedIds: hwSelectedIds, setSelectedIds: setHwSelectedIds,
+                onToggleSelection: onToggleHomeworkSelection, selectionLabel: "未交学生", selectAllLabel: "全选当前范围"
+            }),
+            h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
+                h("button", { onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
+                    hwSelectedIds.size === 0 ? "提交作业登记（全员已交）" : `提交未交记录 (${hwSelectedIds.size} 人)`
+                )
             )
         );
 
         const RunningExercisePanel = ({
-            students,
-            runningExerciseDates,
-            runDate,
-            setRunDate,
-            runSelectedAbsentIds,
-            setRunSelectedAbsentIds,
-            runningExerciseAbsentPenalty,
-            runningExercisePresentBonus,
-            onToggleRunningExerciseSelection,
-            onSubmit
-        }) => {
-            const primaryButtonStyle = {
-                backgroundColor: '#ea580c',
-                color: '#ffffff'
-            };
-            const selectedDateStyle = {
-                backgroundColor: '#ea580c',
-                borderColor: '#ea580c',
-                color: '#ffffff'
-            };
-            const defaultDateStyle = {
-                backgroundColor: '#f9fafb',
-                borderColor: '#e5e7eb',
-                color: '#374151'
-            };
-            return h("div", { className: "bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col" },
-            h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
-            h("div", { className: "flex flex-wrap gap-1 mb-2" },
-                runningExerciseDates.map(date => h("button", {
-                    key: date,
-                    onClick: () => setRunDate(date),
-                    'aria-pressed': (runDate || runningExerciseDates[0]) === date,
-                    className: "min-h-11 px-3 py-2 rounded-lg text-xs font-bold border",
-                    style: ((runDate || runningExerciseDates[0]) === date) ? selectedDateStyle : defaultDateStyle
-                }, date))
+            students, groupsConfig, runningExerciseDates, runDate, setRunDate, runSelectedAbsentIds, setRunSelectedAbsentIds,
+            runningExerciseAbsentPenalty, runningExercisePresentBonus, onToggleRunningExerciseSelection, onSubmit
+        }) => h("div", { className: "space-y-4 rounded-xl border border-gray-200 bg-white p-4" },
+            h("div", null,
+                h("h3", { className: "flex items-center gap-2 text-base font-bold text-gray-900" }, h(Icon, { name: "tasks" }), "跑操考勤登记"),
+                h("p", { className: "mt-1 text-sm text-gray-600" }, "只选择缺勤学生；未选任何人表示全员正常出勤。")
             ),
-            h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 mb-2 leading-5" },
-                `缺勤扣分 ${Math.abs(Number(runningExerciseAbsentPenalty) || 0)} 分，正常出勤加分 ${Math.abs(Number(runningExercisePresentBonus) || 0)} 分。`
+            h("div", null,
+                h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "登记日期"),
+                h("div", { className: "flex flex-wrap gap-2" }, runningExerciseDates.map(date => h(ContextOptionButton, { key: date, active: (runDate || runningExerciseDates[0]) === date, onClick: () => setRunDate(date) }, date)))
             ),
-            h("div", { className: "flex justify-between items-center mb-1" },
-                h("div", { className: "text-sm text-gray-600" }, "选择缺勤学生"),
-                h("div", { className: "flex gap-2" },
-                    h("button", { onClick: () => setRunSelectedAbsentIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
-                    h("button", {
-                        onClick: () => setRunSelectedAbsentIds(new Set(students.map(student => student.id))),
-                        className: "min-h-11 px-2 text-xs text-blue-700"
-                    }, "全选缺勤")
+            h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" },
+                `提交后，缺勤学生每人扣 ${Math.abs(Number(runningExerciseAbsentPenalty) || 0)} 分；其余学生每人加 ${Math.abs(Number(runningExercisePresentBonus) || 0)} 分。`
+            ),
+            h(RegisterStudentPicker, {
+                students, groupsConfig, selectedIds: runSelectedAbsentIds, setSelectedIds: setRunSelectedAbsentIds,
+                onToggleSelection: onToggleRunningExerciseSelection, selectionLabel: "缺勤学生", selectAllLabel: "全选当前范围"
+            }),
+            h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
+                h("button", { onClick: onSubmit, className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800" },
+                    runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size} 人缺勤)`
                 )
-            ),
-            h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
-                students.map(student => {
-                    const chosen = runSelectedAbsentIds.has(student.id);
-                    return h("button", {
-                        key: student.id,
-                        onClick: () => onToggleRunningExerciseSelection(student.id),
-                        'aria-pressed': chosen,
-                        className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
-                    }, student.name);
-                })
-            ),
-            h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
-                h("button", {
-                    onClick: onSubmit,
-                    className: "min-h-11 px-4 py-2 rounded-lg text-sm",
-                    style: primaryButtonStyle
-                }, runSelectedAbsentIds.size === 0 ? "提交跑操登记（全员出勤）" : `提交跑操登记 (${runSelectedAbsentIds.size}人缺勤)`)
             )
         );
-        };
 
         const HygienePanel = ({
-            students,
-            date,
-            sessionName,
-            inspectorNames,
-            inspectorBonus,
-            areaPenalty,
-            selectedIds,
-            setSelectedIds,
-            onToggleSelection,
-            onSubmit,
-            disabled,
-            disabledReason
+            students, groupsConfig, date, sessionName, inspectorNames, inspectorBonus, areaPenalty,
+            selectedIds, setSelectedIds, onToggleSelection, onSubmit, disabled, disabledReason
         }) => {
-            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
             const inspectorList = Array.isArray(inspectorNames) ? inspectorNames.filter(Boolean) : [];
-            return h("div", { className: `bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
-                h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "droplet" }), "卫生登记"),
-                h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
-                    h("span", { className: "text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200" }, [date, sessionName || "时段判定中"].filter(Boolean).join(' ')),
-                    inspectorList.length > 0
-                        ? h("span", { className: "text-xs text-gray-600" }, `专员：${inspectorList.join('、')}（各 +${inspectorBonus ?? 1}）`)
-                        : h("span", { className: "text-xs text-amber-600" }, "今日卫生专员未设置")
+            const inspectorText = inspectorList.length > 0
+                ? `当日卫生专员 ${inspectorList.join('、')} 每人加 ${inspectorBonus ?? 1} 分。`
+                : "尚未设置当日卫生专员，本次不会发放专员奖励。";
+            return h("div", { className: `space-y-4 rounded-xl border border-gray-200 bg-white p-4 ${disabled ? 'opacity-70' : ''}` },
+                h("div", null,
+                    h("h3", { className: "flex items-center gap-2 text-base font-bold text-gray-900" }, h(Icon, { name: "droplet" }), "卫生登记"),
+                    h("p", { className: "mt-1 text-sm text-gray-600" }, "选择卫生不合格学生；未选任何人表示本时段无问题。")
                 ),
-                disabled && disabledReason && h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 mb-2" }, disabledReason),
-                h("div", { className: "flex justify-between items-center mb-1" },
-                    h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
-                    h("div", { className: "flex gap-2" },
-                        h("button", { onClick: () => setSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
-                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "min-h-11 px-2 text-xs text-blue-700" }, "全选")
-                    )
+                h("div", { className: "rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900" },
+                    h("div", { className: "font-medium" }, [date, sessionName || "时段判定中"].filter(Boolean).join(' · ')),
+                    h("div", null, `提交后，所选学生每人扣 ${Math.abs(Number(areaPenalty) || 0)} 分。${inspectorText}`)
                 ),
-                h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
-                    (students || []).map(student => {
-                        const chosen = selectedIds.has(student.id);
-                        return h("button", {
-                            key: student.id,
-                            onClick: () => !disabled && onToggleSelection(student.id),
-                            disabled,
-                            'aria-pressed': chosen,
-                            className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
-                        }, student.name);
-                    })
-                ),
-                h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
+                disabled && disabledReason && h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" }, disabledReason),
+                h(RegisterStudentPicker, {
+                    students, groupsConfig, selectedIds, setSelectedIds, onToggleSelection,
+                    selectionLabel: "卫生不合格学生", selectAllLabel: "全选当前范围", disabled
+                }),
+                h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
                     h("button", {
                         onClick: onSubmit,
-                        disabled: disabled,
-                        className: `min-h-11 px-4 py-2 rounded-lg text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-green-700 text-white hover:bg-green-800'}`
-                    }, selectedIds.size === 0 ? "提交（无问题）" : `提交卫生登记 (${selectedIds.size}人不合格)`)
+                        disabled,
+                        className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    }, selectedIds.size === 0 ? "提交卫生登记（本时段无问题）" : `提交卫生登记 (${selectedIds.size} 人不合格)`)
                 )
             );
         };
 
         const DisciplinePanel = ({
-            students,
-            dates,
-            date,
-            setDate,
-            activeTab,
-            setActiveTab,
-            selectedIds,
-            setSelectedIds,
-            commissionerNames,
-            commissionerBonus,
-            penalty,
-            onToggleSelection,
-            onSubmit,
-            disabled
+            students, groupsConfig, dates, date, setDate, activeTab, setActiveTab, selectedIds, setSelectedIds,
+            commissionerNames, commissionerBonus, penalty, onToggleSelection, onSubmit, disabled
         }) => {
             const tabs = [
-                { key: 'noise',   label: '讲话', fullLabel: '学习时间讲话', commissionerRole: '噪音专员' },
-                { key: 'desk',    label: '桌面', fullLabel: '桌面杂乱',     commissionerRole: '书桌专员' },
-                { key: 'tablet',  label: '平板', fullLabel: '平板未归',     commissionerRole: '平板专员' },
-                { key: 'outdoor', label: '外出', fullLabel: '晚自习外出',   commissionerRole: '外出专员' }
+                { key: 'noise', label: '讲话', fullLabel: '学习时间讲话', commissionerRole: '噪音专员' },
+                { key: 'desk', label: '桌面', fullLabel: '桌面杂乱', commissionerRole: '书桌专员' },
+                { key: 'tablet', label: '平板', fullLabel: '平板未归', commissionerRole: '平板专员' },
+                { key: 'outdoor', label: '外出', fullLabel: '晚自习外出', commissionerRole: '外出专员' }
             ];
-            const currentTab = tabs.find(t => t.key === activeTab) || tabs[0];
+            const currentTab = tabs.find(tab => tab.key === activeTab) || tabs[0];
             const commissionerList = Array.isArray(commissionerNames) ? commissionerNames.filter(Boolean) : [];
-            return h("div", { className: `bg-white p-4 rounded-xl border border-gray-200 h-full flex flex-col ${disabled ? 'opacity-60' : ''}` },
-                h("h3", { className: "font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm" }, h(Icon, { name: "shield" }), "纪律登记"),
-                h("div", { className: "flex flex-wrap gap-1 mb-2" },
-                    dates.map(d => h("button", {
-                        key: d,
-                        onClick: () => setDate(d),
-                        'aria-pressed': (date || dates[0]) === d,
-                        className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${(date || dates[0]) === d ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                    }, d))
+            const commissionerText = commissionerList.length > 0
+                ? `${currentTab.commissionerRole} ${commissionerList.join('、')} 每人加 ${commissionerBonus ?? 1} 分。`
+                : `尚未设置${currentTab.commissionerRole}，本次不会发放专员奖励。`;
+            return h("div", { className: `space-y-4 rounded-xl border border-gray-200 bg-white p-4 ${disabled ? 'opacity-70' : ''}` },
+                h("div", null,
+                    h("h3", { className: "flex items-center gap-2 text-base font-bold text-gray-900" }, h(Icon, { name: "shield" }), "纪律登记"),
+                    h("p", { className: "mt-1 text-sm text-gray-600" }, "选择违反当前纪律项的学生；切换纪律项会保留其他登记草稿。")
                 ),
-                h("div", { className: "flex flex-wrap gap-1 mb-2" },
-                    tabs.map(tab => h("button", {
-                        key: tab.key,
-                        onClick: () => setActiveTab(tab.key),
-                        'aria-pressed': activeTab === tab.key,
-                        className: `min-h-11 px-3 py-2 rounded-lg text-xs font-bold border ${activeTab === tab.key ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-gray-50 text-gray-700 border-gray-200'}`
-                    }, tab.label))
-                ),
-                h("div", { className: "flex flex-wrap items-center gap-2 mb-2" },
-                    h("span", { className: "text-xs text-gray-600" }, `${currentTab.fullLabel}`),
-                    commissionerList.length > 0
-                        ? h("span", { className: "text-xs text-gray-500" }, `→ ${currentTab.commissionerRole}（${commissionerList.join('、')}）各 +${commissionerBonus ?? 1}`)
-                        : h("span", { className: "text-xs text-amber-600" }, `${currentTab.commissionerRole}未设置`)
-                ),
-                h("div", { className: "flex justify-between items-center mb-1" },
-                    h("div", { className: "text-sm text-gray-600" }, "不合格学生"),
-                    h("div", { className: "flex gap-2" },
-                        h("button", { onClick: () => setSelectedIds(new Set()), className: "min-h-11 px-2 text-xs text-gray-600" }, "清空"),
-                        h("button", { onClick: () => setSelectedIds(new Set((students || []).map(s => s.id))), className: "min-h-11 px-2 text-xs text-blue-700" }, "全选")
+                h("div", { className: "space-y-3" },
+                    h("div", null,
+                        h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "登记日期"),
+                        h("div", { className: "flex flex-wrap gap-2" }, dates.map(itemDate => h(ContextOptionButton, { key: itemDate, active: (date || dates[0]) === itemDate, onClick: () => setDate(itemDate) }, itemDate)))
+                    ),
+                    h("div", null,
+                        h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "纪律项"),
+                        h("div", { className: "flex flex-wrap gap-2" }, tabs.map(tab => h(ContextOptionButton, { key: tab.key, active: activeTab === tab.key, onClick: () => setActiveTab(tab.key) }, tab.label)))
                     )
                 ),
-                h("div", { className: "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-40 overflow-y-auto border rounded p-2 flex-1" },
-                    (students || []).map(student => {
-                        const chosen = selectedIds.has(student.id);
-                        return h("button", {
-                            key: student.id,
-                            onClick: () => !disabled && onToggleSelection(student.id),
-                            disabled,
-                            'aria-pressed': chosen,
-                            className: `min-h-11 px-2 py-2 rounded-lg text-xs border ${chosen ? 'bg-red-50 border-red-500 text-red-800' : 'bg-white border-gray-200 text-gray-700'}`
-                        }, student.name);
-                    })
+                h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" },
+                    `提交“${currentTab.fullLabel}”后，所选学生每人扣 ${Math.abs(Number(penalty) || 0)} 分；${commissionerText}`
                 ),
-                h("div", { className: "pt-2 flex justify-end gap-2 mt-auto" },
+                h(RegisterStudentPicker, {
+                    students, groupsConfig, selectedIds, setSelectedIds, onToggleSelection,
+                    selectionLabel: `${currentTab.fullLabel}学生`, selectAllLabel: "全选当前范围", disabled
+                }),
+                h("div", { className: "flex justify-end border-t border-gray-200 pt-4" },
                     h("button", {
                         onClick: onSubmit,
-                        disabled: disabled,
-                        className: `min-h-11 px-4 py-2 rounded-lg text-sm ${disabled ? 'bg-gray-300 text-white cursor-not-allowed' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`
-                    }, selectedIds.size === 0 ? "提交（无问题）" : `提交纪律登记 (${selectedIds.size}人)`)
+                        disabled,
+                        className: "min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    }, selectedIds.size === 0 ? `提交${currentTab.fullLabel}登记（无人违规）` : `提交${currentTab.fullLabel}登记 (${selectedIds.size} 人)`)
                 )
             );
         };
@@ -582,19 +635,23 @@
                         h("label", { className: "block text-sm font-bold text-gray-700 mb-1", htmlFor: 'batch-adjust-scene' }, "场景"),
                         h("select", {
                             id: 'batch-adjust-scene',
-                            className: "w-full border rounded p-2",
+                            'aria-describedby': 'batch-adjust-scene-help',
+                            className: "min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2",
                             value: batchAdjustModal.scene || DEFAULT_POINT_SCENE,
                             onChange: e => setBatchAdjustModal(prev => ({ ...prev, scene: e.target.value }))
-                        }, POINT_SCENES.map(scene => h("option", { key: scene, value: scene }, scene)))
+                        }, POINT_SCENES.map(scene => h("option", { key: scene, value: scene }, scene))),
+                        h("p", { id: 'batch-adjust-scene-help', className: "mt-1 text-sm text-gray-600" }, "记录事情发生在哪里，例如课堂、班级或宿舍。")
                     ),
                     h("div", null,
                         h("label", { className: "block text-sm font-bold text-gray-700 mb-1", htmlFor: 'batch-adjust-category' }, "类别"),
                         h("select", {
                             id: 'batch-adjust-category',
-                            className: "w-full border rounded p-2",
+                            'aria-describedby': 'batch-adjust-category-help',
+                            className: "min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2",
                             value: batchAdjustModal.category || DEFAULT_POINT_CATEGORY,
                             onChange: e => setBatchAdjustModal(prev => ({ ...prev, category: e.target.value }))
-                        }, POINT_CATEGORIES.map(category => h("option", { key: category, value: category }, category)))
+                        }, POINT_CATEGORIES.map(category => h("option", { key: category, value: category }, category))),
+                        h("p", { id: 'batch-adjust-category-help', className: "mt-1 text-sm text-gray-600" }, "用于历史筛选和统计，例如学习、纪律或班务。")
                     )
                 ),
                 h("div", { className: "bg-gray-50 p-3 rounded-lg" },
