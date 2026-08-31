@@ -1340,8 +1340,11 @@ const INITIAL_TREASURES = [
             }
         };
 
-        const handleApplyFixedStudents = async (nextStudents) => {
-            const saved = await persistManagedPatch({ students: nextStudents });
+        const handleApplyFixedStudents = async (nextStudents, options = {}) => {
+            const saved = await persistDataPatch({ students: nextStudents }, {
+                suppressFollowupAutoSave: true,
+                skipAttendancePenaltyReplay: options.pointReset === true
+            });
             if (saved?.skipped || saved?.success === false) {
                 throw new Error('服务端未确认保存，请恢复会话后重试');
             }

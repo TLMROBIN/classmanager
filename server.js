@@ -2324,7 +2324,8 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
                 serverUpdatedAt: existingUpdatedAt
             });
         }
-        if (hasMaintenanceProtectedMutation(store, data) && !hasMaintenanceAccess(req)) {
+        const isPointResetRequest = incomingMeta.skipAttendancePenaltyReplay === true;
+        if ((hasMaintenanceProtectedMutation(store, data) || isPointResetRequest) && !hasMaintenanceAccess(req)) {
             return res.status(403).json({
                 error: '当前操作需要维护密码验证',
                 code: 'MAINTENANCE_AUTH_REQUIRED'
@@ -2333,7 +2334,7 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
         const existingStudents = Array.isArray(readStoredJson(store, 'students')) ? readStoredJson(store, 'students') : [];
         const existingHistory = Array.isArray(readStoredJson(store, 'history')) ? readStoredJson(store, 'history') : [];
         const existingConfig = readStoredJson(store, 'config') || {};
-        const replayResult = Array.isArray(data.students)
+        const replayResult = Array.isArray(data.students) && !isPointResetRequest
             ? replayMissingAttendancePenaltyChanges(data.students, existingHistory)
             : { students: data.students, changed: false };
         if (replayResult.changed) {

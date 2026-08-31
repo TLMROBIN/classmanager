@@ -143,6 +143,7 @@
             SubjectConfigSection,
             ReasonsConfigSection,
             PenaltyDecaySection,
+            PointResetSection,
             RunningExerciseSettingsSection,
             HygieneRegisterSettingsSection,
             DisciplineRegisterSettingsSection,
@@ -461,6 +462,44 @@
                     setOperationPending(false);
                 }
             };
+            const handleResetPoints = async (scope) => {
+                if (operationPendingRef.current) return;
+                const resetLabels = {
+                    all: '全部积分（自在值、扣分和余额）',
+                    zizai: '自在值',
+                    penalty: '扣分',
+                    balance: '余额'
+                };
+                const label = resetLabels[scope];
+                if (!label) return;
+                const studentList = Array.isArray(students) ? students : [];
+                if (studentList.length === 0) {
+                    setOperationFeedback({ type: 'warning', message: '当前没有可重置积分的学生。' });
+                    return;
+                }
+                if (!confirm(`确定要将全部 ${studentList.length} 名学生的${label}归零吗？\n\n积分历史会保留，此操作保存后不能通过“撤销积分”恢复。`)) return;
+
+                const fields = scope === 'all' ? ['zizai', 'penalty', 'balance'] : [scope];
+                const nextStudents = studentList.map(student => {
+                    const nextStudent = { ...student };
+                    fields.forEach(field => { nextStudent[field] = 0; });
+                    if (fields.includes('penalty')) nextStudent.lastPenaltyAt = 0;
+                    return nextStudent;
+                });
+
+                operationPendingRef.current = true;
+                setOperationPending(true);
+                setOperationFeedback({ type: 'pending', message: `正在重置${label}…` });
+                try {
+                    await Promise.resolve(onApplyFixedStudents(nextStudents, { pointReset: true }));
+                    setOperationFeedback({ type: 'success', message: `已重置全部 ${studentList.length} 名学生的${label}，积分历史已保留。` });
+                } catch (error) {
+                    setOperationFeedback({ type: 'error', message: `积分重置保存失败：${error?.message || '请检查网络后重试'}。` });
+                } finally {
+                    operationPendingRef.current = false;
+                    setOperationPending(false);
+                }
+            };
 
             useEffect(() => {
                 setSelectedIds(prev => {
@@ -684,6 +723,11 @@
                         h(PenaltyDecaySection, {
                             config,
                             setConfig,
+                            embedded: true
+                        }),
+                        h(PointResetSection, {
+                            students,
+                            onResetPoints: handleResetPoints,
                             embedded: true
                         }),
                         h(RunningExerciseSettingsSection, {

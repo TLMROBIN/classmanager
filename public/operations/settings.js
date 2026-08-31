@@ -432,6 +432,56 @@
             );
         };
 
+        const PointResetSection = ({ students, onResetPoints, embedded = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const studentList = Array.isArray(students) ? students : [];
+            const isVisible = isOpen;
+            const resetOptions = [
+                { key: 'all', label: '重置全部积分', className: 'bg-red-600 text-white hover:bg-red-700' },
+                { key: 'zizai', label: '重置自在值', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
+                { key: 'penalty', label: '重置扣分', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
+                { key: 'balance', label: '重置余额', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' }
+            ];
+
+            return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border border-red-100 space-y-4" },
+                h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
+                    h("div", { className: "space-y-1" },
+                        h("div", { className: "flex items-center gap-2 text-gray-800" },
+                            h(Icon, { name: "refresh", size: 18 }),
+                            h("h3", { className: "font-bold text-sm" }, "积分重置")
+                        ),
+                        h("p", { className: "text-xs text-gray-500" }, `将 ${studentList.length} 名学生的指定当前积分归零，不会删除积分历史。`)
+                    ),
+                    h("button", {
+                        onClick: () => {
+                            if (embedded) {
+                                setIsOpen(prev => !prev);
+                                return;
+                            }
+                            toggleManagedSection({
+                                isOpen,
+                                setIsOpen,
+                                promptText: "请输入维护密码以打开积分重置："
+                            });
+                        },
+                        className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium ${isOpen ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                    }, isOpen ? "收起积分重置" : "打开积分重置")
+                ),
+                isVisible && h("div", { className: "space-y-3 border-t pt-4" },
+                    h("div", { className: "rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 leading-5" }, "重置会立即保存且无法通过“撤销积分”恢复；“全部积分”会同时清零自在值、扣分和余额。"),
+                    h("div", { className: "flex flex-wrap gap-2" },
+                        resetOptions.map(option => h("button", {
+                            key: option.key,
+                            type: "button",
+                            disabled: studentList.length === 0 || typeof onResetPoints !== 'function',
+                            onClick: () => onResetPoints(option.key),
+                            className: `min-h-11 px-3 py-2 rounded-lg text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${option.className}`
+                        }, option.label))
+                    )
+                )
+            );
+        };
+
         const RunningExerciseSettingsSection = ({ students, config, setConfig, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const systemConfig = getSystemConfig(config);
@@ -891,6 +941,7 @@
             SubjectConfigSection,
             ReasonsConfigSection,
             PenaltyDecaySection,
+            PointResetSection,
             RunningExerciseSettingsSection,
             HygieneRegisterSettingsSection,
             DisciplineRegisterSettingsSection,

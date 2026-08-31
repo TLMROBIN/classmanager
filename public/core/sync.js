@@ -642,7 +642,8 @@
                         updatedAt: nowTs,
                         baseUpdatedAt: Number(serverMetaRef.current.updatedAt) || 0,
                         deviceId: getDeviceId(),
-                        allowEmptyExamArchives
+                        allowEmptyExamArchives,
+                        skipAttendancePenaltyReplay: options?.skipAttendancePenaltyReplay === true
                     }
                 };
                 const payload = { ...partialData, __meta: fullDataWithMeta.__meta };

@@ -73,6 +73,25 @@ test('repeated points settings controls have programmatic names', () => {
     assert.match(settings, /\$\{item\.label\}专员加分/);
 });
 
+test('points settings offer protected current-value resets without deleting history', () => {
+    const settings = read('public/operations/settings.js');
+    const operations = read('public/operations/module.js');
+    const script = read('public/script.js');
+    const server = read('server.js');
+
+    assert.match(settings, /积分重置/);
+    assert.match(settings, /重置全部积分/);
+    assert.match(settings, /重置自在值/);
+    assert.match(settings, /重置扣分/);
+    assert.match(settings, /重置余额/);
+    assert.match(settings, /不会删除积分历史/);
+    assert.match(operations, /lastPenaltyAt = 0/);
+    assert.match(operations, /onApplyFixedStudents\(nextStudents, \{ pointReset: true \}\)/);
+    assert.match(script, /skipAttendancePenaltyReplay: options\.pointReset === true/);
+    assert.match(server, /isPointResetRequest = incomingMeta\.skipAttendancePenaltyReplay === true/);
+    assert.match(server, /\|\| isPointResetRequest\) && !hasMaintenanceAccess/);
+});
+
 test('P2 check-in and focus states never expose stale or invisible feedback', () => {
     const attendance = read('public/attendance/module.js');
     const styles = read('public/styles.css');
