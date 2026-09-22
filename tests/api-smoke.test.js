@@ -346,6 +346,182 @@ test('API smoke flows', async (t) => {
             assert.deepEqual(readResponse.body.messages, payload.messages);
         });
 
+        await t.test('agent student query and point adjustment use narrow protected APIs', async () => {
+            const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
+                method: 'POST',
+                headers: { Cookie: userCookie },
+                body: { simTimeMs: Date.now() }
+            });
+            assert.equal(sessionResponse.status, 200);
+            assert.equal(typeof sessionResponse.body.sessionId, 'string');
+
+            const sessionHeaders = {
+                Cookie: userCookie,
+                'x-test-session': sessionResponse.body.sessionId
+            };
+            const unlockResponse = await requestJson(baseUrl, '/api/maintenance/unlock', {
+                method: 'POST',
+                headers: sessionHeaders,
+                body: { password: 'Maintain123' }
+            });
+            assert.equal(unlockResponse.status, 200);
+            assert.equal(typeof unlockResponse.body.token, 'string');
+
+            const maintenanceHeaders = {
+                ...sessionHeaders,
+                'x-maintenance-token': unlockResponse.body.token
+            };
+            const seedResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: maintenanceHeaders,
+                body: {
+                    students: [
+                        { id: 'stu_agent_1', name: '张三', group: 'discipline', dorm: 'boy_715', zizai: 10, balance: 10, penalty: 0 },
+                        { id: 'stu_agent_2', name: '李四', group: 'life', dorm: 'boy_716', zizai: 5, balance: 5, penalty: 0 },
+                        { id: 'stu_agent_3', name: '李四', group: 'hygiene', dorm: 'girl_713', zizai: 7, balance: 7, penalty: 0 }
+                    ],
+                    history: [],
+                    config: {},
+                    __meta: { allowServerOverwrite: true }
+                }
+            });
+            assert.equal(seedResponse.status, 200);
+
+            const queryResponse = await requestJson(baseUrl, '/api/agent/students?q=张三', {
+                headers: sessionHeaders
+            });
+            assert.equal(queryResponse.status, 200);
+            assert.equal(queryResponse.body.count, 1);
+            assert.equal(queryResponse.body.students[0].id, 'stu_agent_1');
+            assert.equal(queryResponse.body.students[0].balance, 10);
+            assert.equal(typeof queryResponse.body.updatedAt, 'number');
+
+            const missingMaintenanceResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...sessionHeaders,
+                    'idempotency-key': 'agent-op-missing-maintenance'
+                },
+                body: {
+                    studentId: 'stu_agent_1',
+                    delta: 1,
+                    reason: '未授权测试'
+                }
+            });
+            assert.equal(missingMaintenanceResponse.status, 403);
+            assert.equal(missingMaintenanceResponse.body.code, 'MAINTENANCE_AUTH_REQUIRED');
+
+            const ambiguousResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...maintenanceHeaders,
+                    'idempotency-key': 'agent-op-ambiguous'
+                },
+                body: {
+                    studentName: '李四',
+                    delta: 1,
+                    reason: '重名测试'
+                }
+            });
+            assert.equal(ambiguousResponse.status, 409);
+            assert.equal(ambiguousResponse.body.code, 'AMBIGUOUS_STUDENT');
+            assert.equal(ambiguousResponse.body.matches.length, 2);
+
+            const missingIdempotencyResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: maintenanceHeaders,
+                body: {
+                    studentId: 'stu_agent_1',
+                    delta: 1,
+                    reason: '缺少幂等键测试'
+                }
+            });
+            assert.equal(missingIdempotencyResponse.status, 400);
+            assert.equal(missingIdempotencyResponse.body.code, 'IDEMPOTENCY_KEY_REQUIRED');
+
+            const addResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...maintenanceHeaders,
+                    'idempotency-key': 'agent-op-add-1'
+                },
+                body: {
+                    studentId: 'stu_agent_1',
+                    delta: 1,
+                    reason: '课堂表现良好',
+                    category: '纪律',
+                    expectedUpdatedAt: queryResponse.body.updatedAt
+                }
+            });
+            assert.equal(addResponse.status, 200);
+            assert.equal(addResponse.body.success, true);
+            assert.equal(addResponse.body.replayed, false);
+            assert.equal(addResponse.body.operation.type, 'bonus');
+            assert.equal(addResponse.body.student.balance, 11);
+            assert.equal(addResponse.body.student.zizai, 11);
+            assert.equal(addResponse.body.student.penalty, 0);
+
+            const replayResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...maintenanceHeaders,
+                    'idempotency-key': 'agent-op-add-1'
+                },
+                body: {
+                    studentId: 'stu_agent_1',
+                    delta: 1,
+                    reason: '课堂表现良好',
+                    category: '纪律',
+                    expectedUpdatedAt: queryResponse.body.updatedAt
+                }
+            });
+            assert.equal(replayResponse.status, 200);
+            assert.equal(replayResponse.body.replayed, true);
+            assert.equal(replayResponse.body.student.balance, 11);
+
+            const conflictResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...maintenanceHeaders,
+                    'idempotency-key': 'agent-op-conflict'
+                },
+                body: {
+                    studentId: 'stu_agent_1',
+                    delta: -1,
+                    reason: '冲突测试',
+                    expectedUpdatedAt: queryResponse.body.updatedAt
+                }
+            });
+            assert.equal(conflictResponse.status, 409);
+            assert.equal(conflictResponse.body.code, 'DATA_CONFLICT');
+
+            const deductResponse = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                method: 'POST',
+                headers: {
+                    ...maintenanceHeaders,
+                    'idempotency-key': 'agent-op-deduct-1'
+                },
+                body: {
+                    studentName: '张三',
+                    delta: -1,
+                    reason: '课堂纪律提醒',
+                    category: '纪律'
+                }
+            });
+            assert.equal(deductResponse.status, 200);
+            assert.equal(deductResponse.body.operation.type, 'penalty');
+            assert.equal(deductResponse.body.student.balance, 10);
+            assert.equal(deductResponse.body.student.zizai, 11);
+            assert.equal(deductResponse.body.student.penalty, 1);
+
+            const finalQueryResponse = await requestJson(baseUrl, '/api/agent/students?q=stu_agent_1', {
+                headers: sessionHeaders
+            });
+            assert.equal(finalQueryResponse.status, 200);
+            assert.equal(finalQueryResponse.body.students[0].balance, 10);
+            assert.equal(finalQueryResponse.body.students[0].penalty, 1);
+        });
+
         await t.test('attendance check-in works in simulated test session', async () => {
             const mondayMorningMs = buildLocalTimestamp(2026, 2, 30, 6, 30, 0);
             const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {

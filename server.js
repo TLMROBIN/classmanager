@@ -207,6 +207,14 @@ const ABSENT_GRACE_MS = 2 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PENALTY_DECAY_DAYS = 7;
 const DEFAULT_PENALTY_DECAY_AMOUNT = 10;
+const AGENT_POINT_SCENES = new Set(['宿舍', '班级', '校级', '其他']);
+const AGENT_POINT_CATEGORIES = new Set(['待定', '学业', '纪律', '卫生', '兑奖', '出勤', '班务']);
+const DEFAULT_AGENT_POINT_SCENE = '班级';
+const DEFAULT_AGENT_POINT_CATEGORY = '纪律';
+const MAX_AGENT_POINT_DELTA = 100;
+const MAX_AGENT_REASON_LENGTH = 200;
+const MAX_AGENT_IDEMPOTENCY_KEY_LENGTH = 128;
+const MAX_AGENT_STUDENT_QUERY_LIMIT = 200;
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const parseStoredValue = (value) => {
@@ -835,6 +843,181 @@ const applyPointChange = ({
         changed: true
     };
 };
+
+const buildAgentStudentView = (student) => {
+    if (!student) return null;
+    return {
+        id: student.id,
+        name: student.name,
+        gender: student.gender,
+        group: student.group,
+        role: student.role,
+        dorm: student.dorm,
+        zizai: Number(student.zizai) || 0,
+        balance: Number(student.balance) || 0,
+        penalty: Number(student.penalty) || 0,
+        lastPenaltyAt: Number(student.lastPenaltyAt) || 0
+    };
+};
+
+const normalizeAgentText = (value, maxLength) => {
+    if (typeof value !== 'string') return '';
+    const normalized = value.trim();
+    if (!normalized || normalized.length > maxLength) return '';
+    if (/[\u0000-\u001f\u007f]/.test(normalized)) return '';
+    return normalized;
+};
+
+const getAgentStudentSelectors = (payload) => {
+    const hasStudentId = Object.prototype.hasOwnProperty.call(payload || {}, 'studentId');
+    const hasStudentName = Object.prototype.hasOwnProperty.call(payload || {}, 'studentName');
+    const requestedId = normalizeAgentText(payload?.studentId, 128);
+    const requestedName = normalizeAgentText(payload?.studentName, 128);
+    if ((hasStudentId && !requestedId) || (hasStudentName && !requestedName)) {
+        return {
+            error: {
+                status: 400,
+                code: 'INVALID_STUDENT_SELECTOR',
+                message: 'studentId 和 studentName 必须是有效的非空文本'
+            }
+        };
+    }
+    if (!requestedId && !requestedName) {
+        return {
+            error: {
+                status: 400,
+                code: 'STUDENT_SELECTOR_REQUIRED',
+                message: 'studentId 或 studentName 至少提供一个'
+            }
+        };
+    }
+    return { requestedId, requestedName };
+};
+
+const resolveAgentStudent = (students, payload) => {
+    const selectors = getAgentStudentSelectors(payload);
+    if (selectors.error) return selectors;
+    const { requestedId, requestedName } = selectors;
+
+    let matches = Array.isArray(students) ? students : [];
+    if (requestedId) {
+        matches = matches.filter(student => String(student?.id ?? '') === requestedId);
+    }
+    if (requestedName) {
+        matches = matches.filter(student => String(student?.name || '').trim() === requestedName);
+    }
+
+    if (matches.length === 0) {
+        return {
+            error: {
+                status: 404,
+                code: 'STUDENT_NOT_FOUND',
+                message: '未找到匹配的学生'
+            }
+        };
+    }
+    if (matches.length > 1) {
+        return {
+            error: {
+                status: 409,
+                code: 'AMBIGUOUS_STUDENT',
+                message: '学生姓名不唯一，请改用 studentId',
+                matches: matches.map(buildAgentStudentView)
+            }
+        };
+    }
+
+    return { student: matches[0] };
+};
+
+const getAgentIdempotencyKey = (req, payload) => {
+    const headerValue = getSingleHeaderValue(req.headers['idempotency-key']);
+    const headerKey = normalizeAgentText(headerValue, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH);
+    const bodyKey = normalizeAgentText(payload?.idempotencyKey, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH);
+    if (headerKey && bodyKey && headerKey !== bodyKey) {
+        return {
+            error: {
+                status: 400,
+                code: 'IDEMPOTENCY_KEY_MISMATCH',
+                message: 'Idempotency-Key 请求头与请求体不一致'
+            }
+        };
+    }
+    const key = headerKey || bodyKey;
+    if (!key) {
+        return {
+            error: {
+                status: 400,
+                code: 'IDEMPOTENCY_KEY_REQUIRED',
+                message: '积分变更必须提供 Idempotency-Key'
+            }
+        };
+    }
+    return { key };
+};
+
+const getAgentExpectedUpdatedAt = (payload) => {
+    const hasExpected = Object.prototype.hasOwnProperty.call(payload || {}, 'expectedUpdatedAt');
+    const hasBase = Object.prototype.hasOwnProperty.call(payload || {}, 'baseUpdatedAt');
+    if (!hasExpected && !hasBase) return { value: null };
+    const rawValue = hasExpected ? payload.expectedUpdatedAt : payload.baseUpdatedAt;
+    if (rawValue === null || rawValue === '' || typeof rawValue === 'boolean') {
+        return {
+            error: {
+                status: 400,
+                code: 'INVALID_EXPECTED_UPDATED_AT',
+                message: 'expectedUpdatedAt 必须是非负数字'
+            }
+        };
+    }
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) {
+        return {
+            error: {
+                status: 400,
+                code: 'INVALID_EXPECTED_UPDATED_AT',
+                message: 'expectedUpdatedAt 必须是非负数字'
+            }
+        };
+    }
+    if (hasExpected && hasBase) {
+        const baseValue = Number(payload.baseUpdatedAt);
+        if (!Number.isFinite(baseValue) || baseValue < 0 || Math.abs(baseValue - value) >= 1e-9) {
+            return {
+                error: {
+                    status: 400,
+                    code: 'EXPECTED_UPDATED_AT_MISMATCH',
+                    message: 'expectedUpdatedAt 与 baseUpdatedAt 不一致'
+                }
+            };
+        }
+    }
+    return { value };
+};
+
+const buildAgentOperationResponse = ({
+    record,
+    student,
+    updatedAt,
+    replayed = false
+}) => ({
+    success: true,
+    replayed,
+    operation: {
+        id: record?.agentOperationId || null,
+        historyId: record?.id || null,
+        studentId: record?.studentId || null,
+        studentName: record?.studentName || null,
+        delta: Number(record?.val) || 0,
+        type: record?.type || null,
+        reason: record?.reason || '',
+        scene: record?.scene || DEFAULT_AGENT_POINT_SCENE,
+        category: record?.category || DEFAULT_AGENT_POINT_CATEGORY,
+        ts: Number(record?.ts) || null
+    },
+    student: buildAgentStudentView(student),
+    updatedAt: Number(updatedAt) || null
+});
 
 const isProtectedAttendancePenaltyRecord = (record) => {
     if (!record || record.isUndoLog) return false;
@@ -2427,6 +2610,265 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
     } catch (err) {
         console.error('保存数据出错:', err);
         res.status(500).json({ error: '保存失败' });
+    }
+});
+
+// ==================== Agent API ====================
+
+// 查询学生的受限视图。积分写入仍需单独通过维护令牌授权。
+app.get('/api/agent/students', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    const store = getRequestDataStore(req);
+    const rawQuery = req.query?.q == null ? '' : String(req.query.q);
+    const query = normalizeAgentText(rawQuery, 128);
+    if (rawQuery.trim() && !query) {
+        return res.status(400).json({
+            error: '查询条件无效',
+            code: 'INVALID_STUDENT_QUERY'
+        });
+    }
+
+    const rawLimit = req.query?.limit == null ? String(MAX_AGENT_STUDENT_QUERY_LIMIT) : String(req.query.limit);
+    const limit = Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_AGENT_STUDENT_QUERY_LIMIT) {
+        return res.status(400).json({
+            error: `limit 必须是 1-${MAX_AGENT_STUDENT_QUERY_LIMIT} 之间的整数`,
+            code: 'INVALID_STUDENT_QUERY_LIMIT'
+        });
+    }
+
+    try {
+        const now = getRequestNow(req);
+        let students = getStoredStudents(store);
+        const history = getStoredHistory(store);
+        const config = getStoredConfig(store);
+        let meta = readStoredJson(store, '__meta') || {};
+        const decayResult = applyPenaltyDecayLifecycle({
+            students,
+            history,
+            config,
+            now
+        });
+        if (decayResult.changed) {
+            students = decayResult.students;
+            meta = buildNextStoredMeta(meta, now);
+            persistDataObject(store, {
+                students,
+                __meta: meta
+            });
+        }
+
+        const normalizedQuery = query.toLocaleLowerCase();
+        const matches = students
+            .filter(student => {
+                if (!normalizedQuery) return true;
+                return [student?.id, student?.name, student?.group, student?.dorm]
+                    .some(value => String(value || '').toLocaleLowerCase().includes(normalizedQuery));
+            })
+            .slice(0, limit)
+            .map(buildAgentStudentView);
+
+        res.json({
+            success: true,
+            query,
+            count: matches.length,
+            limit,
+            updatedAt: Number(meta?.updatedAt) || null,
+            students: matches
+        });
+    } catch (err) {
+        console.error('Agent 查询学生失败:', err);
+        res.status(500).json({ error: '查询学生失败', code: 'AGENT_STUDENT_QUERY_FAILED' });
+    }
+});
+
+// 以原子方式为单名学生增加或扣除积分。该接口不接受整域数据，避免 Agent 误覆盖其他班级数据。
+app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    const store = getRequestDataStore(req);
+    if (!hasMaintenanceAccess(req)) {
+        return res.status(403).json({
+            error: '当前操作需要维护密码验证',
+            code: 'MAINTENANCE_AUTH_REQUIRED'
+        });
+    }
+
+    const payload = isPlainObject(req.body) ? req.body : {};
+    const idempotencyResult = getAgentIdempotencyKey(req, payload);
+    if (idempotencyResult.error) {
+        return res.status(idempotencyResult.error.status).json(idempotencyResult.error);
+    }
+
+    const expectedUpdatedAtResult = getAgentExpectedUpdatedAt(payload);
+    if (expectedUpdatedAtResult.error) {
+        return res.status(expectedUpdatedAtResult.error.status).json(expectedUpdatedAtResult.error);
+    }
+
+    const rawDelta = payload.delta;
+    const delta = typeof rawDelta === 'boolean' || rawDelta === '' || rawDelta == null
+        ? NaN
+        : Number(rawDelta);
+    if (!Number.isFinite(delta) || delta === 0) {
+        return res.status(400).json({
+            error: 'delta 必须是非零数字',
+            code: 'INVALID_POINT_DELTA'
+        });
+    }
+    if (Math.abs(delta) > MAX_AGENT_POINT_DELTA) {
+        return res.status(400).json({
+            error: `单次积分变更绝对值不能超过 ${MAX_AGENT_POINT_DELTA}`,
+            code: 'POINT_DELTA_OUT_OF_RANGE',
+            maxAbsDelta: MAX_AGENT_POINT_DELTA
+        });
+    }
+
+    const reason = normalizeAgentText(payload.reason, MAX_AGENT_REASON_LENGTH);
+    if (!reason) {
+        return res.status(400).json({
+            error: `reason 必须是 1-${MAX_AGENT_REASON_LENGTH} 个不含控制字符的字符`,
+            code: 'INVALID_POINT_REASON'
+        });
+    }
+
+    const scene = payload.scene == null || payload.scene === ''
+        ? DEFAULT_AGENT_POINT_SCENE
+        : normalizeAgentText(payload.scene, 32);
+    const category = payload.category == null || payload.category === ''
+        ? DEFAULT_AGENT_POINT_CATEGORY
+        : normalizeAgentText(payload.category, 32);
+    if (!AGENT_POINT_SCENES.has(scene)) {
+        return res.status(400).json({
+            error: 'scene 不在允许范围内',
+            code: 'INVALID_POINT_SCENE',
+            allowed: [...AGENT_POINT_SCENES]
+        });
+    }
+    if (!AGENT_POINT_CATEGORIES.has(category)) {
+        return res.status(400).json({
+            error: 'category 不在允许范围内',
+            code: 'INVALID_POINT_CATEGORY',
+            allowed: [...AGENT_POINT_CATEGORIES]
+        });
+    }
+
+    const now = getRequestNow(req);
+    const nowTs = now.getTime();
+    const operationId = idempotencyResult.key;
+    const expectedUpdatedAt = expectedUpdatedAtResult.value;
+
+    try {
+        const runTransaction = db.transaction(() => {
+            const existingMeta = readStoredJson(store, '__meta') || {};
+            const existingUpdatedAt = Number(existingMeta.updatedAt) || 0;
+            const existingStudents = getStoredStudents(store);
+            const existingHistory = getStoredHistory(store);
+            const existingOperation = existingHistory.find(item => item?.agentOperationId === operationId);
+
+            if (existingOperation) {
+                const selectors = getAgentStudentSelectors(payload);
+                if (selectors.error) return { error: selectors.error };
+                const { requestedId, requestedName } = selectors;
+                const sameStudent = (!requestedId || String(existingOperation.studentId ?? '') === requestedId)
+                    && (!requestedName || String(existingOperation.studentName || '').trim() === requestedName);
+                const sameOperation = sameStudent
+                    && Math.abs(Number(existingOperation.val) - delta) < 1e-9
+                    && existingOperation.reason === reason
+                    && existingOperation.scene === scene
+                    && existingOperation.category === category;
+                if (!sameOperation) {
+                    return {
+                        error: {
+                            status: 409,
+                            code: 'IDEMPOTENCY_KEY_REUSED',
+                            message: 'Idempotency-Key 已用于其他积分变更'
+                        }
+                    };
+                }
+
+                const currentStudent = existingStudents.find(student => (
+                    String(student?.id ?? '') === String(existingOperation.studentId ?? '')
+                ));
+                return {
+                    replayed: true,
+                    record: existingOperation,
+                    student: currentStudent || null,
+                    updatedAt: existingUpdatedAt
+                };
+            }
+
+            if (expectedUpdatedAt !== null && expectedUpdatedAt !== existingUpdatedAt) {
+                return {
+                    error: {
+                        status: 409,
+                        code: 'DATA_CONFLICT',
+                        message: '服务器数据已更新，请先重新查询学生后再变更积分',
+                        serverUpdatedAt: existingUpdatedAt
+                    }
+                };
+            }
+
+            const config = getStoredConfig(store);
+            const decayResult = applyPenaltyDecayLifecycle({
+                students: existingStudents,
+                history: existingHistory,
+                config,
+                now
+            });
+            const resolved = resolveAgentStudent(decayResult.students, payload);
+            if (resolved.error) return { error: resolved.error };
+
+            const type = delta < 0 ? 'penalty' : 'bonus';
+            const pointResult = applyPointChange({
+                students: decayResult.students,
+                history: existingHistory,
+                studentId: resolved.student.id,
+                val: delta,
+                reason,
+                type,
+                scene,
+                category,
+                nowTs
+            });
+            if (!pointResult.changed) {
+                return {
+                    error: {
+                        status: 400,
+                        code: 'POINT_CHANGE_NOT_APPLIED',
+                        message: '积分变更未生效'
+                    }
+                };
+            }
+
+            const record = {
+                ...pointResult.history[0],
+                agentOperationId: operationId,
+                source: 'agent-api'
+            };
+            pointResult.history[0] = record;
+            const nextMeta = buildNextStoredMeta(existingMeta, now);
+            const nextStudent = pointResult.students.find(student => (
+                String(student?.id) === String(resolved.student.id)
+            ));
+
+            store.upsertDataKey('students', JSON.stringify(pointResult.students));
+            store.upsertDataKey('history', JSON.stringify(pointResult.history));
+            store.upsertDataKey('__meta', JSON.stringify(nextMeta));
+
+            return {
+                replayed: false,
+                record,
+                student: nextStudent,
+                updatedAt: nextMeta.updatedAt
+            };
+        });
+
+        const operationResult = runTransaction();
+        if (operationResult.error) {
+            return res.status(operationResult.error.status).json(operationResult.error);
+        }
+
+        res.json(buildAgentOperationResponse(operationResult));
+    } catch (err) {
+        console.error('Agent 积分变更失败:', err);
+        res.status(500).json({ error: '积分变更失败', code: 'AGENT_POINT_ADJUST_FAILED' });
     }
 });
 
