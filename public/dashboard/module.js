@@ -318,7 +318,7 @@
                     ),
                     h("div", { className: "space-y-6" },
                         h("div", { className: "bg-white p-4 rounded-xl shadow-sm flex flex-col" },
-                            h("div", { className: "flex justify-between items-center mb-4 border-b pb-2" }, h("h3", { className: "font-bold text-orange-600 flex items-center gap-2" }, h(Icon, { name: "smile" }), "自在榜 (Top 5)"), h("span", { className: "text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded" }, "荣誉总分")),
+                            h("div", { className: "flex justify-between items-center mb-4 border-b pb-2" }, h("h3", { className: "font-bold text-orange-600 flex items-center gap-2" }, h(Icon, { name: "smile" }), `${getSystemConfig(config).scoreNames.bonus}榜 (Top 5)`), h("span", { className: "text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded" }, "荣誉总分")),
                             h("div", { className: "flex-1 space-y-4" },
                                 sortedZizai.length === 0 ? h("div", { className: "text-center text-gray-400 py-4" }, "暂无数据") : sortedZizai.map((student, idx) => {
                                     const isTop3 = idx < 3;
@@ -405,7 +405,7 @@
                     ),
                     h("div", { className: "space-y-6" },
                         h("div", { className: "bg-white p-4 rounded-xl shadow-sm" },
-                            h("div", { className: "flex justify-between items-center mb-4 border-b pb-2" }, h("h3", { className: "font-bold text-gray-600 flex items-center gap-2" }, h(Icon, { name: "frown" }), "不自在榜"), h("span", { className: "text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" }, "违纪统计")),
+                            h("div", { className: "flex justify-between items-center mb-4 border-b pb-2" }, h("h3", { className: "font-bold text-gray-600 flex items-center gap-2" }, h(Icon, { name: "frown" }), `${getSystemConfig(config).scoreNames.penalty}榜`), h("span", { className: "text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" }, "违纪统计")),
                             h("div", { className: "space-y-3" },
                                 sortedPenalty.map((student, idx) => {
                                     const isTop3 = idx < 3;

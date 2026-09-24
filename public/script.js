@@ -1060,7 +1060,7 @@ const INITIAL_TREASURES = [
         // 动态更新页面标题
         useEffect(() => {
             const systemConfig = getSystemConfig(config);
-            const className = systemConfig.className || "班级自在管理系统";
+            const className = systemConfig.className?.trim() || "班级自在管理系统";
             document.title = className;
         }, [config]);
 

@@ -432,14 +432,14 @@
             );
         };
 
-        const PointResetSection = ({ students, onResetPoints, embedded = false }) => {
+        const PointResetSection = ({ students, onResetPoints, scoreNames = {}, embedded = false }) => {
             const [isOpen, setIsOpen] = useState(false);
             const studentList = Array.isArray(students) ? students : [];
             const isVisible = isOpen;
             const resetOptions = [
                 { key: 'all', label: '重置全部积分', className: 'bg-red-600 text-white hover:bg-red-700' },
-                { key: 'zizai', label: '重置自在值', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
-                { key: 'penalty', label: '重置扣分', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
+                { key: 'zizai', label: `重置${scoreNames.bonus || '自在值'}`, className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
+                { key: 'penalty', label: `重置${scoreNames.penalty || '不自在值'}`, className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' },
                 { key: 'balance', label: '重置余额', className: 'border border-amber-400 text-amber-700 hover:bg-amber-50' }
             ];
 
@@ -468,7 +468,7 @@
                     }, isOpen ? "收起积分重置" : "打开积分重置")
                 ),
                 isVisible && h("div", { className: "space-y-3 border-t pt-4" },
-                    h("div", { className: "rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 leading-5" }, "重置会立即保存且无法通过“撤销积分”恢复；“全部积分”会同时清零自在值、扣分和余额。"),
+                    h("div", { className: "rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 leading-5" }, `重置会立即保存且无法通过“撤销积分”恢复；“全部积分”会同时清零${scoreNames.bonus || '自在值'}、${scoreNames.penalty || '不自在值'}和余额。`),
                     h("div", { className: "flex flex-wrap gap-2" },
                         resetOptions.map(option => h("button", {
                             key: option.key,

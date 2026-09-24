@@ -39,14 +39,33 @@
                         h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "基础设置"),
                         h("div", { className: "space-y-4" },
                             h("div", null,
-                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "班级名称"),
+                                h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "系统名称"),
                                 h("input", {
                                     type: "text",
                                     className: "w-full border rounded-lg p-2 text-sm",
                                     value: systemConfig.className || "",
+                                    maxLength: 40,
                                     onChange: (e) => updateSystemConfig(sc => ({ ...sc, className: e.target.value })),
-                                    placeholder: "请输入班级名称"
+                                    placeholder: "请输入系统名称"
                                 })
+                            ),
+                            h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
+                                [["bonus", "加分值名称", "自在值"], ["penalty", "扣分值名称", "不自在值"]].map(([key, label, fallback]) =>
+                                    h("div", { key },
+                                        h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, label),
+                                        h("input", {
+                                            type: "text",
+                                            className: "w-full border rounded-lg p-2 text-sm",
+                                            maxLength: 20,
+                                            value: systemConfig.scoreNames?.[key] ?? fallback,
+                                            onChange: (e) => updateSystemConfig(sc => ({
+                                                ...sc,
+                                                scoreNames: { ...sc.scoreNames, [key]: e.target.value }
+                                            })),
+                                            placeholder: fallback
+                                        })
+                                    )
+                                )
                             ),
                             h("div", null,
                                 h("label", { className: "block text-sm font-medium text-gray-700 mb-1" }, "维护密码"),

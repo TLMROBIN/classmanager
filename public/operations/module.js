@@ -395,7 +395,8 @@
             const handleExportScoreExcel = () => operationAdminTools.exportScoreExcel({
                 students,
                 groupsConfig,
-                dormsConfig
+                dormsConfig,
+                scoreNames: systemConfig.scoreNames
             });
             const handleWageClick = async () => {
                 if (operationPendingRef.current) return;
@@ -452,7 +453,8 @@
                 try {
                     const result = await Promise.resolve(operationAdminTools.fixScore({
                         students,
-                        applyStudents: onApplyFixedStudents
+                        applyStudents: onApplyFixedStudents,
+                        scoreNames: systemConfig.scoreNames
                     }));
                     if (result?.ok) setOperationFeedback({ type: 'success', message: '手动修正积分已保存。' });
                 } catch (error) {
@@ -465,9 +467,9 @@
             const handleResetPoints = async (scope) => {
                 if (operationPendingRef.current) return;
                 const resetLabels = {
-                    all: '全部积分（自在值、扣分和余额）',
-                    zizai: '自在值',
-                    penalty: '扣分',
+                    all: `全部积分（${systemConfig.scoreNames.bonus}、${systemConfig.scoreNames.penalty}和余额）`,
+                    zizai: systemConfig.scoreNames.bonus,
+                    penalty: systemConfig.scoreNames.penalty,
                     balance: '余额'
                 };
                 const label = resetLabels[scope];
@@ -728,6 +730,7 @@
                         h(PointResetSection, {
                             students,
                             onResetPoints: handleResetPoints,
+                            scoreNames: systemConfig.scoreNames,
                             embedded: true
                         }),
                         h(RunningExerciseSettingsSection, {

@@ -108,6 +108,7 @@
 
     const DEFAULT_SYSTEM_CONFIG = {
         className: '班级自在管理系统',
+        scoreNames: { bonus: '自在值', penalty: '不自在值' },
         quotes: [...DEFAULT_QUOTES],
         recordCategoryPendingMigrated: false,
         enabledFeatures: {
@@ -341,6 +342,12 @@
         const userConfig = config?.systemConfig || {};
 
         if (userConfig.className !== undefined) merged.className = userConfig.className;
+        if (userConfig.scoreNames && typeof userConfig.scoreNames === 'object') {
+            for (const key of ['bonus', 'penalty']) {
+                const name = userConfig.scoreNames[key];
+                if (typeof name === 'string' && name.trim()) merged.scoreNames[key] = name.trim().slice(0, 20);
+            }
+        }
         if (userConfig.quotes !== undefined) merged.quotes = userConfig.quotes;
         if (userConfig.recordCategoryPendingMigrated !== undefined) merged.recordCategoryPendingMigrated = userConfig.recordCategoryPendingMigrated;
 

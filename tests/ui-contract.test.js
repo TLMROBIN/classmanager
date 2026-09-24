@@ -81,8 +81,8 @@ test('points settings offer protected current-value resets without deleting hist
 
     assert.match(settings, /积分重置/);
     assert.match(settings, /重置全部积分/);
-    assert.match(settings, /重置自在值/);
-    assert.match(settings, /重置扣分/);
+    assert.match(settings, /重置\$\{scoreNames\.bonus \|\| '自在值'\}/);
+    assert.match(settings, /重置\$\{scoreNames\.penalty \|\| '不自在值'\}/);
     assert.match(settings, /重置余额/);
     assert.match(settings, /不会删除积分历史/);
     assert.match(operations, /lastPenaltyAt = 0/);
