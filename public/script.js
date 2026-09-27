@@ -343,6 +343,7 @@ const INITIAL_TREASURES = [
             h,
             useState,
             useMemo,
+            useRef,
             Icon,
             requireAdminAuth,
             getNow,

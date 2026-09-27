@@ -12,6 +12,77 @@
         penalty: '扣分榜', roles: '班级职务公示', recent: '近期动态',
         san: 'SAN 值榜', future: '未来期望榜'
     };
+    const WIDGET_HEIGHTS = {
+        countdown: 170, schedule: 300, hygiene: 300, commissioner: 300,
+        bonus: 490, dorm: 490, penalty: 490, roles: 300, recent: 430,
+        san: 570, future: 570
+    };
+    const LAYOUT_GAP = 18;
+    const MIN_WIDTH = 18;
+    const MIN_HEIGHT = 160;
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+    const normalizeDashboardLayout = (items, allowedIds) => {
+        const safeItems = Array.isArray(items) ? items : [];
+        const seen = new Set();
+        const filtered = safeItems.filter(item => {
+            if (!item || !allowedIds.includes(item.id) || seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+        });
+        const hasPositioned = filtered.some(item => Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.w) && Number.isFinite(item.h));
+        let rowX = 0;
+        let rowY = 0;
+        let rowHeight = 0;
+        let nextBottom = hasPositioned ? Math.max(0, ...filtered.filter(item => Number.isFinite(item.y) && Number.isFinite(item.h)).map(item => item.y + item.h)) + LAYOUT_GAP : 0;
+        return filtered.map(item => {
+            if (Number.isFinite(item.x) && Number.isFinite(item.y) && Number.isFinite(item.w) && Number.isFinite(item.h)) {
+                const w = clamp(item.w, MIN_WIDTH, 100);
+                return { id: item.id, x: clamp(item.x, 0, 100 - w), y: Math.max(0, item.y), w, h: Math.max(MIN_HEIGHT, item.h) };
+            }
+            const width = [3, 4, 6, 9, 12].includes(item.width) ? item.width : 4;
+            const h = Number(item.height) >= MIN_HEIGHT ? Number(item.height) : WIDGET_HEIGHTS[item.id] || 320;
+            if (hasPositioned) {
+                const result = { id: item.id, x: 0, y: nextBottom, w: width === 12 ? 100 : width * 100 / 12 - 1.2, h };
+                nextBottom += h + LAYOUT_GAP;
+                return result;
+            }
+            if (rowX + width > 12) {
+                rowY += rowHeight + LAYOUT_GAP;
+                rowX = 0;
+                rowHeight = 0;
+            }
+            const result = { id: item.id, x: rowX * 100 / 12, y: rowY, w: width === 12 ? 100 : width * 100 / 12 - 1.2, h };
+            rowX += width;
+            rowHeight = Math.max(rowHeight, h);
+            if (rowX >= 12) {
+                rowY += rowHeight + LAYOUT_GAP;
+                rowX = 0;
+                rowHeight = 0;
+            }
+            return result;
+        });
+    };
+    const adjustDashboardWidget = (start, mode, dx, dy) => {
+        const next = { ...start };
+        if (mode === 'move') {
+            next.x = clamp(start.x + dx, 0, 100 - start.w);
+            next.y = Math.max(0, start.y + dy);
+            return next;
+        }
+        if (mode.includes('e')) next.w = clamp(start.w + dx, MIN_WIDTH, 100 - start.x);
+        if (mode.includes('w')) {
+            const right = start.x + start.w;
+            next.x = clamp(start.x + dx, 0, right - MIN_WIDTH);
+            next.w = right - next.x;
+        }
+        if (mode.includes('s')) next.h = Math.max(MIN_HEIGHT, start.h + dy);
+        if (mode.includes('n')) {
+            const bottom = start.y + start.h;
+            next.y = clamp(start.y + dy, 0, bottom - MIN_HEIGHT);
+            next.h = bottom - next.y;
+        }
+        return next;
+    };
     const sanValue = (penalty) => Math.max(0, Math.min(100, 100 - Math.max(0, Number(penalty) || 0)));
     const sanLevel = (value) => value <= 0 ? '彻底疯狂' : value < 20 ? '危险' : value < 40 ? '需要救助' : value < 60 ? '感到不适' : value < 80 ? '临时错乱' : '稳定';
     const futureValue = (bonus) => {
@@ -19,12 +90,14 @@
         return Math.min(749.99, Math.round(-750 * Math.expm1(-value / 600) * 100) / 100);
     };
     window.dashboardScoreUtils = { sanValue, sanLevel, futureValue };
+    window.dashboardLayoutUtils = { normalizeDashboardLayout, adjustDashboardWidget };
 
     window.createDashboardView = function createDashboardView(deps) {
         const {
             h,
             useState,
             useMemo,
+            useRef,
             Icon,
             requireAdminAuth,
             getNow,
@@ -40,7 +113,7 @@
             getProfileAvatarUI
         } = deps || {};
 
-        if (!h || !useState || !useMemo || !Icon || !requireAdminAuth || !getNow || !getDateString || !getStartOfDay || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
+        if (!h || !useState || !useMemo || !useRef || !Icon || !requireAdminAuth || !getNow || !getDateString || !getStartOfDay || !DAY_MS || !getSystemConfig || !getCustomRoles || !getCommissionerRoles || !getGroupsConfig || !normalizePointScene || !normalizePointCategory || !getProfileAvatarUI) {
             throw new Error('DashboardView dependencies are missing');
         }
 
@@ -56,29 +129,56 @@
             const systemConfig = getSystemConfig(config);
             const enabledBoards = systemConfig.dashboardBoards || {};
             const allowedWidgetIds = Object.keys(WIDGET_NAMES).filter(id => id !== 'san' && id !== 'future' || enabledBoards[id] === true);
-            const savedLayout = Array.isArray(config?.dashboardLayout) ? config.dashboardLayout : [
-                ...DEFAULT_WIDGETS,
-                ...(enabledBoards.san === true ? [{ id: 'san', width: 4 }] : []),
-                ...(enabledBoards.future === true ? [{ id: 'future', width: 4 }] : [])
-            ];
-            const layout = savedLayout.filter((item, index) => item && allowedWidgetIds.includes(item.id) && savedLayout.findIndex(entry => entry?.id === item.id) === index)
-                .map(item => ({ id: item.id, width: [3, 4, 6, 9, 12].includes(item.width) ? item.width : 4,
-                    height: [240, 360, 480].includes(item.height) ? item.height : 0 }));
+            const savedLayout = Array.isArray(config?.dashboardLayout) ? config.dashboardLayout : null;
             const [editingLayout, setEditingLayout] = useState(false);
-            const [draggedWidget, setDraggedWidget] = useState(null);
+            const [preview, setPreview] = useState(null);
+            const [activeWidget, setActiveWidget] = useState(null);
+            const canvasRef = useRef(null);
+            const gestureRef = useRef(null);
+            const previewRef = useRef(null);
             const updateLayout = (next) => setConfig(previous => ({ ...previous, dashboardLayout: next }));
             const beginLayoutEdit = async () => {
                 if (!await requireAdminAuth('编辑首页布局需要维护密码，请输入：')) return;
                 setEditingLayout(true);
             };
-            const moveWidget = (sourceId, targetId) => {
-                if (!sourceId || sourceId === targetId) return;
-                const next = [...layout];
-                const from = next.findIndex(item => item.id === sourceId);
-                const to = next.findIndex(item => item.id === targetId);
-                if (from < 0 || to < 0) return;
-                next.splice(to, 0, next.splice(from, 1)[0]);
-                updateLayout(next);
+            const startGesture = (event, item, mode) => {
+                if (!editingLayout || window.matchMedia?.('(max-width: 767px)').matches) return;
+                const width = canvasRef.current?.getBoundingClientRect().width;
+                if (!width) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                gestureRef.current = { id: item.id, mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, width, start: item };
+                previewRef.current = null;
+                setActiveWidget(item.id);
+            };
+            const moveGesture = (event) => {
+                const gesture = gestureRef.current;
+                if (!gesture || gesture.pointerId !== event.pointerId) return;
+                const geometry = adjustDashboardWidget(gesture.start, gesture.mode,
+                    (event.clientX - gesture.startX) / gesture.width * 100, event.clientY - gesture.startY);
+                previewRef.current = { id: gesture.id, geometry };
+                setPreview(previewRef.current);
+            };
+            const endGesture = (event) => {
+                const gesture = gestureRef.current;
+                if (!gesture || gesture.pointerId !== event.pointerId) return;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                if (previewRef.current?.id === gesture.id) {
+                    const next = layout.map(item => item.id === gesture.id ? previewRef.current.geometry : item);
+                    if (gesture.mode === 'move') next.sort((a, b) => a.y - b.y || a.x - b.x);
+                    updateLayout(next);
+                }
+                gestureRef.current = null;
+                previewRef.current = null;
+                setPreview(null);
+                setActiveWidget(null);
+            };
+            const cancelGesture = () => {
+                gestureRef.current = null;
+                previewRef.current = null;
+                setPreview(null);
+                setActiveWidget(null);
             };
 
             const [dormChartRange, setDormChartRange] = useState(() => {
@@ -547,47 +647,86 @@
                 penalty: penaltyCard, roles: rolesCard, recent: recentCard,
                 san: sanCard, future: futureCard
             };
+            const defaultLayout = [
+                ...DEFAULT_WIDGETS,
+                ...(enabledBoards.san === true ? [{ id: 'san', width: 4 }] : []),
+                ...(enabledBoards.future === true ? [{ id: 'future', width: 4 }] : [])
+            ].filter(item => cards[item.id]);
+            const layout = normalizeDashboardLayout(savedLayout || defaultLayout, allowedWidgetIds);
             const addable = allowedWidgetIds.filter(id => !layout.some(item => item.id === id));
             const visibleLayout = layout.filter(item => editingLayout || cards[item.id]);
+            const canvasHeight = Math.max(200, ...visibleLayout.map(item => {
+                const geometry = preview?.id === item.id ? preview.geometry : item;
+                return geometry.y + geometry.h + LAYOUT_GAP;
+            }));
+            const resizeDirections = [
+                ['n', '上边缘'], ['e', '右边缘'], ['s', '下边缘'], ['w', '左边缘'],
+                ['ne', '右上角'], ['se', '右下角'], ['sw', '左下角'], ['nw', '左上角']
+            ];
             return h('div', { className: 'space-y-4 animate-fade-in' },
                 h('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
-                    h('div', { className: 'text-xs text-gray-500' }, editingLayout ? '拖动卡片排序；也可用左右按钮调整顺序。面板宽度按 12 列设置。' : ''),
+                    h('div', { className: 'text-xs text-gray-500' }, editingLayout ? '拖动模块标题调整位置；拖动边缘或角点调整大小。其他模块保持原位。' : ''),
                     h('button', { type: 'button', onClick: editingLayout ? () => setEditingLayout(false) : beginLayoutEdit, className: 'px-3 py-2 text-sm rounded-lg border bg-white hover:bg-gray-50' }, editingLayout ? '完成编辑' : '编辑首页布局')
                 ),
                 editingLayout && h('div', { className: 'rounded-xl border bg-white p-3' },
                     h('label', { className: 'text-sm font-medium mr-3', htmlFor: 'dashboard-add-widget' }, '添加模块'),
                     h('select', { id: 'dashboard-add-widget', className: 'border rounded p-2 text-sm', value: '', onChange: e => {
-                        if (e.target.value) updateLayout([...layout, { id: e.target.value, width: 4 }]);
+                        if (!e.target.value) return;
+                        const bottom = Math.max(0, ...layout.map(item => item.y + item.h)) + LAYOUT_GAP;
+                        updateLayout([...layout, { id: e.target.value, x: 0, y: bottom, w: e.target.value === 'countdown' ? 100 : 32, h: WIDGET_HEIGHTS[e.target.value] || 320 }]);
                     } },
                         h('option', { value: '' }, addable.length ? '选择模块' : '所有可用模块已添加'),
                         addable.map(id => h('option', { key: id, value: id }, WIDGET_NAMES[id]))
                     )
                 ),
-                h('div', { className: 'dashboard-widget-grid' },
-                    visibleLayout.map((item, index) => h('div', {
+                h('div', { className: `dashboard-widget-canvas${editingLayout ? ' dashboard-widget-canvas-editing' : ''}`, ref: canvasRef, style: { height: `${canvasHeight}px` } },
+                    visibleLayout.map((item, index) => {
+                        const geometry = preview?.id === item.id ? preview.geometry : item;
+                        return h('div', {
                         key: item.id,
-                        className: `dashboard-widget dashboard-widget-${item.width}`,
-                        style: item.height ? { minHeight: `${item.height}px` } : undefined,
-                        draggable: editingLayout,
-                        onDragStart: e => { setDraggedWidget(item.id); e.dataTransfer.setData('text/plain', item.id); e.dataTransfer.effectAllowed = 'move'; },
-                        onDragOver: e => { if (editingLayout) e.preventDefault(); },
-                        onDrop: e => { e.preventDefault(); moveWidget(e.dataTransfer.getData('text/plain') || draggedWidget, item.id); setDraggedWidget(null); },
-                        onDragEnd: () => setDraggedWidget(null)
+                        'data-widget-id': item.id,
+                        className: `dashboard-widget${editingLayout ? ' dashboard-widget-editing' : ''}`,
+                        style: { left: `${geometry.x}%`, top: `${geometry.y}px`, width: `${geometry.w}%`, height: `${geometry.h}px`, zIndex: activeWidget === item.id ? 100 : index + 1 }
                     },
-                        editingLayout && h('div', { className: 'flex flex-wrap items-center gap-2 p-2 bg-indigo-50 border border-indigo-100 rounded-t-lg text-xs' },
-                            h('strong', { className: 'mr-auto' }, WIDGET_NAMES[item.id]),
-                            h('button', { type: 'button', 'aria-label': `向前移动${WIDGET_NAMES[item.id]}`, disabled: index === 0, onClick: () => moveWidget(item.id, visibleLayout[index - 1].id) }, '←'),
-                            h('button', { type: 'button', 'aria-label': `向后移动${WIDGET_NAMES[item.id]}`, disabled: index === visibleLayout.length - 1, onClick: () => moveWidget(item.id, visibleLayout[index + 1].id) }, '→'),
-                            h('label', null, '宽度 ', h('select', { 'aria-label': `${WIDGET_NAMES[item.id]}宽度`, value: item.width, onChange: e => updateLayout(layout.map(entry => entry.id === item.id ? { ...entry, width: Number(e.target.value) } : entry)) },
-                                [3, 4, 6, 9, 12].map(width => h('option', { key: width, value: width }, `${width}/12`))
-                            )),
-                            h('label', null, '高度 ', h('select', { 'aria-label': `${WIDGET_NAMES[item.id]}高度`, value: item.height, onChange: e => updateLayout(layout.map(entry => entry.id === item.id ? { ...entry, height: Number(e.target.value) } : entry)) },
-                                [[0, '自动'], [240, '小'], [360, '中'], [480, '大']].map(([height, label]) => h('option', { key: height, value: height }, label))
-                            )),
-                            h('button', { type: 'button', 'aria-label': `移除${WIDGET_NAMES[item.id]}`, className: 'text-red-600', onClick: () => updateLayout(layout.filter(entry => entry.id !== item.id)) }, '移除')
+                        editingLayout && h('div', { className: 'dashboard-widget-toolbar' },
+                            h('div', {
+                                className: 'dashboard-widget-title', role: 'button', tabIndex: 0,
+                                'aria-label': `拖动${WIDGET_NAMES[item.id]}调整位置`,
+                                onPointerDown: event => startGesture(event, geometry, 'move'),
+                                onPointerMove: moveGesture, onPointerUp: endGesture, onPointerCancel: cancelGesture,
+                                onKeyDown: event => {
+                                    const step = event.shiftKey ? 30 : 10;
+                                    const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+                                    const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+                                    if (!dx && !dy) return;
+                                    event.preventDefault();
+                                    const width = canvasRef.current?.getBoundingClientRect().width || 1200;
+                                    const moved = adjustDashboardWidget(item, 'move', dx / width * 100, dy);
+                                    updateLayout(layout.map(entry => entry.id === item.id ? moved : entry).sort((a, b) => a.y - b.y || a.x - b.x));
+                                }
+                            }, WIDGET_NAMES[item.id]),
+                            h('button', { type: 'button', 'aria-label': `移除${WIDGET_NAMES[item.id]}`, className: 'dashboard-widget-remove', onClick: () => updateLayout(layout.filter(entry => entry.id !== item.id)) }, '移除')
                         ),
-                        cards[item.id] || (editingLayout && h('div', { className: 'p-4 bg-white rounded-b-lg text-sm text-gray-400' }, '暂无内容'))
-                    ))
+                        h('div', { className: 'dashboard-widget-card' }, cards[item.id] || h('div', { className: 'p-4 bg-white text-sm text-gray-400' }, '暂无内容')),
+                        editingLayout && resizeDirections.map(([direction, label]) => h('button', {
+                            key: direction, type: 'button',
+                            className: `dashboard-resize-handle dashboard-resize-${direction}`,
+                            'aria-label': `拖动${WIDGET_NAMES[item.id]}${label}调整大小`,
+                            onPointerDown: event => startGesture(event, geometry, direction),
+                            onPointerMove: moveGesture, onPointerUp: endGesture, onPointerCancel: cancelGesture,
+                            onKeyDown: event => {
+                                const step = event.shiftKey ? 30 : 10;
+                                const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+                                const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+                                if (!dx && !dy) return;
+                                event.preventDefault();
+                                const width = canvasRef.current?.getBoundingClientRect().width || 1200;
+                                const resized = adjustDashboardWidget(item, direction, dx / width * 100, dy);
+                                updateLayout(layout.map(entry => entry.id === item.id ? resized : entry));
+                            }
+                        }))
+                    );
+                    })
                 )
             );
         };

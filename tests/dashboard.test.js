@@ -8,6 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../public/dashboard/module.
 const context = { window: {} };
 vm.runInNewContext(source, context);
 const { sanValue, sanLevel, futureValue } = context.window.dashboardScoreUtils;
+const { normalizeDashboardLayout, adjustDashboardWidget } = context.window.dashboardLayoutUtils;
 
 test('SAN clamps deductions and assigns all threshold labels', () => {
     assert.equal(sanValue(0), 100);
@@ -32,11 +33,31 @@ test('future expectation rewards early points and approaches 750 slowly', () => 
     assert.equal(futureValue(-20), 0);
 });
 
+test('pointer geometry resizes edges and corners without moving other modules', () => {
+    const items = normalizeDashboardLayout([{ id: 'bonus', width: 4 }, { id: 'dorm', width: 4 }], ['bonus', 'dorm']);
+    const neighbor = { ...items[1] };
+    const right = adjustDashboardWidget(items[0], 'e', 5, 0);
+    assert.ok(right.w > items[0].w);
+    assert.equal(right.h, items[0].h);
+    const corner = adjustDashboardWidget(items[0], 'se', 5, 30);
+    assert.ok(corner.w > items[0].w);
+    assert.equal(corner.h, items[0].h + 30);
+    const restored = normalizeDashboardLayout([corner, items[1]], ['bonus', 'dorm']);
+    assert.equal(restored[0].w, corner.w);
+    assert.equal(restored[0].h, corner.h);
+    assert.equal(JSON.stringify(restored[1]), JSON.stringify(neighbor));
+    const moved = adjustDashboardWidget(items[0], 'move', 4, 25);
+    assert.equal(moved.y, items[0].y + 25);
+    assert.equal(JSON.stringify(items[1]), JSON.stringify(neighbor));
+    assert.ok(adjustDashboardWidget(items[0], 'w', -100, 0).x >= 0);
+    assert.ok(adjustDashboardWidget(items[0], 's', 0, -1000).h >= 160);
+});
+
 test('enabled scoreboards render ten descending entries and stay off when disabled', () => {
     const h = (type, props, ...children) => ({ type, props: { ...(props || {}), children } });
     const view = context.window.createDashboardView({
         h, useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
-        useMemo: callback => callback(), Icon: () => null,
+        useMemo: callback => callback(), useRef: initial => ({ current: initial }), Icon: () => null,
         requireAdminAuth: async () => true, getNow: () => new Date('2026-09-27'),
         getDateString: date => date.toISOString().slice(0, 10),
         getStartOfDay: date => date, DAY_MS: 86400000,
@@ -51,7 +72,8 @@ test('enabled scoreboards render ten descending entries and stay off when disabl
     const enabled = widgets(render({ san: true, future: true }));
     const san = enabled.find(node => node.props.key === 'san');
     const future = enabled.find(node => node.props.key === 'future');
-    assert.equal(san.props.children[1].props.children[1].props.children[0].length, 10);
-    assert.equal(future.props.children[1].props.children[1].props.children[0].length, 10);
+    const rankRows = widget => widget.props.children[1].props.children[0].props.children[1].props.children[0];
+    assert.equal(rankRows(san).length, 10);
+    assert.equal(rankRows(future).length, 10);
     assert.equal(widgets(render({ san: false, future: false })).some(node => ['san', 'future'].includes(node.props.key)), false);
 });
