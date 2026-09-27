@@ -15,7 +15,7 @@
     const WIDGET_HEIGHTS = {
         countdown: 170, schedule: 300, hygiene: 300, commissioner: 300,
         bonus: 490, dorm: 490, penalty: 490, roles: 300, recent: 430,
-        san: 570, future: 570
+        san: 650, future: 650
     };
     const LAYOUT_GAP = 18;
     const MIN_WIDTH = 18;
@@ -618,29 +618,37 @@
             const [bonusCard, dormCard] = middle.props.children;
             const [penaltyCard, rolesCard, recentCard] = right.props.children;
             const [hygieneCard, commissionerCard] = announcementPair ? announcementPair.props.children : [];
-            const rankCard = (id, title, hint, rows, getValue, getSubtitle) => h('section', { className: 'bg-white p-4 rounded-xl shadow-sm h-full' },
+            const rankCard = (id, title, hint, rows, getValue, getSubtitle, mood) => h('section', { className: `scoreboard-card scoreboard-card--${id} bg-white p-4 rounded-xl shadow-sm h-full` },
                 h('div', { className: 'mb-3 border-b pb-2 flex items-center justify-between gap-2' },
                     h('h3', { className: 'font-bold text-indigo-700' }, title),
                     h('span', { className: 'text-xs text-gray-500' }, hint)
                 ),
-                h('div', { className: 'space-y-2' }, rows.length === 0
+                h('div', { className: 'scoreboard-rank-list' }, rows.length === 0
                     ? h('p', { className: 'text-sm text-gray-400' }, '暂无数据')
-                    : rows.map((student, index) => h('div', { key: `${id}-${student.id}`, className: 'flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2' },
-                        h('span', { className: 'w-6 text-sm font-bold text-gray-500' }, index + 1),
-                        h('span', { className: 'flex-1 min-w-0' },
-                            h('span', { className: 'block font-medium truncate' }, student.name),
-                            getSubtitle && h('span', { className: 'block text-xs text-gray-500' }, getSubtitle(student))
+                    : rows.map((student, index) => h('div', {
+                        key: `${id}-${student.id}`,
+                        className: `scoreboard-rank-row scoreboard-rank-row--${id}${index === 0 ? ' scoreboard-rank-row--first' : ''}`,
+                        style: { '--rank-tint': (0.025 + (10 - index) * 0.018).toFixed(3), '--rank-border': (0.06 + (10 - index) * 0.035).toFixed(3) }
+                    },
+                        h('span', { className: 'scoreboard-rank-number' }, index + 1),
+                        h('span', { className: 'scoreboard-rank-avatar' },
+                            profileAvatarUI.renderAvatarImage({ student, studentProfiles, mood, className: 'scoreboard-rank-avatar-image' }),
+                            index === 0 && h('span', { className: 'scoreboard-rank-emblem', 'aria-hidden': 'true' }, id === 'future' ? '✦' : '↺')
                         ),
-                        h('strong', { className: 'font-mono text-indigo-700' }, getValue(student))
+                        h('span', { className: 'scoreboard-rank-name' },
+                            h('span', { className: 'scoreboard-rank-student' }, student.name),
+                            getSubtitle && h('span', { className: 'scoreboard-rank-subtitle' }, getSubtitle(student))
+                        ),
+                        h('strong', { className: 'scoreboard-rank-score' }, getValue(student))
                     ))
                 )
             );
             const sanCard = enabledBoards.san === true && rankCard('san', 'SAN 值榜 (Top 10)', '100 − 当前扣分',
                 [...studentsWithDefaults].sort((a, b) => sanValue(a.penalty) - sanValue(b.penalty) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
-                student => sanValue(student.penalty), student => sanLevel(sanValue(student.penalty)));
+                student => sanValue(student.penalty), student => sanLevel(sanValue(student.penalty)), 'sad');
             const futureCard = enabledBoards.future === true && rankCard('future', '未来期望榜 (Top 10)', '积分换算，非成绩预测 · 上限 750',
                 [...studentsWithDefaults].sort((a, b) => futureValue(b.zizai) - futureValue(a.zizai) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
-                student => futureValue(student.zizai).toFixed(2), student => `累计加分 ${Math.max(0, Number(student.zizai) || 0)}`);
+                student => futureValue(student.zizai).toFixed(2), student => `累计加分 ${Math.max(0, Number(student.zizai) || 0)}`, 'happy');
             const cards = {
                 countdown: countdownCard, schedule: scheduleCard, hygiene: hygieneCard,
                 commissioner: commissionerCard, bonus: bonusCard, dorm: dormCard,

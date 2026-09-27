@@ -11,6 +11,7 @@
         const renderAvatarImage = ({ student, studentProfiles, mood = 'happy', className = '' }) => (
             h("img", {
                 src: getAvatar(student, studentProfiles, mood),
+                alt: `${student.name}${mood === 'happy' ? '笑脸' : '鬼脸'}头像`,
                 className,
                 onError: (e) => handleAvatarError(e, student.name, mood)
             })

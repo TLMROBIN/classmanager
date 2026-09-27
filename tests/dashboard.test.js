@@ -64,7 +64,7 @@ test('SAN shows the ten lowest values first while future expectation stays desce
         getSystemConfig: config => ({ organization: { dorms: [], groups: [] }, points: {}, dashboardBoards: config.systemConfig?.dashboardBoards || {}, scoreNames: { bonus: '加分', penalty: '扣分' } }),
         getCustomRoles: () => [], getCommissionerRoles: () => [], getGroupsConfig: () => ({}),
         normalizePointScene: value => value, normalizePointCategory: value => value,
-        getProfileAvatarUI: () => ({ renderAvatarImage: () => null })
+        getProfileAvatarUI: () => ({ renderAvatarImage: ({ mood, student }) => h('img', { 'data-mood': mood, 'data-student': student.name }) })
     });
     const students = Array.from({ length: 12 }, (_, id) => ({ id, name: `学生${id}`, zizai: id * 10, penalty: id * 5 }));
     const render = dashboardBoards => view({ students, studentProfiles: {}, history: [], config: { systemConfig: { dashboardBoards } }, setConfig: () => {}, handleUndo: () => {} });
@@ -75,8 +75,12 @@ test('SAN shows the ten lowest values first while future expectation stays desce
     const rankRows = widget => widget.props.children[1].props.children[0].props.children[1].props.children[0];
     assert.equal(rankRows(san).length, 10);
     assert.equal(rankRows(future).length, 10);
-    const rankValues = widget => Array.from(rankRows(widget), row => row.props.children[2].props.children[0]);
+    const rankValues = widget => Array.from(rankRows(widget), row => row.props.children[3].props.children[0]);
     assert.deepEqual(rankValues(san), [45, 50, 55, 60, 65, 70, 75, 80, 85, 90]);
     assert.deepEqual(rankValues(future), students.slice(2).reverse().map(student => futureValue(student.zizai).toFixed(2)));
+    assert.ok(Array.from(rankRows(san)).every(row => row.props.children[1].props.children[0].props['data-mood'] === 'sad'));
+    assert.ok(Array.from(rankRows(future)).every(row => row.props.children[1].props.children[0].props['data-mood'] === 'happy'));
+    assert.ok(Number(rankRows(san)[0].props.style['--rank-tint']) > Number(rankRows(san)[9].props.style['--rank-tint']));
+    assert.ok(Number(rankRows(future)[0].props.style['--rank-border']) > Number(rankRows(future)[9].props.style['--rank-border']));
     assert.equal(widgets(render({ san: false, future: false })).some(node => ['san', 'future'].includes(node.props.key)), false);
 });
