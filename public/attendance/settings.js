@@ -181,27 +181,37 @@
                                         onChange: e => updateScheduleItem(idx, { name: e.target.value }),
                                         placeholder: "名称"
                                     }),
-                                    h("input", {
-                                        type: "time",
-                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 开始时间`,
-                                        className: "border rounded p-2 text-sm",
-                                        value: period.start || "",
-                                        onChange: e => updateScheduleItem(idx, { start: e.target.value })
-                                    }),
-                                    h("input", {
-                                        type: "time",
-                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 结束时间`,
-                                        className: "border rounded p-2 text-sm",
-                                        value: period.end || "",
-                                        onChange: e => updateScheduleItem(idx, { end: e.target.value })
-                                    }),
-                                    h("input", {
-                                        type: "time",
-                                        'aria-label': `${period.name || `时段 ${idx + 1}`} 迟到起算时间`,
-                                        className: "border rounded p-2 text-sm",
-                                        value: period.lateTime || "",
-                                        onChange: e => updateScheduleItem(idx, { lateTime: e.target.value })
-                                    }),
+                                    h("label", { className: "block text-xs text-gray-600" },
+                                        "考勤开始时间",
+                                        h("input", {
+                                            type: "time",
+                                            'aria-label': `${period.name || `时段 ${idx + 1}`} 考勤开始时间`,
+                                            className: "block w-full mt-1 border rounded p-2 text-sm",
+                                            value: period.start || "",
+                                            onChange: e => updateScheduleItem(idx, { start: e.target.value })
+                                        })
+                                    ),
+                                    h("label", { className: "block text-xs text-gray-600" },
+                                        "考勤结束时间",
+                                        h("input", {
+                                            type: "time",
+                                            'aria-label': `${period.name || `时段 ${idx + 1}`} 考勤结束时间`,
+                                            className: "block w-full mt-1 border rounded p-2 text-sm",
+                                            value: period.end || "",
+                                            onChange: e => updateScheduleItem(idx, { end: e.target.value })
+                                        })
+                                    ),
+                                    h("label", { className: "block text-xs text-gray-600" },
+                                        "迟到时间",
+                                        h("input", {
+                                            type: "time",
+                                            'aria-label': `${period.name || `时段 ${idx + 1}`} 迟到时间`,
+                                            className: "block w-full mt-1 border rounded p-2 text-sm",
+                                            value: period.lateTime || "",
+                                            onChange: e => updateScheduleItem(idx, { lateTime: e.target.value })
+                                        }),
+                                        h("span", { className: "block mt-1 text-[11px] text-gray-500" }, "到达此时间后记为迟到")
+                                    ),
                                     h("button", {
                                         onClick: () => updateAttendance(currentAttendance => {
                                             const nextSchedule = Array.isArray(currentAttendance.schedule) ? [...currentAttendance.schedule] : [];
