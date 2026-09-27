@@ -337,7 +337,15 @@
         };
 
         const applySystemConfig = (next) => {
-            const newConfig = { ...config, systemConfig: stripSystemConfigTreasures(next) };
+            const nextLayout = Array.isArray(config.dashboardLayout) ? [...config.dashboardLayout] : null;
+            if (nextLayout) {
+                for (const id of ['san', 'future']) {
+                    if (next.dashboardBoards?.[id] === true && getSystemConfig(config).dashboardBoards?.[id] !== true && !nextLayout.some(item => item.id === id)) {
+                        nextLayout.push({ id, width: 4 });
+                    }
+                }
+            }
+            const newConfig = { ...config, systemConfig: stripSystemConfigTreasures(next), ...(nextLayout ? { dashboardLayout: nextLayout } : {}) };
             setConfigSafe(newConfig);
             if (Array.isArray(next.quotes)) setQuotes(next.quotes);
         };

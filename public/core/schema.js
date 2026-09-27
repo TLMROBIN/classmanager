@@ -109,6 +109,7 @@
     const DEFAULT_SYSTEM_CONFIG = {
         className: '班级自在管理系统',
         scoreNames: { bonus: '自在值', penalty: '不自在值' },
+        dashboardBoards: { san: false, future: false },
         quotes: [...DEFAULT_QUOTES],
         recordCategoryPendingMigrated: false,
         enabledFeatures: {
@@ -346,6 +347,11 @@
             for (const key of ['bonus', 'penalty']) {
                 const name = userConfig.scoreNames[key];
                 if (typeof name === 'string' && name.trim()) merged.scoreNames[key] = name.trim().slice(0, 20);
+            }
+        }
+        if (userConfig.dashboardBoards && typeof userConfig.dashboardBoards === 'object') {
+            for (const key of ['san', 'future']) {
+                if (typeof userConfig.dashboardBoards[key] === 'boolean') merged.dashboardBoards[key] = userConfig.dashboardBoards[key];
             }
         }
         if (userConfig.quotes !== undefined) merged.quotes = userConfig.quotes;

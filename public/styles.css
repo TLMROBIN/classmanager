@@ -117,6 +117,21 @@ body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background
 .frame-gold { border: 2px solid #d97706; box-shadow: none; }
 .frame-silver { border: 2px solid #6b7280; box-shadow: none; }
 
+.dashboard-widget-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1.5rem; align-items: start; }
+.dashboard-widget { min-width: 0; grid-column: span 4; display: flex; flex-direction: column; }
+.dashboard-widget > :last-child { flex: 1; }
+.dashboard-widget-3 { grid-column: span 3; }
+.dashboard-widget-4 { grid-column: span 4; }
+.dashboard-widget-6 { grid-column: span 6; }
+.dashboard-widget-9 { grid-column: span 9; }
+.dashboard-widget-12 { grid-column: span 12; }
+@media (max-width: 1023px) {
+    .dashboard-widget-3, .dashboard-widget-4, .dashboard-widget-6, .dashboard-widget-9 { grid-column: span 6; }
+}
+@media (max-width: 639px) {
+    .dashboard-widget { grid-column: 1 / -1; }
+}
+
 /* Range Slider Styling */
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: none; }

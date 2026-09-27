@@ -1,4 +1,25 @@
 (function() {
+    const DEFAULT_WIDGETS = [
+        { id: 'countdown', width: 12 }, { id: 'schedule', width: 4 },
+        { id: 'hygiene', width: 4 }, { id: 'commissioner', width: 4 },
+        { id: 'bonus', width: 4 }, { id: 'dorm', width: 4 },
+        { id: 'penalty', width: 4 }, { id: 'roles', width: 4 },
+        { id: 'recent', width: 4 }
+    ];
+    const WIDGET_NAMES = {
+        countdown: '倒数日', schedule: '日历日程', hygiene: '卫生督查公示',
+        commissioner: '纪律专员公示', bonus: '加分榜', dorm: '宿舍分值图',
+        penalty: '扣分榜', roles: '班级职务公示', recent: '近期动态',
+        san: 'SAN 值榜', future: '未来期望榜'
+    };
+    const sanValue = (penalty) => Math.max(0, Math.min(100, 100 - Math.max(0, Number(penalty) || 0)));
+    const sanLevel = (value) => value <= 0 ? '彻底疯狂' : value < 20 ? '危险' : value < 40 ? '需要救助' : value < 60 ? '感到不适' : value < 80 ? '临时错乱' : '稳定';
+    const futureValue = (bonus) => {
+        const value = Math.max(0, Number(bonus) || 0);
+        return Math.min(749.99, Math.round(750 * (1 - Math.exp(-value / 750)) * 100) / 100);
+    };
+    window.dashboardScoreUtils = { sanValue, sanLevel, futureValue };
+
     window.createDashboardView = function createDashboardView(deps) {
         const {
             h,
@@ -32,6 +53,33 @@
             }));
             const sortedZizai = [...studentsWithDefaults].sort((a, b) => (b.zizai || 0) - (a.zizai || 0)).slice(0, 5);
             const sortedPenalty = [...studentsWithDefaults].sort((a, b) => (b.penalty || 0) - (a.penalty || 0)).slice(0, 5);
+            const systemConfig = getSystemConfig(config);
+            const enabledBoards = systemConfig.dashboardBoards || {};
+            const allowedWidgetIds = Object.keys(WIDGET_NAMES).filter(id => id !== 'san' && id !== 'future' || enabledBoards[id] === true);
+            const savedLayout = Array.isArray(config?.dashboardLayout) ? config.dashboardLayout : [
+                ...DEFAULT_WIDGETS,
+                ...(enabledBoards.san === true ? [{ id: 'san', width: 4 }] : []),
+                ...(enabledBoards.future === true ? [{ id: 'future', width: 4 }] : [])
+            ];
+            const layout = savedLayout.filter((item, index) => item && allowedWidgetIds.includes(item.id) && savedLayout.findIndex(entry => entry?.id === item.id) === index)
+                .map(item => ({ id: item.id, width: [3, 4, 6, 9, 12].includes(item.width) ? item.width : 4,
+                    height: [240, 360, 480].includes(item.height) ? item.height : 0 }));
+            const [editingLayout, setEditingLayout] = useState(false);
+            const [draggedWidget, setDraggedWidget] = useState(null);
+            const updateLayout = (next) => setConfig(previous => ({ ...previous, dashboardLayout: next }));
+            const beginLayoutEdit = async () => {
+                if (!await requireAdminAuth('编辑首页布局需要维护密码，请输入：')) return;
+                setEditingLayout(true);
+            };
+            const moveWidget = (sourceId, targetId) => {
+                if (!sourceId || sourceId === targetId) return;
+                const next = [...layout];
+                const from = next.findIndex(item => item.id === sourceId);
+                const to = next.findIndex(item => item.id === targetId);
+                if (from < 0 || to < 0) return;
+                next.splice(to, 0, next.splice(from, 1)[0]);
+                updateLayout(next);
+            };
 
             const [dormChartRange, setDormChartRange] = useState(() => {
                 const now = getNow();
@@ -258,7 +306,7 @@
                 return `再有${remainingDays}天不扣分，即可减${formatPenaltyDecayValue(nextReduce)}分`;
             };
 
-            return h("div", { className: "space-y-6 animate-fade-in" },
+            const legacyContent = h("div", { className: "space-y-6 animate-fade-in" },
                 h("div", { className: "bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-xl shadow-sm border border-blue-100" },
                     h("h3", { className: "font-bold text-gray-800 flex items-center gap-2 text-lg mb-4" }, h(Icon, { name: "clock" }), "倒数日"),
                     countdownList.length === 0 ? h("span", { className: "text-sm text-gray-400" }, "暂无倒数日") :
@@ -460,6 +508,86 @@
                             )
                         )
                     )
+                )
+            );
+
+            // Reuse the existing card content while the grid controls its visibility and position.
+            const [countdownCard, columns] = legacyContent.props.children;
+            const [left, middle, right] = columns.props.children;
+            const [scheduleCard, announcementPair] = left.props.children;
+            const [bonusCard, dormCard] = middle.props.children;
+            const [penaltyCard, rolesCard, recentCard] = right.props.children;
+            const [hygieneCard, commissionerCard] = announcementPair ? announcementPair.props.children : [];
+            const rankCard = (id, title, hint, rows, getValue, getSubtitle) => h('section', { className: 'bg-white p-4 rounded-xl shadow-sm h-full' },
+                h('div', { className: 'mb-3 border-b pb-2 flex items-center justify-between gap-2' },
+                    h('h3', { className: 'font-bold text-indigo-700' }, title),
+                    h('span', { className: 'text-xs text-gray-500' }, hint)
+                ),
+                h('div', { className: 'space-y-2' }, rows.length === 0
+                    ? h('p', { className: 'text-sm text-gray-400' }, '暂无数据')
+                    : rows.map((student, index) => h('div', { key: `${id}-${student.id}`, className: 'flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2' },
+                        h('span', { className: 'w-6 text-sm font-bold text-gray-500' }, index + 1),
+                        h('span', { className: 'flex-1 min-w-0' },
+                            h('span', { className: 'block font-medium truncate' }, student.name),
+                            getSubtitle && h('span', { className: 'block text-xs text-gray-500' }, getSubtitle(student))
+                        ),
+                        h('strong', { className: 'font-mono text-indigo-700' }, getValue(student))
+                    ))
+                )
+            );
+            const sanCard = enabledBoards.san === true && rankCard('san', 'SAN 值榜 (Top 10)', '100 − 当前扣分',
+                [...studentsWithDefaults].sort((a, b) => sanValue(b.penalty) - sanValue(a.penalty) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
+                student => sanValue(student.penalty), student => sanLevel(sanValue(student.penalty)));
+            const futureCard = enabledBoards.future === true && rankCard('future', '未来期望榜 (Top 10)', '上限 750',
+                [...studentsWithDefaults].sort((a, b) => futureValue(b.zizai) - futureValue(a.zizai) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
+                student => futureValue(student.zizai).toFixed(2), student => `累计加分 ${Math.max(0, Number(student.zizai) || 0)}`);
+            const cards = {
+                countdown: countdownCard, schedule: scheduleCard, hygiene: hygieneCard,
+                commissioner: commissionerCard, bonus: bonusCard, dorm: dormCard,
+                penalty: penaltyCard, roles: rolesCard, recent: recentCard,
+                san: sanCard, future: futureCard
+            };
+            const addable = allowedWidgetIds.filter(id => !layout.some(item => item.id === id));
+            const visibleLayout = layout.filter(item => editingLayout || cards[item.id]);
+            return h('div', { className: 'space-y-4 animate-fade-in' },
+                h('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
+                    h('div', { className: 'text-xs text-gray-500' }, editingLayout ? '拖动卡片排序；也可用左右按钮调整顺序。面板宽度按 12 列设置。' : ''),
+                    h('button', { type: 'button', onClick: editingLayout ? () => setEditingLayout(false) : beginLayoutEdit, className: 'px-3 py-2 text-sm rounded-lg border bg-white hover:bg-gray-50' }, editingLayout ? '完成编辑' : '编辑首页布局')
+                ),
+                editingLayout && h('div', { className: 'rounded-xl border bg-white p-3' },
+                    h('label', { className: 'text-sm font-medium mr-3', htmlFor: 'dashboard-add-widget' }, '添加模块'),
+                    h('select', { id: 'dashboard-add-widget', className: 'border rounded p-2 text-sm', value: '', onChange: e => {
+                        if (e.target.value) updateLayout([...layout, { id: e.target.value, width: 4 }]);
+                    } },
+                        h('option', { value: '' }, addable.length ? '选择模块' : '所有可用模块已添加'),
+                        addable.map(id => h('option', { key: id, value: id }, WIDGET_NAMES[id]))
+                    )
+                ),
+                h('div', { className: 'dashboard-widget-grid' },
+                    visibleLayout.map((item, index) => h('div', {
+                        key: item.id,
+                        className: `dashboard-widget dashboard-widget-${item.width}`,
+                        style: item.height ? { minHeight: `${item.height}px` } : undefined,
+                        draggable: editingLayout,
+                        onDragStart: e => { setDraggedWidget(item.id); e.dataTransfer.setData('text/plain', item.id); e.dataTransfer.effectAllowed = 'move'; },
+                        onDragOver: e => { if (editingLayout) e.preventDefault(); },
+                        onDrop: e => { e.preventDefault(); moveWidget(e.dataTransfer.getData('text/plain') || draggedWidget, item.id); setDraggedWidget(null); },
+                        onDragEnd: () => setDraggedWidget(null)
+                    },
+                        editingLayout && h('div', { className: 'flex flex-wrap items-center gap-2 p-2 bg-indigo-50 border border-indigo-100 rounded-t-lg text-xs' },
+                            h('strong', { className: 'mr-auto' }, WIDGET_NAMES[item.id]),
+                            h('button', { type: 'button', 'aria-label': `向前移动${WIDGET_NAMES[item.id]}`, disabled: index === 0, onClick: () => moveWidget(item.id, visibleLayout[index - 1].id) }, '←'),
+                            h('button', { type: 'button', 'aria-label': `向后移动${WIDGET_NAMES[item.id]}`, disabled: index === visibleLayout.length - 1, onClick: () => moveWidget(item.id, visibleLayout[index + 1].id) }, '→'),
+                            h('label', null, '宽度 ', h('select', { 'aria-label': `${WIDGET_NAMES[item.id]}宽度`, value: item.width, onChange: e => updateLayout(layout.map(entry => entry.id === item.id ? { ...entry, width: Number(e.target.value) } : entry)) },
+                                [3, 4, 6, 9, 12].map(width => h('option', { key: width, value: width }, `${width}/12`))
+                            )),
+                            h('label', null, '高度 ', h('select', { 'aria-label': `${WIDGET_NAMES[item.id]}高度`, value: item.height, onChange: e => updateLayout(layout.map(entry => entry.id === item.id ? { ...entry, height: Number(e.target.value) } : entry)) },
+                                [[0, '自动'], [240, '小'], [360, '中'], [480, '大']].map(([height, label]) => h('option', { key: height, value: height }, label))
+                            )),
+                            h('button', { type: 'button', 'aria-label': `移除${WIDGET_NAMES[item.id]}`, className: 'text-red-600', onClick: () => updateLayout(layout.filter(entry => entry.id !== item.id)) }, '移除')
+                        ),
+                        cards[item.id] || (editingLayout && h('div', { className: 'p-4 bg-white rounded-b-lg text-sm text-gray-400' }, '暂无内容'))
+                    ))
                 )
             );
         };
