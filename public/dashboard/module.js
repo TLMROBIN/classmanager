@@ -16,7 +16,7 @@
     const sanLevel = (value) => value <= 0 ? '彻底疯狂' : value < 20 ? '危险' : value < 40 ? '需要救助' : value < 60 ? '感到不适' : value < 80 ? '临时错乱' : '稳定';
     const futureValue = (bonus) => {
         const value = Math.max(0, Number(bonus) || 0);
-        return Math.min(749.99, Math.round(750 * Math.tanh(value / 750) * 100) / 100);
+        return Math.min(749.99, Math.round(-750 * Math.expm1(-value / 600) * 100) / 100);
     };
     window.dashboardScoreUtils = { sanValue, sanLevel, futureValue };
 
@@ -538,7 +538,7 @@
             const sanCard = enabledBoards.san === true && rankCard('san', 'SAN 值榜 (Top 10)', '100 − 当前扣分',
                 [...studentsWithDefaults].sort((a, b) => sanValue(b.penalty) - sanValue(a.penalty) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
                 student => sanValue(student.penalty), student => sanLevel(sanValue(student.penalty)));
-            const futureCard = enabledBoards.future === true && rankCard('future', '未来期望榜 (Top 10)', '上限 750',
+            const futureCard = enabledBoards.future === true && rankCard('future', '未来期望榜 (Top 10)', '积分换算，非成绩预测 · 上限 750',
                 [...studentsWithDefaults].sort((a, b) => futureValue(b.zizai) - futureValue(a.zizai) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
                 student => futureValue(student.zizai).toFixed(2), student => `累计加分 ${Math.max(0, Number(student.zizai) || 0)}`);
             const cards = {
