@@ -14,7 +14,7 @@
 ### 1. 环境准备
 
 确保你的系统已安装：
-- [Node.js](https://nodejs.org/) (推荐 v16 以上版本)
+- [Node.js](https://nodejs.org/) 20 或更高版本（推荐 22；`better-sqlite3` 12 不再支持 Node 16）
 - npm
 
 ### 2. 安装依赖
@@ -75,7 +75,10 @@ npm run bootstrap-admin
 使用以下命令启动服务器：
 
 ```bash
-# 开发模式启动
+# 开发启动（读取 .env.runtime，可传 --port 和 --host）
+npm run dev
+
+# 使用已有环境变量直接启动
 npm start
 ```
 或者，使用项目中自带的启停脚本：

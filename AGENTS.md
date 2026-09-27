@@ -14,7 +14,7 @@
 
 | 层次 | 技术 |
 |---|---|
-| 运行时 | Node.js (≥16) |
+| 运行时 | Node.js (≥20；推荐 22，`better-sqlite3` 12 不支持 Node 16) |
 | HTTP 框架 | Express 4 |
 | 数据库 | SQLite（`better-sqlite3`，WAL 模式，外键开启） |
 | 认证 | JWT（httpOnly Cookie，7天有效）+ 独立维护密码（bcrypt，10分钟短令牌） |
