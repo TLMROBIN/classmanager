@@ -22,10 +22,12 @@ test('SAN clamps deductions and assigns all threshold labels', () => {
 
 test('future expectation starts near one to one and approaches 750 slowly', () => {
     assert.equal(futureValue(0), 0);
-    assert.ok(futureValue(10) > 9.9 && futureValue(10) < 10);
-    assert.ok(futureValue(1500) > 648 && futureValue(1500) < 649);
-    assert.ok(futureValue(2000) > 697 && futureValue(2000) < 699);
-    assert.ok(futureValue(3000) > 736 && futureValue(3000) < 737);
+    assert.ok(futureValue(10) >= 9.99 && futureValue(10) <= 10);
+    assert.ok(futureValue(800) > 591 && futureValue(800) < 592);
+    assert.ok(futureValue(1000) > 652 && futureValue(1000) < 653);
+    assert.ok(futureValue(1500) > 723 && futureValue(1500) < 724);
+    assert.ok(futureValue(2000) > 742 && futureValue(2000) < 743);
+    assert.ok(futureValue(2500) > 748 && futureValue(2500) < 749);
     assert.ok(futureValue(100000) < 750);
     assert.equal(futureValue(-20), 0);
 });

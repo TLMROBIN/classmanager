@@ -16,7 +16,7 @@
     const sanLevel = (value) => value <= 0 ? '彻底疯狂' : value < 20 ? '危险' : value < 40 ? '需要救助' : value < 60 ? '感到不适' : value < 80 ? '临时错乱' : '稳定';
     const futureValue = (bonus) => {
         const value = Math.max(0, Number(bonus) || 0);
-        return Math.min(749.99, Math.round(750 * (1 - Math.exp(-value / 750)) * 100) / 100);
+        return Math.min(749.99, Math.round(750 * Math.tanh(value / 750) * 100) / 100);
     };
     window.dashboardScoreUtils = { sanValue, sanLevel, futureValue };
 
