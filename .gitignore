@@ -45,3 +45,9 @@ classmanager-next
 .DS_Store
 Thumbs.db
 .omx/
+
+# Local writing history and submission drafts
+/.writing/
+/_workspace/
+/德育报投稿_*.md
+/德育报投稿_*.docx
