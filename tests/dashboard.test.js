@@ -53,7 +53,7 @@ test('pointer geometry resizes edges and corners without moving other modules', 
     assert.ok(adjustDashboardWidget(items[0], 's', 0, -1000).h >= 160);
 });
 
-test('enabled scoreboards render ten descending entries and stay off when disabled', () => {
+test('SAN shows the ten lowest values first while future expectation stays descending', () => {
     const h = (type, props, ...children) => ({ type, props: { ...(props || {}), children } });
     const view = context.window.createDashboardView({
         h, useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
@@ -75,5 +75,8 @@ test('enabled scoreboards render ten descending entries and stay off when disabl
     const rankRows = widget => widget.props.children[1].props.children[0].props.children[1].props.children[0];
     assert.equal(rankRows(san).length, 10);
     assert.equal(rankRows(future).length, 10);
+    const rankValues = widget => Array.from(rankRows(widget), row => row.props.children[2].props.children[0]);
+    assert.deepEqual(rankValues(san), [45, 50, 55, 60, 65, 70, 75, 80, 85, 90]);
+    assert.deepEqual(rankValues(future), students.slice(2).reverse().map(student => futureValue(student.zizai).toFixed(2)));
     assert.equal(widgets(render({ san: false, future: false })).some(node => ['san', 'future'].includes(node.props.key)), false);
 });

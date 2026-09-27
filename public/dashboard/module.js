@@ -636,7 +636,7 @@
                 )
             );
             const sanCard = enabledBoards.san === true && rankCard('san', 'SAN 值榜 (Top 10)', '100 − 当前扣分',
-                [...studentsWithDefaults].sort((a, b) => sanValue(b.penalty) - sanValue(a.penalty) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
+                [...studentsWithDefaults].sort((a, b) => sanValue(a.penalty) - sanValue(b.penalty) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
                 student => sanValue(student.penalty), student => sanLevel(sanValue(student.penalty)));
             const futureCard = enabledBoards.future === true && rankCard('future', '未来期望榜 (Top 10)', '积分换算，非成绩预测 · 上限 750',
                 [...studentsWithDefaults].sort((a, b) => futureValue(b.zizai) - futureValue(a.zizai) || String(a.id).localeCompare(String(b.id))).slice(0, 10),
