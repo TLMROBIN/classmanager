@@ -51,3 +51,9 @@ Thumbs.db
 /_workspace/
 /德育报投稿_*.md
 /德育报投稿_*.docx
+
+# Local assistant exports and new UI review reports
+/.codex-conversations/
+/.workbuddy/
+/.impeccable/critique/
+/.worktrees/
