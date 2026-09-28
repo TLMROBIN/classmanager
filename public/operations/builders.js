@@ -34,13 +34,15 @@
         });
     };
 
-    const buildHomeworkUpdates = ({ hwSubject, dateVal, hwSelectedIds, representatives, studentMap }) => {
+    const buildHomeworkUpdates = ({ hwSubject, dateVal, hwSelectedIds, representatives, studentMap, homeworkPenalty = 1 }) => {
         const updates = [];
+        const penalty = Number.isFinite(Number(homeworkPenalty)) ? Math.max(0, Number(homeworkPenalty)) : 1;
 
         Array.from(hwSelectedIds || []).forEach(id => {
+            if (penalty === 0) return;
             updates.push({
                 id,
-                val: -1,
+                val: -penalty,
                 reason: `${hwSubject}作业未交 ${dateVal}`,
                 type: 'penalty',
                 scene: "班级",
@@ -63,7 +65,8 @@
         return updates;
     };
 
-    const buildHomeworkConfirmMessage = ({ hwSubject, dateVal, hwSelectedIds, representatives, studentMap }) => {
+    const buildHomeworkConfirmMessage = ({ hwSubject, dateVal, hwSelectedIds, representatives, studentMap, homeworkPenalty = 1 }) => {
+        const penalty = Number.isFinite(Number(homeworkPenalty)) ? Math.max(0, Number(homeworkPenalty)) : 1;
         const repNames = (Array.isArray(representatives) ? representatives : [])
             .map(repId => studentMap.get(String(repId))?.name || '')
             .filter(Boolean)
@@ -78,6 +81,7 @@
                 .filter(Boolean)
                 .join('、');
             confirmMsg += `未交作业学生 (${hwSelectedIds.size}人)：\n${unsubmittedStudents}\n\n`;
+            confirmMsg += penalty > 0 ? `未交扣分：每人 -${penalty}分\n\n` : "未交扣分：已关闭\n\n";
         } else {
             confirmMsg += "✅ 无学生未交作业\n\n";
         }

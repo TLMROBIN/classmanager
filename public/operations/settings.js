@@ -54,6 +54,9 @@
             const systemConfig = getSystemConfig(config);
             const studentList = Array.isArray(students) ? students : [];
             const subjects = Array.isArray(systemConfig.subjects) ? systemConfig.subjects : [];
+            const homeworkPenalty = Number.isFinite(Number(systemConfig.points?.homeworkPenalty))
+                ? Math.max(0, Number(systemConfig.points.homeworkPenalty))
+                : 1;
             const isVisible = isOpen;
 
             return h("div", { className: "bg-white p-4 rounded-xl shadow-sm border space-y-4" },
@@ -85,6 +88,32 @@
                         h("div", { className: "font-medium" }, "场景与类别如何使用"),
                         h("p", null, "场景回答“事情在哪里发生”，类别回答“属于哪类班级管理”。它们用于积分历史筛选和统计，不会改变分值。"),
                         h("p", null, "例如：课堂回答问题，可设为场景“课堂”、类别“学习”。")
+                    ),
+                    h("div", { className: "flex flex-col gap-2 rounded-lg border bg-gray-50 p-3 sm:flex-row sm:items-center sm:justify-between" },
+                        h("div", null,
+                            h("label", { htmlFor: "homework-unsubmitted-penalty", className: "text-sm font-medium text-gray-800" }, "未交作业扣分"),
+                            h("p", { className: "mt-1 text-xs text-gray-500" }, "作业登记时，每名未交学生按此分值扣分；设为 0 可关闭扣分。")
+                        ),
+                        h("div", { className: "flex items-center gap-2" },
+                            h("input", {
+                                id: "homework-unsubmitted-penalty",
+                                type: "number",
+                                min: 0,
+                                step: "any",
+                                className: "w-28 rounded border bg-white p-2 text-sm",
+                                'aria-label': "未交作业扣分分值",
+                                value: homeworkPenalty,
+                                onChange: e => {
+                                    const value = Number(e.target.value);
+                                    if (!Number.isFinite(value) || value < 0) return;
+                                    updateSystemConfig(config, setConfig, sc => ({
+                                        ...sc,
+                                        points: { ...(sc.points || {}), homeworkPenalty: value }
+                                    }));
+                                }
+                            }),
+                            h("span", { className: "text-sm text-gray-600" }, "分")
+                        )
                     ),
                     h("div", { className: "flex justify-between items-center" },
                         h("span", { className: "text-sm font-medium text-gray-700" }, "学科列表"),

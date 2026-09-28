@@ -578,6 +578,7 @@
                 homeworkDates,
                 historyList,
                 subjectsConfig,
+                systemConfig,
                 hwSelectedIds,
                 buildHomeworkUpdates,
                 buildHomeworkConfirmMessage,

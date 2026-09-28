@@ -36,6 +36,7 @@
             homeworkDates,
             historyList,
             subjectsConfig,
+            systemConfig = {},
             hwSelectedIds,
             buildHomeworkUpdates,
             buildHomeworkConfirmMessage,
@@ -249,12 +250,14 @@
 
             const subjectConfig = (Array.isArray(subjectsConfig) ? subjectsConfig : []).find(subject => subject.name === hwSubject);
             const representatives = subjectConfig?.representatives || [];
+            const homeworkPenalty = (systemConfig.points || {}).homeworkPenalty ?? 1;
             const updates = buildHomeworkUpdates({
                 hwSubject,
                 dateVal,
                 hwSelectedIds,
                 representatives,
-                studentMap
+                studentMap,
+                homeworkPenalty
             });
 
             if (updates.length === 0) {
@@ -266,7 +269,8 @@
                 dateVal,
                 hwSelectedIds,
                 representatives,
-                studentMap
+                studentMap,
+                homeworkPenalty
             });
 
             if (!await requestOperationConfirmation({

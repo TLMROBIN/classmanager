@@ -168,6 +168,7 @@
             dailyWageGroups: ['discipline', 'hygiene'],
             penaltyDecayDays: 7,
             penaltyDecayAmount: 10,
+            homeworkPenalty: 1,
             runningExerciseAbsentPenalty: 1,
             runningExercisePresentBonus: 1,
             runningExerciseCommissionerStudentId: null,
