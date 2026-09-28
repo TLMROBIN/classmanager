@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { hashPassword, verifyPassword } = require('./utils/password');
 const { buildHealthReport } = require('./utils/health');
-const { applyBankruptcyLiquidation } = require('./utils/liquidation');
+const { applyBankruptcyLiquidation, clearExpiredLiquidatedTreasures } = require('./utils/liquidation');
 const {
     generateToken,
     generateMaintenanceToken,
@@ -2457,6 +2457,19 @@ app.get('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewar
                 __meta: data.__meta
             });
         }
+        const expirationResult = clearExpiredLiquidatedTreasures({
+            liquidatedTreasures: data.liquidatedTreasures,
+            logs: data.logs,
+            now
+        });
+        if (expirationResult.changed) {
+            data.liquidatedTreasures = expirationResult.liquidatedTreasures;
+            data.__meta = buildNextStoredMeta(existingMeta, now);
+            persistDataObject(store, {
+                liquidatedTreasures: data.liquidatedTreasures,
+                __meta: data.__meta
+            });
+        }
         data.config = stripLegacyAdminPasswordFromConfig(data.config);
         delete data.attendanceRecords;
         delete data.attendance_records;
@@ -2565,6 +2578,21 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
             data.liquidatedTreasures = liquidationResult.liquidatedTreasures;
             data.history = liquidationResult.history;
             data.logs = liquidationResult.logs;
+            normalizedIncomingMeta.updatedAt = Math.max(
+                normalizedIncomingMeta.updatedAt,
+                Number(now.getTime()) || 0,
+                existingUpdatedAt + 1
+            );
+        }
+        const expirationResult = clearExpiredLiquidatedTreasures({
+            liquidatedTreasures: liquidationResult.changed
+                ? data.liquidatedTreasures
+                : mergedLiquidatedTreasures,
+            logs: data.logs || mergedLogs,
+            now
+        });
+        if (expirationResult.changed) {
+            data.liquidatedTreasures = expirationResult.liquidatedTreasures;
             normalizedIncomingMeta.updatedAt = Math.max(
                 normalizedIncomingMeta.updatedAt,
                 Number(now.getTime()) || 0,

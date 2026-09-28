@@ -387,7 +387,7 @@
                     liquidatedTreasures.filter(t => t.stock > 0).length > 0 && h("div", { className: "mt-6" },
                         h("div", { className: "flex items-center gap-2 mb-3" },
                             h("span", { className: "text-lg font-bold text-orange-600" }, "🔥 清算专区"),
-                            h("span", { className: "text-xs text-orange-400" }, "破产清算物品，八五折特惠")
+                            h("span", { className: "text-xs text-orange-400" }, "破产清算物品，八五折特惠；上架 7 天无人兑换自动清除")
                         ),
                         h("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-4" },
                             liquidatedTreasures.filter(t => t.stock > 0).map(item =>

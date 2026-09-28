@@ -2,6 +2,39 @@
 
 const REFUND_RATE = 0.7;
 const SALE_RATE = 0.85;
+const LIQUIDATION_LISTING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const getLiquidatedAt = (item, logs) => {
+    const storedTimestamp = Number(item?.liquidatedAt ?? item?.createdAt);
+    if (Number.isFinite(storedTimestamp) && storedTimestamp > 0) return storedTimestamp;
+
+    // Older listings encode their creation time in the generated ID.
+    const idTimestamp = String(item?.id || '').match(/^liq_.+_(\d{13})_[a-z0-9]+$/i)?.[1];
+    if (idTimestamp) return Number(idTimestamp);
+
+    const creationLog = (Array.isArray(logs) ? logs : []).find(log => (
+        String(log?.liquidatedItemId || '') === String(item?.id || '')
+        && String(log?.note || '').startsWith('返还')
+    ));
+    const logTimestamp = Number(creationLog?.ts);
+    return Number.isFinite(logTimestamp) && logTimestamp > 0 ? logTimestamp : null;
+};
+
+const clearExpiredLiquidatedTreasures = ({ liquidatedTreasures, logs, now }) => {
+    const items = Array.isArray(liquidatedTreasures) ? liquidatedTreasures : [];
+    const nowTs = now instanceof Date ? now.getTime() : Number(now);
+    const timestamp = Number.isFinite(nowTs) ? nowTs : Date.now();
+    const nextItems = items.filter(item => {
+        if (Number(item?.stock) <= 0) return true;
+        const liquidatedAt = getLiquidatedAt(item, logs);
+        return liquidatedAt == null || timestamp - liquidatedAt < LIQUIDATION_LISTING_TTL_MS;
+    });
+
+    return {
+        changed: nextItems.length !== items.length,
+        liquidatedTreasures: nextItems
+    };
+};
 
 const roundToHalf = (value) => {
     if (!Number.isFinite(value) || value <= 0) return 0;
@@ -97,6 +130,7 @@ const liquidateStudent = ({ student, storage, treasures, liquidatedTreasures, hi
                 rarity: item.treasure.rarity || 'N',
                 price: salePrice,
                 originalPrice: item.price,
+                liquidatedAt: nowTs,
                 stock: 1,
                 desc: `清算物品（原价 ${item.price}）`,
                 dailyLimit: 0,
@@ -227,6 +261,8 @@ const applyBankruptcyLiquidation = ({ students, storage, treasures, liquidatedTr
 
 module.exports = {
     roundToHalf,
+    LIQUIDATION_LISTING_TTL_MS,
+    clearExpiredLiquidatedTreasures,
     getLiquidationConfig,
     getTreasurePriceForLiquidation,
     liquidateStudent,
