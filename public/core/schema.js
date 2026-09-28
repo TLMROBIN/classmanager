@@ -398,6 +398,12 @@
                 const decayAmount = Number(userConfig.points.penaltyDecayAmount);
                 if (Number.isFinite(decayAmount)) merged.points.penaltyDecayAmount = decayAmount;
             }
+            if (userConfig.points.homeworkPenalty !== undefined) {
+                const homeworkPenalty = Number(userConfig.points.homeworkPenalty);
+                if (Number.isFinite(homeworkPenalty) && homeworkPenalty >= 0) {
+                    merged.points.homeworkPenalty = homeworkPenalty;
+                }
+            }
             if (userConfig.points.runningExerciseAbsentPenalty !== undefined) {
                 const absentPenalty = Number(userConfig.points.runningExerciseAbsentPenalty);
                 if (Number.isFinite(absentPenalty)) merged.points.runningExerciseAbsentPenalty = absentPenalty;
