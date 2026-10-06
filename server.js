@@ -449,6 +449,81 @@ const getPenaltyDecayConfig = (config) => {
     };
 };
 
+const getSanRecoveryConfig = (config) => {
+    const systemConfig = isPlainObject(config?.systemConfig) ? config.systemConfig : {};
+    const points = isPlainObject(systemConfig.points) ? systemConfig.points : {};
+    const rawAmount = Number(points.sanRecoveryAmount);
+    return {
+        enabled: systemConfig.dashboardBoards?.san === true,
+        amount: Number.isFinite(rawAmount) ? Math.max(0, Math.min(100, Math.floor(rawAmount))) : 1
+    };
+};
+
+const getDateKeyOrdinal = (dateKey) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ''));
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const utcMs = Date.UTC(year, month - 1, day);
+    const normalized = new Date(utcMs);
+    if (normalized.getUTCFullYear() !== year || normalized.getUTCMonth() !== month - 1 || normalized.getUTCDate() !== day) return null;
+    return Math.floor(utcMs / DAY_MS);
+};
+
+const applySanRecoveryLifecycle = ({ students, config, now, previousConfig }) => {
+    if (!Array.isArray(students) || students.length === 0 || config?.frozen) {
+        return { students: Array.isArray(students) ? students : [], changed: false };
+    }
+
+    const nowDate = now instanceof Date ? now : new Date(now);
+    if (!Number.isFinite(nowDate.getTime())) return { students, changed: false };
+
+    const todayKey = getDateKey(nowDate);
+    const todayOrdinal = getDateKeyOrdinal(todayKey);
+    const recoveryConfig = getSanRecoveryConfig(config);
+    const previousRecoveryConfig = previousConfig ? getSanRecoveryConfig(previousConfig) : null;
+    const recoveryJustEnabled = Boolean(previousRecoveryConfig
+        && recoveryConfig.enabled
+        && recoveryConfig.amount > 0
+        && (!previousRecoveryConfig.enabled || previousRecoveryConfig.amount <= 0));
+    const recoveryResumed = previousConfig?.frozen === true && config?.frozen === false;
+    const shouldRecover = recoveryConfig.enabled
+        && recoveryConfig.amount > 0
+        && !recoveryJustEnabled
+        && !recoveryResumed;
+    const nextStudents = students.map(student => {
+        if (!student || typeof student !== 'object') return student;
+
+        const previousDate = typeof student.lastSanRecoveryDate === 'string'
+            ? student.lastSanRecoveryDate
+            : '';
+        const previousOrdinal = getDateKeyOrdinal(previousDate);
+        if (previousOrdinal !== null && previousOrdinal > todayOrdinal) return student;
+
+        const daysSinceRecovery = previousOrdinal === null ? 0 : Math.max(0, todayOrdinal - previousOrdinal);
+        const shouldAdvanceClock = previousOrdinal === null
+            || recoveryJustEnabled
+            || recoveryResumed
+            || !recoveryConfig.enabled
+            || recoveryConfig.amount <= 0
+            || daysSinceRecovery > 0;
+        if (!shouldAdvanceClock) return student;
+
+        const penalty = Math.max(0, Number(student.penalty) || 0);
+        const recoveredPenalty = shouldRecover && daysSinceRecovery > 0
+            ? Math.max(0, penalty - (recoveryConfig.amount * daysSinceRecovery))
+            : penalty;
+        return {
+            ...student,
+            penalty: recoveredPenalty,
+            lastSanRecoveryDate: todayKey
+        };
+    });
+    const changed = nextStudents.some((student, index) => student !== students[index]);
+    return { students: nextStudents, changed };
+};
+
 const buildPenaltyLastMap = (history) => {
     const lastMap = new Map();
     (Array.isArray(history) ? history : []).forEach(item => {
@@ -547,6 +622,15 @@ const applyPenaltyDecayLifecycle = ({
     const decayResult = applyPenaltyDecayToStudents(nextStudents, history, config, now);
     nextStudents = decayResult.students;
     changed = decayResult.changed || changed;
+
+    const sanRecoveryResult = applySanRecoveryLifecycle({
+        students: nextStudents,
+        config,
+        now,
+        previousConfig
+    });
+    nextStudents = sanRecoveryResult.students;
+    changed = sanRecoveryResult.changed || changed;
 
     return {
         students: nextStudents,
@@ -3096,6 +3180,50 @@ app.get('/api/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
 });
 
 // ==================== 启动服务器 ====================
+const recoverSanForAllUsers = (now = new Date()) => {
+    const userRows = db.prepare("SELECT id FROM users WHERE role = 'user'").all();
+    let changedUsers = 0;
+
+    userRows.forEach(({ id }) => {
+        try {
+            const store = createDataStore({}, id);
+            const students = readStoredJson(store, 'students');
+            const config = readStoredJson(store, 'config') || {};
+            const recoveryResult = applySanRecoveryLifecycle({ students, config, now });
+            if (!recoveryResult.changed) return;
+
+            const existingMeta = readStoredJson(store, '__meta') || {};
+            persistDataObject(store, {
+                students: recoveryResult.students,
+                __meta: buildNextStoredMeta(existingMeta, now)
+            });
+            changedUsers += 1;
+        } catch (err) {
+            console.error(`用户 ${id} 的 SAN 值自动恢复失败:`, err);
+        }
+    });
+
+    return changedUsers;
+};
+
+let sanRecoveryTimer = null;
+const scheduleNextSanRecovery = () => {
+    if (sanRecoveryTimer) clearTimeout(sanRecoveryTimer);
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    sanRecoveryTimer = setTimeout(() => {
+        sanRecoveryTimer = null;
+        try {
+            recoverSanForAllUsers(new Date());
+        } catch (err) {
+            console.error('SAN 值午夜自动恢复任务失败:', err);
+        } finally {
+            scheduleNextSanRecovery();
+        }
+    }, Math.max(1, nextMidnight.getTime() - now.getTime()));
+    if (typeof sanRecoveryTimer.unref === 'function') sanRecoveryTimer.unref();
+};
+
 if (countAdmins(db) === 0) {
     console.error('❌ 未检测到管理员账户，服务拒绝启动');
     console.error('ℹ️  请先执行以下命令创建首个管理员:');
@@ -3114,6 +3242,13 @@ const server = app.listen(PORT, HOST, () => {
     console.log(`🔧 管理员后台: http://localhost:${boundPort}/admin.html`);
     console.log('=====================================================');
 });
+
+try {
+    recoverSanForAllUsers(new Date());
+} catch (err) {
+    console.error('启动时检查 SAN 值恢复失败:', err);
+}
+scheduleNextSanRecovery();
 
 let shutdownStarted = false;
 let shutdownTimer = null;
@@ -3139,6 +3274,10 @@ const shutdown = (signal) => {
     shutdownStarted = true;
     console.log(`收到 ${signal}，正在优雅停止服务...`);
     clearInterval(testSessionCleanupTimer);
+    if (sanRecoveryTimer) {
+        clearTimeout(sanRecoveryTimer);
+        sanRecoveryTimer = null;
+    }
     shutdownTimer = setTimeout(() => {
         console.error(`优雅停机超时（>${SHUTDOWN_TIMEOUT_MS}ms），强制退出`);
         finishShutdown(1);

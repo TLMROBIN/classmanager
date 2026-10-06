@@ -168,6 +168,7 @@
             dailyWageGroups: ['discipline', 'hygiene'],
             penaltyDecayDays: 7,
             penaltyDecayAmount: 10,
+            sanRecoveryAmount: 1,
             homeworkPenalty: 1,
             runningExerciseAbsentPenalty: 1,
             runningExercisePresentBonus: 1,
@@ -397,6 +398,12 @@
             if (userConfig.points.penaltyDecayAmount !== undefined) {
                 const decayAmount = Number(userConfig.points.penaltyDecayAmount);
                 if (Number.isFinite(decayAmount)) merged.points.penaltyDecayAmount = decayAmount;
+            }
+            if (userConfig.points.sanRecoveryAmount !== undefined) {
+                const recoveryAmount = Number(userConfig.points.sanRecoveryAmount);
+                if (Number.isFinite(recoveryAmount)) {
+                    merged.points.sanRecoveryAmount = Math.max(0, Math.min(100, Math.floor(recoveryAmount)));
+                }
             }
             if (userConfig.points.homeworkPenalty !== undefined) {
                 const homeworkPenalty = Number(userConfig.points.homeworkPenalty);

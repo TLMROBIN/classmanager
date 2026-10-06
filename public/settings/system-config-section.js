@@ -80,7 +80,42 @@
                             h("div", null,
                                 h("label", { className: "block text-sm font-medium text-gray-700 mb-2" }, "功能开关"),
                                 h("div", { className: "space-y-2 bg-gray-50 p-3 rounded-lg" },
-                                    [["san", "启用 SAN 值榜（100 分减去当前扣分）"], ["future", "启用未来期望榜（按加分累计换算）"]].map(([key, label]) =>
+                                    h("div", { className: "flex flex-wrap items-center gap-x-4 gap-y-2" },
+                                        h("label", { className: "flex items-center gap-3 cursor-pointer" },
+                                            h("input", {
+                                                type: "checkbox",
+                                                checked: systemConfig.dashboardBoards?.san === true,
+                                                onChange: (e) => updateSystemConfig(sc => ({
+                                                    ...sc,
+                                                    dashboardBoards: { ...sc.dashboardBoards, san: e.target.checked }
+                                                })),
+                                                className: "w-4 h-4 rounded border-gray-300 text-blue-600"
+                                            }),
+                                            h("span", { className: "text-sm text-gray-700" }, "启用 SAN 值榜（100 分减去当前扣分）")
+                                        ),
+                                        h("label", { className: "flex items-center gap-2 text-sm text-gray-700" },
+                                            h("span", null, "每日恢复"),
+                                            h("input", {
+                                                type: "number",
+                                                min: 0,
+                                                max: 100,
+                                                step: 1,
+                                                className: "w-20 border rounded-lg p-2 text-sm text-center",
+                                                value: systemConfig.points.sanRecoveryAmount ?? 1,
+                                                onChange: (e) => updateSystemConfig(sc => ({
+                                                    ...sc,
+                                                    points: {
+                                                        ...sc.points,
+                                                        sanRecoveryAmount: e.target.value === '' ? 0 : Number(e.target.value)
+                                                    }
+                                                })),
+                                                'aria-label': "SAN 值每日恢复点数"
+                                            }),
+                                            h("span", null, "点")
+                                        ),
+                                        h("span", { className: "text-xs text-gray-500" }, "启用后每天 00:00 恢复；只恢复已扣部分，SAN 最高为 100。")
+                                    ),
+                                    [["future", "启用未来期望榜（按加分累计换算）"]].map(([key, label]) =>
                                         h("label", { key, className: "flex items-center gap-3 cursor-pointer" },
                                             h("input", {
                                                 type: "checkbox",

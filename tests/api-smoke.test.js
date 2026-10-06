@@ -346,6 +346,81 @@ test('API smoke flows', async (t) => {
             assert.deepEqual(readResponse.body.messages, payload.messages);
         });
 
+        await t.test('SAN recovery starts after enabling and changes penalty without changing balance', async () => {
+            const firstDayNoon = buildLocalTimestamp(2026, 2, 30, 12, 0, 0);
+            const followingMidnight = buildLocalTimestamp(2026, 2, 31, 0, 0, 0);
+            const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
+                method: 'POST',
+                headers: { Cookie: userCookie },
+                body: { simTimeMs: firstDayNoon }
+            });
+            assert.equal(sessionResponse.status, 200);
+
+            const sessionHeaders = {
+                Cookie: userCookie,
+                'x-test-session': sessionResponse.body.sessionId,
+                'x-test-now': String(firstDayNoon)
+            };
+            const unlockResponse = await requestJson(baseUrl, '/api/maintenance/unlock', {
+                method: 'POST',
+                headers: sessionHeaders,
+                body: { password: 'Maintain123' }
+            });
+            assert.equal(unlockResponse.status, 200);
+
+            const maintenanceHeaders = {
+                ...sessionHeaders,
+                'x-maintenance-token': unlockResponse.body.token
+            };
+            const seedResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: maintenanceHeaders,
+                body: {
+                    students: [
+                        { id: 'stu_san_recovery', name: 'SAN 测试学生', zizai: 8, balance: 8, penalty: 3 }
+                    ],
+                    history: [],
+                    config: {
+                        systemConfig: {
+                            dashboardBoards: { san: false },
+                            points: { sanRecoveryAmount: 1 }
+                        }
+                    },
+                    __meta: { allowServerOverwrite: true }
+                }
+            });
+            assert.equal(seedResponse.status, 200);
+
+            const enableResponse = await requestJson(baseUrl, '/api/data', {
+                method: 'POST',
+                headers: maintenanceHeaders,
+                body: {
+                    config: {
+                        systemConfig: {
+                            dashboardBoards: { san: true },
+                            points: { sanRecoveryAmount: 1 }
+                        }
+                    },
+                    __meta: { allowServerOverwrite: true }
+                }
+            });
+            assert.equal(enableResponse.status, 200);
+
+            const midnightHeaders = {
+                ...sessionHeaders,
+                'x-test-now': String(followingMidnight)
+            };
+            const recoveredResponse = await requestJson(baseUrl, '/api/data', { headers: midnightHeaders });
+            assert.equal(recoveredResponse.status, 200);
+            assert.equal(recoveredResponse.body.students[0].penalty, 2);
+            assert.equal(recoveredResponse.body.students[0].balance, 8);
+            assert.equal(recoveredResponse.body.students[0].zizai, 8);
+
+            const repeatedResponse = await requestJson(baseUrl, '/api/data', { headers: midnightHeaders });
+            assert.equal(repeatedResponse.body.students[0].penalty, 2);
+            assert.equal(repeatedResponse.body.students[0].balance, 8);
+        });
+
         await t.test('agent student query and point adjustment use narrow protected APIs', async () => {
             const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
                 method: 'POST',
