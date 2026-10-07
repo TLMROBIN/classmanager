@@ -152,6 +152,9 @@ test('daily registers share one searchable student workbench without losing per-
     assert.match(operations, /activeRegisterMode === 'running'/);
     assert.match(operations, /activeRegisterMode === 'hygiene'/);
     assert.match(operations, /activeRegisterMode === 'discipline'/);
+    assert.match(operations, /disciplineRegistrarId/);
+    assert.match(views, /discipline-registrar-select/);
+    assert.match(views, /候选人来自纪律组成员/);
     assert.match(views, /const RegisterStudentPicker/);
     assert.match(views, /输入姓名中的任意文字/);
     assert.match(views, /按小组筛选/);

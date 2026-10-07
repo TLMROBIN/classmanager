@@ -217,6 +217,7 @@
             const [disciplineDate, setDisciplineDate] = useState("");
             const [disciplineActiveTab, setDisciplineActiveTabState] = useState("noise");
             const [disciplineSelectedIds, setDisciplineSelectedIds] = useState(new Set());
+            const [disciplineRegistrarId, setDisciplineRegistrarId] = useState("");
 
             const settleOperationConfirmation = (confirmed) => {
                 const resolver = operationConfirmResolverRef.current;
@@ -383,6 +384,10 @@
                 tablet: '平板未归',
                 outdoor: '晚自习外出'
             };
+            const disciplineRegistrarCandidates = (Array.isArray(students) ? students : [])
+                .filter(student => student && student.group === 'discipline')
+                .map(student => ({ id: String(student.id), name: student.name }));
+            const disciplineRegistrarBonus = disciplineConfig.registrarBonus ?? 1;
 
             const toggleSettingsPanel = async () => {
                 if (settingsOpen) {
@@ -524,6 +529,11 @@
                     const next = sanitizeIdSetByStudents(prev, students);
                     return setsAreEqual(prev, next) ? prev : next;
                 });
+                setDisciplineRegistrarId(prev => {
+                    if (!prev) return prev;
+                    const stillExists = (Array.isArray(students) ? students : []).some(student => String(student?.id) === String(prev));
+                    return stillExists ? prev : "";
+                });
                 if (filterGroupState !== DEFAULT_UI_STATE.filterGroup && !Object.prototype.hasOwnProperty.call(groupsConfig, filterGroupState)) {
                     setFilterGroup(DEFAULT_UI_STATE.filterGroup);
                 }
@@ -612,6 +622,8 @@
                 disciplineConfig,
                 disciplineCommissionerMap,
                 disciplineCommissionerNamesMap,
+                disciplineRegistrarId,
+                disciplineRegistrarBonus,
                 setDisciplineSelectedIds,
                 operationPendingRef,
                 setOperationPending,
@@ -813,6 +825,10 @@
                             commissionerNames: disciplineCommissionerNamesMap[disciplineActiveTab] || [],
                             commissionerBonus: disciplineConfig[disciplineActiveTab]?.commissionerBonus ?? 1,
                             penalty: disciplineConfig[disciplineActiveTab]?.penalty ?? 1,
+                            registrarCandidates: disciplineRegistrarCandidates,
+                            registrarId: disciplineRegistrarId,
+                            onRegistrarChange: setDisciplineRegistrarId,
+                            registrarBonus: disciplineRegistrarBonus,
                             onToggleSelection: toggleDisciplineSelection, onSubmit: handleDisciplineSubmit, disabled: false
                         })
                     )

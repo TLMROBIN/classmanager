@@ -179,6 +179,7 @@
                 areaPenalty: 1
             },
             disciplineRegister: {
+                registrarBonus: 1,
                 noise:    { penalty: 1, commissionerBonus: 1 },
                 desk:     { penalty: 1, commissionerBonus: 1 },
                 tablet:   { penalty: 1, commissionerBonus: 1 },

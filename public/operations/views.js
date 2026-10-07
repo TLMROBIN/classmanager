@@ -571,7 +571,8 @@
 
         const DisciplinePanel = ({
             students, groupsConfig, dates, date, setDate, activeTab, setActiveTab, selectedIds, setSelectedIds,
-            commissionerNames, commissionerBonus, penalty, onToggleSelection, onSubmit, disabled
+            commissionerNames, commissionerBonus, penalty, onToggleSelection, onSubmit, disabled,
+            registrarCandidates = [], registrarId = '', onRegistrarChange, registrarBonus = 1
         }) => {
             const tabs = [
                 { key: 'noise', label: '讲话', fullLabel: '学习时间讲话', commissionerRole: '噪音专员' },
@@ -584,6 +585,11 @@
             const commissionerText = commissionerList.length > 0
                 ? `${currentTab.commissionerRole} ${commissionerList.join('、')} 每人加 ${commissionerBonus ?? 1} 分。`
                 : `尚未设置${currentTab.commissionerRole}，本次不会发放专员奖励。`;
+            const registrarList = Array.isArray(registrarCandidates) ? registrarCandidates : [];
+            const selectedRegistrarName = registrarList.find(item => String(item.id) === String(registrarId))?.name || '';
+            const registrarText = selectedRegistrarName
+                ? `登记人 ${selectedRegistrarName} 完成登记后加 ${Math.abs(Number(registrarBonus) || 0)} 分纪律工作分。`
+                : "尚未选择登记人，本次不会发放纪律工作分。";
             return h("div", { className: `space-y-4 rounded-xl border border-gray-200 bg-white p-4 ${disabled ? 'opacity-70' : ''}` },
                 h("div", null,
                     h("h3", { className: "flex items-center gap-2 text-base font-bold text-gray-900" }, h(Icon, { name: "shield" }), "纪律登记"),
@@ -597,10 +603,23 @@
                     h("div", null,
                         h("div", { className: "mb-2 text-sm font-medium text-gray-700" }, "纪律项"),
                         h("div", { className: "flex flex-wrap gap-2" }, tabs.map(tab => h(ContextOptionButton, { key: tab.key, active: activeTab === tab.key, onClick: () => setActiveTab(tab.key) }, tab.label)))
+                    ),
+                    h("div", null,
+                        h("label", { className: "mb-2 block text-sm font-medium text-gray-700", htmlFor: 'discipline-registrar-select' }, "登记人"),
+                        h("select", {
+                            id: 'discipline-registrar-select',
+                            className: "min-h-11 w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2",
+                            value: registrarId || '',
+                            onChange: e => typeof onRegistrarChange === 'function' && onRegistrarChange(e.target.value)
+                        },
+                            h("option", { value: '' }, registrarList.length > 0 ? "不发放纪律工作分" : "纪律组暂无成员"),
+                            registrarList.map(item => h("option", { key: item.id, value: item.id }, item.name))
+                        ),
+                        h("p", { className: "mt-1 text-xs text-gray-500" }, "候选人来自纪律组成员，登记完成后发放纪律工作分。")
                     )
                 ),
                 h("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" },
-                    `提交“${currentTab.fullLabel}”后，所选学生每人扣 ${Math.abs(Number(penalty) || 0)} 分；${commissionerText}`
+                    `提交“${currentTab.fullLabel}”后，所选学生每人扣 ${Math.abs(Number(penalty) || 0)} 分；${commissionerText}${registrarText}`
                 ),
                 h(RegisterStudentPicker, {
                     students, groupsConfig, selectedIds, setSelectedIds, onToggleSelection,

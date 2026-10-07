@@ -725,7 +725,7 @@
                             h(Icon, { name: "shield", size: 18 }),
                             h("h3", { className: "font-bold text-sm" }, "纪律登记设置")
                         ),
-                        h("p", { className: "text-xs text-gray-500" }, "配置纪律登记开关、各检查项扣分与专员加分。")
+                        h("p", { className: "text-xs text-gray-500" }, "配置纪律登记开关、各检查项扣分、专员加分与登记人工作分。")
                     ),
                     h("button", {
                         onClick: () => {
@@ -796,6 +796,27 @@
                                 )
                             );
                         })
+                    ),
+                    h("label", { className: "space-y-1" },
+                        h("span", { className: "block text-sm font-medium text-gray-700" }, "登记人纪律工作分"),
+                        h("input", {
+                            type: "number",
+                            step: 0.5,
+                            'aria-label': "登记人纪律工作分",
+                            className: "w-40 border rounded-lg p-2 text-sm",
+                            value: discConfig.registrarBonus ?? 1,
+                            onChange: e => updateSystemConfig(config, setConfig, sc => ({
+                                ...sc,
+                                points: {
+                                    ...(sc.points || {}),
+                                    disciplineRegister: {
+                                        ...(sc.points?.disciplineRegister || {}),
+                                        registrarBonus: Number(e.target.value) || 0
+                                    }
+                                }
+                            }))
+                        }),
+                        h("p", { className: "text-xs text-gray-500" }, "每次纪律登记完成后，所选登记人（从纪律组成员中选择）获得此加分；不选登记人则不发放。")
                     )
                 )
             );

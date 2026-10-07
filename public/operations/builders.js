@@ -271,10 +271,14 @@
         return msg;
     };
 
-    const buildDisciplineUpdates = ({ date, reasonKey, reasonLabel, commissionerStudentIds, selectedIds, penalty, commissionerBonus }) => {
+    const buildDisciplineUpdates = ({ date, reasonKey, reasonLabel, commissionerStudentIds, selectedIds, penalty, commissionerBonus, registrarId, registrarBonus }) => {
         const updates = [];
         const normalizedPenalty = Math.abs(Number(penalty) || 0);
         const normalizedBonus = Math.abs(Number(commissionerBonus) || 0);
+        const normalizedRegistrarBonus = Math.abs(Number(registrarBonus) || 0);
+        const normalizedRegistrarId = registrarId == null || registrarId === ''
+            ? ''
+            : String(registrarId);
         const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
         const commissionerIdSet = new Set((Array.isArray(commissionerStudentIds) ? commissionerStudentIds : [])
             .map(id => String(id || '').trim())
@@ -305,13 +309,28 @@
             });
         }
 
+        if (normalizedRegistrarId && normalizedRegistrarBonus > 0) {
+            updates.push({
+                id: normalizedRegistrarId,
+                val: normalizedRegistrarBonus,
+                reason: `${date} ${reasonLabel} 纪律工作`,
+                type: 'bonus',
+                scene: '班级',
+                category: '班务'
+            });
+        }
+
         return updates;
     };
 
-    const buildDisciplineConfirmMessage = ({ date, reasonLabel, commissionerNames, selectedIds, studentMap, penalty, commissionerBonus }) => {
+    const buildDisciplineConfirmMessage = ({ date, reasonLabel, commissionerNames, selectedIds, studentMap, penalty, commissionerBonus, registrarId, registrarBonus }) => {
         const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
         const normalizedPenalty = Math.abs(Number(penalty) || 0);
         const normalizedBonus = Math.abs(Number(commissionerBonus) || 0);
+        const normalizedRegistrarBonus = Math.abs(Number(registrarBonus) || 0);
+        const registrarName = registrarId == null || registrarId === ''
+            ? ''
+            : (studentMap.get(String(registrarId))?.name || '');
         const names = Array.isArray(commissionerNames) ? commissionerNames.filter(Boolean) : [];
         const badStudents = Array.from(idSet)
             .map(id => studentMap.get(String(id))?.name || '')
@@ -325,7 +344,10 @@
             msg += `✅ ${date} ${reasonLabel} 无问题\n`;
         }
         if (names.length > 0 && normalizedBonus > 0) {
-            msg += `\n专员 ${names.join('、')} 加分：各 +${normalizedBonus} 分`;
+            msg += `\n专员 ${names.join('、')} 加分：各 +${normalizedBonus} 分\n`;
+        }
+        if (registrarName && normalizedRegistrarBonus > 0) {
+            msg += `\n登记人 ${registrarName} 纪律工作分：+${normalizedRegistrarBonus} 分`;
         }
         return msg;
     };

@@ -70,6 +70,8 @@
             disciplineConfig,
             disciplineCommissionerMap,
             disciplineCommissionerNamesMap,
+            disciplineRegistrarId = "",
+            disciplineRegistrarBonus = 1,
             setDisciplineSelectedIds,
             operationPendingRef,
             setOperationPending,
@@ -372,6 +374,13 @@
                 ? disciplineCommissionerMap[disciplineActiveTab]
                 : [];
 
+            const registrarId = disciplineRegistrarId == null || disciplineRegistrarId === ''
+                ? ''
+                : String(disciplineRegistrarId);
+            if (registrarId && !studentMap.has(registrarId)) {
+                return showWarning("所选登记人不存在，请重新选择。");
+            }
+
             const updates = buildDisciplineUpdates({
                 date: dateVal,
                 reasonKey: disciplineActiveTab,
@@ -379,11 +388,13 @@
                 commissionerStudentIds: commissionerIds,
                 selectedIds: disciplineSelectedIds,
                 penalty: tabConfig.penalty,
-                commissionerBonus: tabConfig.commissionerBonus
+                commissionerBonus: tabConfig.commissionerBonus,
+                registrarId,
+                registrarBonus: disciplineRegistrarBonus
             });
 
             if (updates.length === 0) {
-                return showWarning("当前纪律登记不会产生积分变动，请检查专员是否已设置。");
+                return showWarning("当前纪律登记不会产生积分变动，请检查专员、登记人是否已设置。");
             }
 
             const confirmMsg = buildDisciplineConfirmMessage({
@@ -393,7 +404,9 @@
                 selectedIds: disciplineSelectedIds,
                 studentMap,
                 penalty: tabConfig.penalty,
-                commissionerBonus: tabConfig.commissionerBonus
+                commissionerBonus: tabConfig.commissionerBonus,
+                registrarId,
+                registrarBonus: disciplineRegistrarBonus
             });
             if (!await requestOperationConfirmation({
                 title: "确认纪律登记",
