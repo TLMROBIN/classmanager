@@ -195,3 +195,33 @@ test('buildDisciplineConfirmMessage mentions the registrar work bonus', () => {
     assert.match(msg, /登记人 王五 纪律工作分：\+0\.5 分/);
     assert.ok(!msg.includes('undefined'));
 });
+
+test('getSystemConfig preserves discipline registrar bonus when merging stored config', () => {
+    const merged = schema.getSystemConfig({
+        systemConfig: {
+            points: {
+                disciplineRegister: {
+                    registrarBonus: 25,
+                    noise: { penalty: 2 }
+                }
+            }
+        }
+    });
+
+    assert.equal(merged.points.disciplineRegister.registrarBonus, 25);
+    assert.equal(merged.points.disciplineRegister.noise.penalty, 2);
+    assert.equal(merged.points.disciplineRegister.noise.commissionerBonus, 1);
+    assert.equal(merged.points.disciplineRegister.desk.penalty, 1);
+});
+
+test('getSystemConfig falls back to default registrar bonus when absent or invalid', () => {
+    const absent = schema.getSystemConfig({
+        systemConfig: { points: { disciplineRegister: { noise: { penalty: 2 } } } }
+    });
+    assert.equal(absent.points.disciplineRegister.registrarBonus, 1);
+
+    const invalid = schema.getSystemConfig({
+        systemConfig: { points: { disciplineRegister: { registrarBonus: -3 } } }
+    });
+    assert.equal(invalid.points.disciplineRegister.registrarBonus, 1);
+});

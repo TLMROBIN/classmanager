@@ -441,11 +441,16 @@
             }
             if (userConfig.points.disciplineRegister) {
                 const dr = userConfig.points.disciplineRegister;
+                const registrarBonus = Number(dr.registrarBonus);
                 merged.points.disciplineRegister = {
-                    noise:   { ...merged.points.disciplineRegister.noise,   ...(dr.noise || {}) },
-                    desk:    { ...merged.points.disciplineRegister.desk,    ...(dr.desk || {}) },
-                    tablet:  { ...merged.points.disciplineRegister.tablet,  ...(dr.tablet || {}) },
-                    outdoor: { ...merged.points.disciplineRegister.outdoor, ...(dr.outdoor || {}) }
+                    ...merged.points.disciplineRegister,
+                    ...(dr.noise ? { noise: { ...merged.points.disciplineRegister.noise, ...dr.noise } } : {}),
+                    ...(dr.desk ? { desk: { ...merged.points.disciplineRegister.desk, ...dr.desk } } : {}),
+                    ...(dr.tablet ? { tablet: { ...merged.points.disciplineRegister.tablet, ...dr.tablet } } : {}),
+                    ...(dr.outdoor ? { outdoor: { ...merged.points.disciplineRegister.outdoor, ...dr.outdoor } } : {}),
+                    registrarBonus: Number.isFinite(registrarBonus) && registrarBonus >= 0
+                        ? registrarBonus
+                        : merged.points.disciplineRegister.registrarBonus
                 };
             }
             if (userConfig.points.reasons) {
