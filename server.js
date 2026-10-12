@@ -955,7 +955,9 @@ const normalizeAgentText = (value, maxLength) => {
 const getAgentStudentSelectors = (payload) => {
     const hasStudentId = Object.prototype.hasOwnProperty.call(payload || {}, 'studentId');
     const hasStudentName = Object.prototype.hasOwnProperty.call(payload || {}, 'studentName');
-    const requestedId = normalizeAgentText(payload?.studentId, 128);
+    const rawId = typeof payload?.studentId === 'number' && Number.isSafeInteger(payload.studentId)
+        ? String(payload.studentId) : payload?.studentId;
+    const requestedId = normalizeAgentText(rawId, 128);
     const requestedName = normalizeAgentText(payload?.studentName, 128);
     if ((hasStudentId && !requestedId) || (hasStudentName && !requestedName)) {
         return {
@@ -1099,6 +1101,11 @@ const buildAgentOperationResponse = ({
         category: record?.category || DEFAULT_AGENT_POINT_CATEGORY,
         ts: Number(record?.ts) || null
     },
+    ...(record?.type === 'points-set' ? {
+        values: record.pointValues,
+        before: record.pointsBefore,
+        after: record.pointsAfter
+    } : {}),
     student: buildAgentStudentView(student),
     updatedAt: Number(updatedAt) || null
 });
@@ -1121,6 +1128,13 @@ const numbersMatch = (left, right) => {
 
 const replayMissingAttendancePenaltyChanges = (students, history) => {
     const nextStudents = Array.isArray(students) ? students.map(student => ({ ...student })) : [];
+    const latestPointSets = new Map();
+    (Array.isArray(history) ? history : []).forEach(item => {
+        if (item?.type !== 'points-set'
+            || !(Object.hasOwn(item.pointValues || {}, 'balance') || Object.hasOwn(item.pointValues || {}, 'penalty'))) return;
+        const key = String(item.studentId);
+        latestPointSets.set(key, Math.max(latestPointSets.get(key) || 0, Number(item.ts) || 0));
+    });
     const protectedRecords = (Array.isArray(history) ? history : [])
         .filter(isProtectedAttendancePenaltyRecord)
         .sort((a, b) => (Number(a?.ts) || 0) - (Number(b?.ts) || 0));
@@ -1130,6 +1144,8 @@ const replayMissingAttendancePenaltyChanges = (students, history) => {
 
     let changed = false;
     protectedRecords.forEach((record) => {
+        // 后续的人工分值校正覆盖旧考勤结果，不能按旧快照再次扣分。
+        if ((latestPointSets.get(String(record.studentId)) || 0) >= Number(record.ts)) return;
         const studentIndex = nextStudents.findIndex(student => String(student?.id) === String(record?.studentId));
         if (studentIndex === -1) return;
         const student = nextStudents[studentIndex];
@@ -2880,7 +2896,7 @@ app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTest
                 const { requestedId, requestedName } = selectors;
                 const sameStudent = (!requestedId || String(existingOperation.studentId ?? '') === requestedId)
                     && (!requestedName || String(existingOperation.studentName || '').trim() === requestedName);
-                const sameOperation = sameStudent
+                const sameOperation = existingOperation.type !== 'points-set' && sameStudent
                     && Math.abs(Number(existingOperation.val) - delta) < 1e-9
                     && existingOperation.reason === reason
                     && existingOperation.scene === scene
@@ -2981,6 +2997,88 @@ app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTest
     } catch (err) {
         console.error('Agent 积分变更失败:', err);
         res.status(500).json({ error: '积分变更失败', code: 'AGENT_POINT_ADJUST_FAILED' });
+    }
+});
+
+// 直接校正指定分值，各字段独立设置，不执行加扣分联动。
+app.post('/api/agent/points/set', authMiddleware, userMiddleware, resolveTestSessionMiddleware, (req, res) => {
+    if (!hasMaintenanceAccess(req)) {
+        return res.status(403).json({ error: '当前操作需要维护密码验证', code: 'MAINTENANCE_AUTH_REQUIRED' });
+    }
+    const payload = isPlainObject(req.body) ? req.body : {};
+    const keyResult = getAgentIdempotencyKey(req, payload);
+    if (keyResult.error) return res.status(keyResult.error.status).json(keyResult.error);
+    const version = getAgentExpectedUpdatedAt(payload);
+    if (version.error) return res.status(version.error.status).json(version.error);
+    if (version.value === null) {
+        return res.status(400).json({ error: '直接修改必须提供查询返回的 expectedUpdatedAt', code: 'EXPECTED_UPDATED_AT_REQUIRED' });
+    }
+    const selectors = getAgentStudentSelectors(payload);
+    if (selectors.error) return res.status(selectors.error.status).json(selectors.error);
+    const reason = normalizeAgentText(payload.reason, MAX_AGENT_REASON_LENGTH);
+    if (!reason) return res.status(400).json({ error: '必须提供有效的修改理由（最多200字符）', code: 'INVALID_POINT_REASON' });
+    const allowedFields = ['zizai', 'penalty', 'balance'];
+    const values = payload.values;
+    if (!isPlainObject(values) || Object.keys(values).length === 0 || Object.keys(values).some(field => !allowedFields.includes(field))) {
+        return res.status(400).json({ error: 'values 只允许 zizai、penalty、balance，且至少提供一项', code: 'INVALID_POINT_VALUES' });
+    }
+    for (const [field, value] of Object.entries(values)) {
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER
+            || (field !== 'balance' && value < 0)) {
+            return res.status(400).json({ error: `${field} 必须是有效数字；加分值和扣分值不可为负`, code: 'INVALID_POINT_VALUE', field });
+        }
+    }
+    const pointValues = Object.fromEntries(allowedFields.filter(field => Object.hasOwn(values, field)).map(field => [field, values[field]]));
+    const store = getRequestDataStore(req);
+    const now = getRequestNow(req);
+    try {
+        const result = db.transaction(() => {
+            const meta = readStoredJson(store, '__meta') || {};
+            const students = getStoredStudents(store);
+            const history = getStoredHistory(store);
+            const previous = history.find(item => item?.agentOperationId === keyResult.key);
+            if (previous) {
+                const sameStudent = (!selectors.requestedId || String(previous.studentId) === selectors.requestedId)
+                    && (!selectors.requestedName || String(previous.studentName).trim() === selectors.requestedName);
+                const sameValues = allowedFields.every(field => (
+                    Object.hasOwn(previous.pointValues || {}, field) === Object.hasOwn(pointValues, field)
+                    && previous.pointValues?.[field] === pointValues[field]
+                ));
+                if (previous.type !== 'points-set' || !sameStudent || !sameValues || previous.reason !== reason) {
+                    return { error: { status: 409, code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency-Key 已用于其他操作' } };
+                }
+                return { record: previous, student: students.find(s => String(s.id) === String(previous.studentId)), updatedAt: meta.updatedAt, replayed: true };
+            }
+            if (version.value !== (Number(meta.updatedAt) || 0)) {
+                return { error: { status: 409, code: 'DATA_CONFLICT', message: '数据已更新，请重新查询后修改', serverUpdatedAt: Number(meta.updatedAt) || 0 } };
+            }
+            const resolved = resolveAgentStudent(students, payload);
+            if (resolved.error) return resolved;
+            const before = buildAgentStudentView(resolved.student);
+            const student = { ...resolved.student, ...pointValues };
+            if (Object.hasOwn(pointValues, 'penalty')) {
+                student.lastPenaltyAt = pointValues.penalty > 0 ? now.getTime() : 0;
+                student.lastSanRecoveryDate = getDateKey(now);
+            }
+            const record = {
+                id: now.getTime() + Math.random(), ts: now.getTime(),
+                studentId: student.id, studentName: student.name,
+                type: 'points-set', val: 0, reason, scene: '班级', category: '班务',
+                snapshot: { zizai: before.zizai, balance: before.balance, penalty: before.penalty },
+                pointValues, pointsBefore: before, pointsAfter: buildAgentStudentView(student),
+                agentOperationId: keyResult.key, source: 'agent-api'
+            };
+            const nextMeta = buildNextStoredMeta(meta, now);
+            store.upsertDataKey('students', JSON.stringify(students.map(s => s === resolved.student ? student : s)));
+            store.upsertDataKey('history', JSON.stringify([record, ...history]));
+            store.upsertDataKey('__meta', JSON.stringify(nextMeta));
+            return { record, student, updatedAt: nextMeta.updatedAt };
+        })();
+        if (result.error) return res.status(result.error.status).json(result.error);
+        res.json(buildAgentOperationResponse(result));
+    } catch (err) {
+        console.error('Agent 分值修改失败:', err);
+        res.status(500).json({ error: '分值修改失败', code: 'AGENT_POINT_SET_FAILED' });
     }
 });
 

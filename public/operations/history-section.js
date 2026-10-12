@@ -41,6 +41,7 @@
         };
 
         const getRecordTypeLabel = (item) => {
+            if (item?.type === 'points-set') return '分值校正';
             if (item?.isUndoLog) return '撤销';
             return TYPE_LABELS[item?.type] || (Number(item?.val) < 0 ? '扣减' : '增加');
         };
@@ -239,7 +240,7 @@
                                     h('td', { className: 'p-2 text-gray-500 whitespace-nowrap' }, normalizePointCategory(item.category)),
                                     h('td', { className: `p-2 text-right font-bold whitespace-nowrap ${item.val > 0 ? 'text-green-600' : 'text-red-500'}` }, item.val > 0 ? `+${item.val}` : item.val),
                                     h('td', { className: 'p-2 text-center' },
-                                        item.isUndoLog
+                                        (item.isUndoLog || item.type === 'points-set')
                                             ? h('span', { className: 'text-gray-300' }, '-')
                                             : h('button', {
                                                 onClick: () => handleUndoClick(item),

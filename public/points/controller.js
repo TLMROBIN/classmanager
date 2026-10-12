@@ -180,7 +180,7 @@
         onCommitRelated
     }) => {
         const record = (Array.isArray(history) ? history : []).find(item => item.id === recordId);
-        if (!record || record.isUndoLog) return false;
+        if (!record || record.isUndoLog || record.type === 'points-set') return false;
 
         const nextStudents = (Array.isArray(students) ? students : []).map(student => ({ ...student }));
         const idx = nextStudents.findIndex(student => student.id === record.studentId);

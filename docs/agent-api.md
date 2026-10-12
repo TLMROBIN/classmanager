@@ -80,6 +80,30 @@
 
 成功响应会返回 `student` 的最新积分、积分历史记录 ID、操作 ID和新的 `updatedAt`。使用相同 `Idempotency-Key` 重试同一请求时会返回 `replayed: true`，不会再次变更积分。
 
+## 直接修改加分值、扣分值与余额
+
+`POST /api/agent/points/set`（校内地址：`http://10.50.159.62:3002`）
+
+沿用登录 Cookie、维护令牌及 `Idempotency-Key`；此接口**必须**提供查询返回的 `expectedUpdatedAt`。
+
+```json
+{
+  "studentId": "stu_1",
+  "values": { "zizai": 30, "penalty": 2, "balance": 18 },
+  "reason": "核对登记表后校正分值",
+  "expectedUpdatedAt": 1720000000000
+}
+```
+
+- `zizai` 是加分值（自在值），`penalty` 是累计扣分值，`balance` 是余额。三个字段独立设为目标值，不执行 `/adjust` 的联动计算。
+- `values` 至少提供一项，只允许这三个字段；未提供字段保持原值。
+- 值必须是 JSON 数字，绝对值不超过 `Number.MAX_SAFE_INTEGER`；加分值、扣分值不得为负，余额允许负数和零。支持小数。
+- 修改扣分值时重新设定扣分衰减和 SAN 恢复时钟；清零时 `lastPenaltyAt` 也清零。后续正常自动恢复规则仍然有效。
+- 支持唯一学生 ID 或精确姓名；同名、版本冲突、无维护权限均不写入。
+- 返回 `before`、`after`、`values`、当前 `student` 及操作/历史 ID。历史以 `points-set` 记录修改前后值，不能通过普通“撤销积分”按钮撤销；需要再次校正。
+- 与 `/adjust` 共用幂等键命名空间；同一键不可跨接口复用。相同请求重试只返回已有操作。
+- Agent 应把“加1分”交给 `/adjust`，把“将余额设为18”或“将扣分值清零”交给 `/set`。
+
 ## 典型 Agent 流程
 
 1. 按姓名调用查询接口。
@@ -87,4 +111,4 @@
 3. 使用唯一 `studentId`、查询得到的 `updatedAt`、明确原因和新生成的 `Idempotency-Key` 调用积分变更接口。
 4. 把响应中的变更前后结果和历史记录 ID反馈给用户。
 
-当前没有单独的 CLI；Agent 可以直接调用这两个 HTTP 接口，网页端也继续使用原有流程。
+当前没有单独的 CLI；Agent 可以直接调用这些 HTTP 接口，网页端也继续使用原有流程。

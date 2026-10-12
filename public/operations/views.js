@@ -665,7 +665,7 @@
                                 h("td", { className: "p-2 text-xs text-gray-500" }, normalizePointCategory(item.category)),
                                 h("td", { className: `p-2 font-bold ${item.val > 0 ? 'text-green-600' : 'text-red-500'}` }, item.val > 0 ? `+${item.val}` : item.val),
                                 h("td", { className: "p-2" },
-                                    item.isUndoLog ? null : h("button", {
+                                    (item.isUndoLog || item.type === 'points-set') ? null : h("button", {
                                         onClick: () => onUndo(item.id),
                                         className: "text-blue-500 hover:underline text-xs"
                                     }, "撤销")

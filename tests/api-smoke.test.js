@@ -421,7 +421,7 @@ test('API smoke flows', async (t) => {
             assert.equal(repeatedResponse.body.students[0].balance, 8);
         });
 
-        await t.test('agent student query and point adjustment use narrow protected APIs', async () => {
+        await t.test('agent student query and point adjustment use narrow protected APIs', async (agentTest) => {
             const sessionResponse = await requestJson(baseUrl, '/api/test-sessions', {
                 method: 'POST',
                 headers: { Cookie: userCookie },
@@ -453,7 +453,8 @@ test('API smoke flows', async (t) => {
                     students: [
                         { id: 'stu_agent_1', name: '张三', group: 'discipline', dorm: 'boy_715', zizai: 10, balance: 10, penalty: 0 },
                         { id: 'stu_agent_2', name: '李四', group: 'life', dorm: 'boy_716', zizai: 5, balance: 5, penalty: 0 },
-                        { id: 'stu_agent_3', name: '李四', group: 'hygiene', dorm: 'girl_713', zizai: 7, balance: 7, penalty: 0 }
+                        { id: 'stu_agent_3', name: '李四', group: 'hygiene', dorm: 'girl_713', zizai: 7, balance: 7, penalty: 0 },
+                        { id: 104, name: '数字ID学生', zizai: 4, balance: 4, penalty: 0 }
                     ],
                     history: [],
                     config: {},
@@ -595,6 +596,68 @@ test('API smoke flows', async (t) => {
             assert.equal(finalQueryResponse.status, 200);
             assert.equal(finalQueryResponse.body.students[0].balance, 10);
             assert.equal(finalQueryResponse.body.students[0].penalty, 1);
+
+            await agentTest.test('direct score setting is independent, audited, versioned and idempotent', async () => {
+                const setPath = '/api/agent/points/set';
+                const body = {
+                    studentId: 'stu_agent_1', values: { zizai: 25, penalty: 3, balance: -2.5 },
+                    reason: '分值核对校正', expectedUpdatedAt: finalQueryResponse.body.updatedAt
+                };
+                const setRequest = (key, payload = body, headers = maintenanceHeaders) => requestJson(baseUrl, setPath, {
+                    method: 'POST', headers: { ...headers, 'idempotency-key': key }, body: payload
+                });
+                assert.equal((await setRequest('set-no-login', body, {})).status, 401);
+                assert.equal((await setRequest('set-no-maintenance', body, sessionHeaders)).status, 403);
+                assert.equal((await setRequest('set-no-version', { ...body, expectedUpdatedAt: undefined })).body.code, 'EXPECTED_UPDATED_AT_REQUIRED');
+                for (const values of [{}, { balance: '10' }, { penalty: -1 }, { zizai: -1 }, { balance: null }, { balance: 1e20 }, { balance: 10, name: '不可改名' }]) {
+                    assert.equal((await setRequest('set-invalid', { ...body, values })).status, 400);
+                }
+                assert.equal((await setRequest('set-duplicate', { ...body, studentId: undefined, studentName: '李四' })).body.code, 'AMBIGUOUS_STUDENT');
+                assert.equal((await setRequest('agent-op-add-1')).body.code, 'IDEMPOTENCY_KEY_REUSED');
+                const result = await setRequest('set-all-1');
+                assert.equal(result.status, 200);
+                assert.equal(result.body.replayed, false);
+                assert.equal(result.body.before.zizai, 11);
+                assert.equal(result.body.before.balance, 10);
+                assert.equal(result.body.before.penalty, 1);
+                assert.equal(result.body.after.zizai, 25);
+                assert.equal(result.body.after.balance, -2.5);
+                assert.equal(result.body.after.penalty, 3);
+                assert.ok(result.body.after.lastPenaltyAt > 0);
+                assert.equal((await setRequest('set-all-1')).body.replayed, true);
+                assert.equal((await setRequest('set-all-1', { ...body, values: { balance: 8 } })).body.code, 'IDEMPOTENCY_KEY_REUSED');
+                assert.equal((await setRequest('set-stale')).body.code, 'DATA_CONFLICT');
+                const crossEndpoint = await requestJson(baseUrl, '/api/agent/points/adjust', {
+                    method: 'POST', headers: { ...maintenanceHeaders, 'idempotency-key': 'set-all-1' },
+                    body: { studentId: 'stu_agent_1', delta: 1, reason: body.reason }
+                });
+                assert.equal(crossEndpoint.body.code, 'IDEMPOTENCY_KEY_REUSED');
+
+                const clear = await setRequest('set-penalty-zero', {
+                    ...body, values: { penalty: 0 }, expectedUpdatedAt: result.body.updatedAt
+                });
+                assert.equal(clear.status, 200);
+                assert.equal(clear.body.student.penalty, 0);
+                assert.equal(clear.body.student.lastPenaltyAt, 0);
+                assert.equal(clear.body.student.zizai, 25);
+                assert.equal(clear.body.student.balance, -2.5);
+
+                const read = await requestJson(baseUrl, '/api/data', { headers: sessionHeaders });
+                assert.equal(read.body.students.find(s => s.id === 'stu_agent_2').balance, 5);
+                const audit = read.body.history.filter(r => r.type === 'points-set');
+                assert.equal(audit.length, 2);
+                assert.deepEqual(audit[1].pointValues, body.values);
+                assert.equal(audit[1].pointsBefore.balance, 10);
+                assert.equal(audit[1].pointsAfter.balance, -2.5);
+                const numericIdResult = await setRequest('set-numeric-id', {
+                    studentId: 104, values: { balance: 6 }, reason: '数字ID校正', expectedUpdatedAt: read.body.__meta.updatedAt
+                });
+                assert.equal(numericIdResult.status, 200);
+                assert.equal(numericIdResult.body.student.balance, 6);
+                assert.equal(numericIdResult.body.student.zizai, 4);
+                const production = await requestJson(baseUrl, '/api/agent/students?q=stu_agent_1', { headers: { Cookie: userCookie } });
+                assert.equal(production.body.count, 0);
+            });
         });
 
         await t.test('attendance check-in works in simulated test session', async () => {
@@ -850,6 +913,29 @@ test('API smoke flows', async (t) => {
             assert.equal(absentStudent.balance, 5);
             assert.equal(absentStudent.penalty, 5);
             assert.equal(readResponse.body.history[0].reason, '缺勤扣分: 2026-03-30 早读');
+            const correction = await requestJson(baseUrl, '/api/agent/points/set', {
+                method: 'POST',
+                headers: { ...sessionWriteHeaders, 'x-test-now': String(mondayAfterMorningMs + 1000), 'idempotency-key': 'set-after-attendance' },
+                body: {
+                    studentId: 'stu_absent', values: { balance: 10, penalty: 0 },
+                    reason: '核对后校正考勤分值', expectedUpdatedAt: readResponse.body.__meta.updatedAt
+                }
+            });
+            assert.equal(correction.status, 200);
+            const saveCorrected = await requestJson(baseUrl, '/api/data', {
+                method: 'POST', headers: { ...sessionWriteHeaders, 'x-test-now': String(mondayAfterMorningMs + 1000) },
+                body: {
+                    students: initialStudents,
+                    __meta: { baseUpdatedAt: correction.body.updatedAt }
+                }
+            });
+            assert.equal(saveCorrected.status, 200);
+            const correctedRead = await requestJson(baseUrl, '/api/data', {
+                headers: { ...sessionHeaders, 'x-test-now': String(mondayAfterMorningMs + 1000) }
+            });
+            const correctedStudent = correctedRead.body.students.find(s => s.id === 'stu_absent');
+            assert.equal(correctedStudent.balance, 10);
+            assert.equal(correctedStudent.penalty, 0);
         });
     } finally {
         await stopServer(child, { signal: 'SIGTERM', requireGraceful: true });

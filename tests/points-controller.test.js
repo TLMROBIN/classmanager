@@ -20,6 +20,16 @@ const loadPointsController = () => {
     return { controller: context.window.PointsController, alerts };
 };
 
+test('absolute score correction cannot be removed through ordinary point undo', () => {
+    const { controller } = loadPointsController();
+    const history = [{ id: 'correction', type: 'points-set', val: 0, studentId: 's1' }];
+    const unexpected = () => assert.fail('Undo must not mutate score corrections');
+    assert.equal(controller.handleUndo({
+        recordId: 'correction', history, students: [{ id: 's1', balance: 12 }],
+        setStudents: unexpected, setHistory: unexpected, onPersist: unexpected
+    }), false);
+});
+
 test('handleWage pays custom role wage when role student id is a string and student id is numeric', () => {
     const { controller, alerts } = loadPointsController();
     const students = [
