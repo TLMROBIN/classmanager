@@ -649,6 +649,14 @@ test('API smoke flows', async (t) => {
                 assert.deepEqual(audit[1].pointValues, body.values);
                 assert.equal(audit[1].pointsBefore.balance, 10);
                 assert.equal(audit[1].pointsAfter.balance, -2.5);
+                const forgedAudit = await requestJson(baseUrl, '/api/data', {
+                    method: 'POST', headers: sessionHeaders,
+                    body: {
+                        history: [{ id: 'forged', type: 'points-set', studentId: 'stu_agent_1', ts: Date.now(), pointValues: { penalty: 0 } }, ...read.body.history],
+                        __meta: { baseUpdatedAt: read.body.__meta.updatedAt }
+                    }
+                });
+                assert.equal(forgedAudit.status, 403);
                 const numericIdResult = await setRequest('set-numeric-id', {
                     studentId: 104, values: { balance: 6 }, reason: '数字ID校正', expectedUpdatedAt: read.body.__meta.updatedAt
                 });

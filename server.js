@@ -1701,6 +1701,8 @@ const hasHistoryMaintenanceMutation = (store, payload) => {
     const incomingHistory = Array.isArray(payload.history) ? payload.history : [];
     if (incomingHistory.length < existingHistory.length) return true;
     const prependedCount = incomingHistory.length - existingHistory.length;
+    // 分值校正记录参与旧考勤快照的覆盖判断，追加它也必须有维护权限。
+    if (incomingHistory.slice(0, prependedCount).some(item => item?.type === 'points-set')) return true;
     return stringifyComparable(incomingHistory.slice(prependedCount)) !== stringifyComparable(existingHistory);
 };
 
