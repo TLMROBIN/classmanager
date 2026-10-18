@@ -114,7 +114,7 @@
             }, {});
         };
 
-    const SettingsView = ({ students, rawStudents, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, fetchAttendanceData, realDataReady, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed }) => {
+    const SettingsView = ({ students, rawStudents, studentProfiles, setStudentProfiles, history, config, setStudents, setHistory, setConfig, treasures, setTreasures, storage, setStorage, logs, setLogs, quotes, setQuotes, persistData, persistDataPatch, fetchAttendanceData, realDataReady, tasks, setTasks, messages, setMessages, teacherMessages, setTeacherMessages, redemptionHistory, setRedemptionHistory, dailyRedemptionCounts, setDailyRedemptionCounts, dailyUsageCounts, setDailyUsageCounts, battle, setBattle, examArchives, setExamArchives, isDirtyRef, testMode, enterTestMode, exitTestMode, simTime, setSimTime, timeSpeed, setTimeSpeed, onboardingStep, onboardingLocationKey, onOpenOnboarding, onOnboardingConfigSaved }) => {
         const [isAuthenticated, setIsAuthenticated] = useState(isAdminAuthed());
         const [pwd, setPwd] = useState('');
         const [setupPassword, setSetupPassword] = useState('');
@@ -188,6 +188,11 @@
         const [showStudentRosterManager, setShowStudentRosterManager] = useState(false);
         const [showOrganizationManager, setShowOrganizationManager] = useState(false);
         const [showCustomRolesManager, setShowCustomRolesManager] = useState(false);
+        useEffect(() => {
+            if (onboardingStep === 'organization') setShowOrganizationManager(true);
+            if (onboardingStep === 'roster') setShowStudentRosterManager(true);
+            if (onboardingStep === 'roles') setShowCustomRolesManager(true);
+        }, [onboardingStep, onboardingLocationKey]);
         const [examArchivesModuleStatus, setExamArchivesModuleStatus] = useState(typeof window.createExamArchivesView === 'function' ? 'ready' : 'idle');
         const setConfigSafe = (next) => {
             if (typeof setConfig !== 'function') return;
@@ -875,7 +880,7 @@
         // 锁屏界面逻辑
         if (!isAuthenticated) {
             return h("div", { className: "min-h-[500px] flex items-center justify-center animate-fade-in" },
-                h("div", { className: "bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center" },
+                h("div", { "data-onboarding": "maintenance", className: "bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center" },
                     h("div", { className: "mx-auto bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-blue-600" }, h(Icon, { name: "lock", size: 32 })),
                     h("h2", { className: "text-2xl font-bold text-gray-800 mb-2" }, "维护验证"),
                     h("p", { className: "text-gray-500 mb-4 text-sm" }, maintenanceStatus.loading ? "正在检查维护权限..." : "进入维护中心需要维护密码验证"),
@@ -1012,6 +1017,7 @@
 
             return Promise.resolve(saveAction)
                 .then(() => {
+                    if (typeof onOnboardingConfigSaved === 'function') onOnboardingConfigSaved();
                     alert("配置已保存！");
                 })
                 .catch(err => {
@@ -1020,7 +1026,7 @@
                 });
         };
 
-        return h("div", { className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto flex flex-col gap-8" },
+        return h("div", { "data-onboarding": "settings", className: "bg-white p-8 rounded-xl shadow-lg animate-fade-in max-w-4xl mx-auto flex flex-col gap-8" },
             h("div", { className: "border-b pb-4 flex justify-between items-center", style: { order: -2 } },
                 h("div", null,
                     h("h2", { className: "text-2xl font-bold text-gray-800" }, "🔧 系统维护中心"), 
@@ -1036,6 +1042,7 @@
                 }, "退出登录")
             ),
             renderSystemConfigSection({
+                onOpenOnboarding,
                 config,
                 systemConfig,
                 students,

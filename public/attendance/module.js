@@ -63,7 +63,9 @@
             attendanceRecords,
             onAttendanceCheckIn,
             onAttendanceMaintenance,
-            onUpdateAttendanceConfig
+            onUpdateAttendanceConfig,
+            onboardingStep,
+            onboardingLocationKey
         }) {
             const isFrozen = !!(config && config.frozen);
 
@@ -80,6 +82,9 @@
 
             const [currentTime, setCurrentTime] = useState(getNow());
             const [view, setView] = useState('checkin');
+            useEffect(() => {
+                if (onboardingStep === 'attendance') setView('tools');
+            }, [onboardingStep, onboardingLocationKey]);
             const [checkInQuery, setCheckInQuery] = useState('');
             const [checkInReceipt, setCheckInReceipt] = useState(null);
             const [checkInError, setCheckInError] = useState(null);
@@ -779,7 +784,7 @@
                             )
                         ),
                         AttendanceSettingsSection
-                            ? h(AttendanceSettingsSection, {
+                            ? h("div", { "data-onboarding": "attendance-settings" }, h(AttendanceSettingsSection, {
                                 systemConfig: getSystemConfig(config),
                                 updateSystemConfig: (updater) => {
                                     if (typeof updater !== 'function') return;
@@ -791,7 +796,7 @@
                                     }
                                     showAttendanceFeedback("考勤设置已修改，但当前页面未提供配置持久化回调。", 'error');
                                 }
-                            })
+                            }))
                             : h("div", { className: "bg-white rounded-xl border border-gray-200 p-4 space-y-2" },
                                 h("div", { className: "font-bold text-sm text-gray-800" }, "考勤设置"),
                                 h("div", { className: "text-sm text-gray-600" }, "考勤设置模块加载失败，请刷新页面后重试。")

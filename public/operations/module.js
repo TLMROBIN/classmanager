@@ -181,7 +181,9 @@
             config,
             setConfig,
             setHistory,
-            onApplyFixedStudents
+            onApplyFixedStudents,
+            onboardingStep,
+            onboardingLocationKey
         }) {
             const initialUiState = readUiState();
             const [selectedIdsState, setSelectedIdsState] = useState(() => new Set(initialUiState.selectedIds));
@@ -189,6 +191,11 @@
             const [filterDormState, setFilterDormState] = useState(() => initialUiState.filterDorm);
             const [opTabState, setOpTabState] = useState(() => initialUiState.opTab);
             const [workspaceSection, setWorkspaceSection] = useState('quick');
+            useEffect(() => {
+                if (onboardingStep === 'points') setWorkspaceSection('settings');
+                if (onboardingStep === 'registers') setWorkspaceSection('registers');
+                if (onboardingStep === 'quick') setWorkspaceSection('quick');
+            }, [onboardingStep, onboardingLocationKey]);
             const [registerMode, setRegisterMode] = useState('homework');
             const [settingsOpen, setSettingsOpen] = useState(false);
             const operationPendingRef = useRef(false);
@@ -697,7 +704,7 @@
                         onCustomReason: handleCustomReason
                     })
                 ),
-                workspaceSection === 'settings' && h("div", { id: 'operations-panel-settings', role: 'tabpanel', 'aria-labelledby': 'operations-tab-settings', className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
+                workspaceSection === 'settings' && h("div", { 'data-onboarding': 'points-settings', id: 'operations-panel-settings', role: 'tabpanel', 'aria-labelledby': 'operations-tab-settings', className: "bg-white rounded-xl shadow-sm border p-4 space-y-4" },
                     h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                         h("div", { className: "space-y-1" },
                             h("div", { className: "flex items-center gap-2 text-gray-800" },
@@ -777,7 +784,7 @@
                         })
                     )
                 ),
-                workspaceSection === 'registers' && h("section", { id: 'operations-panel-registers', role: 'tabpanel', 'aria-labelledby': 'operations-tab-registers', className: "space-y-4" },
+                workspaceSection === 'registers' && h("section", { 'data-onboarding': 'registers', id: 'operations-panel-registers', role: 'tabpanel', 'aria-labelledby': 'operations-tab-registers', className: "space-y-4" },
                     h("div", { className: "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between" },
                         h("div", null,
                             h("h2", { className: "text-lg font-bold text-gray-900" }, "日常登记"),

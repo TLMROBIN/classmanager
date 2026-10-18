@@ -8,6 +8,7 @@
         '/core/sync.js',
         '/core/store.js',
         '/ui/modal.js',
+        '/onboarding/module.js',
         '/points/config.js',
         '/points/controller.js',
         '/attendance/points.js',

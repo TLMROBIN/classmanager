@@ -89,7 +89,7 @@
                 .filter(item => isValidScheduleDate(item.date) && item.note)
                 .sort((a, b) => a.date.localeCompare(b.date));
 
-            return h("div", { className: "border-t pt-6" },
+            return h("div", { "data-onboarding": "tools", className: "border-t pt-6" },
                 h("h3", { className: "font-bold text-gray-700 mb-4" }, "🧰 工具区"),
                 h("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start" },
                     renderToolCard(

@@ -26,7 +26,8 @@
                 StudentRosterSection,
                 studentRosterProps,
                 onChangeMaintenancePassword,
-                onSaveConfig
+                onSaveConfig,
+                onOpenOnboarding
             } = props || {};
 
             return h("div", { className: "border-t pt-6", style: { order: -1 } },
@@ -35,7 +36,7 @@
                     h("div", { className: "flex flex-wrap gap-2" },
                         h("button", { onClick: handleResetSystemConfig, className: "px-3 py-2 bg-red-50 border border-red-200 text-red-600 rounded hover:bg-red-100 text-sm" }, "恢复默认配置")
                     ),
-                    h("div", null,
+                    h("section", { 'data-onboarding': 'basics' },
                         h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "基础设置"),
                         h("div", { className: "space-y-4" },
                             h("div", null,
@@ -165,10 +166,17 @@
                             )
                         )
                     ),
+                    h("section", { className: "cm-guide-entry", 'aria-labelledby': 'onboarding-entry-title' },
+                        h("div", null,
+                            h("h4", { id: 'onboarding-entry-title', className: "font-bold text-gray-800 text-sm" }, "新手引导"),
+                            h("p", { className: "text-sm text-gray-600 mt-1" }, "跟着提示设置班级、组织和名单，也可重看日常与进阶功能。引导可随时关闭。")
+                        ),
+                        h("button", { type: 'button', onClick: onOpenOnboarding, className: "cm-guide-primary" }, "打开新手引导")
+                    ),
                     h("div", null,
                         h("h4", { className: "font-bold text-gray-800 mb-3 text-sm" }, "组织与角色"),
                         h("div", { className: "space-y-4" },
-                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
+                            h("div", { "data-onboarding": "organization", className: "bg-white border rounded-lg p-4 space-y-4" },
                                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                                     h("div", null,
                                         h("div", { className: "text-sm font-medium text-gray-700" }, "组织架构"),
@@ -286,7 +294,7 @@
                                 )
                             ),
                             StudentRosterSection && h(StudentRosterSection, studentRosterProps || {}),
-                            h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
+                            h("div", { "data-onboarding": "roles", className: "bg-white border rounded-lg p-4 space-y-4" },
                                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                                     h("div", null,
                                         h("div", { className: "text-sm font-medium text-gray-700" }, "自定义角色"),
@@ -411,6 +419,7 @@
                     ),
                     h("div", { className: "border-t pt-4" },
                         h("button", {
+                            "data-onboarding": "save-config",
                             onClick: onSaveConfig,
                             className: "w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
                         }, "💾 保存配置")

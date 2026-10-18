@@ -24,7 +24,7 @@
             const groups = systemConfig?.organization?.groups || [];
             const dorms = systemConfig?.organization?.dorms || [];
 
-            return h("div", { className: "bg-white border rounded-lg p-4 space-y-4" },
+            return h("div", { "data-onboarding": "roster", className: "bg-white border rounded-lg p-4 space-y-4" },
                 h("div", { className: "flex flex-col gap-3 md:flex-row md:items-center md:justify-between" },
                     h("div", null,
                         h("div", { className: "text-sm font-medium text-gray-700" }, "学生名单维护"),

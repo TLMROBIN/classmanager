@@ -752,6 +752,8 @@ const INITIAL_TREASURES = [
         DEFAULT_QUOTES
     });
 
+    const { useOnboarding, Guide: OnboardingGuide } = window.createOnboarding({ h, useState, useEffect, useRef });
+
     // --- 核心 App ---
     var App = function() {
         const {
@@ -1478,14 +1480,21 @@ const INITIAL_TREASURES = [
             return true;
         };
 
+        const onboarding = useOnboarding({
+            ready: realDataReady, testMode, user: window.__getCurrentUser__(),
+            students, history, setActiveTab, systemConfig: getSystemConfig(config)
+        });
+        const onboardingStep = onboarding.step?.id || '';
+        const onboardingLocationKey = onboarding.locationKey;
+
         return h("div", { className: "min-h-screen w-full min-w-0 pb-20" },
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
-            h("main", { className: "w-full min-w-0 max-w-6xl mx-auto p-4 mt-4" },
+            h("main", { "data-onboarding": "workspace", className: "w-full min-w-0 max-w-6xl mx-auto p-4 mt-4" },
                 activeTab === 'dashboard' && h(DashboardView, { students: displayStudents, studentProfiles, history, config, setConfig, updatePoints, handleUndo }),
-                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory, onApplyFixedStudents: handleApplyFixedStudents }),
+                activeTab === 'operations' && h(OperationView, { students: displayStudents, handleWage, history, handleUndo, batchUpdatePoints, config, setConfig, setHistory, onApplyFixedStudents: handleApplyFixedStudents, onboardingStep, onboardingLocationKey }),
                 activeTab === 'attendance' && (
                     AttendanceView
-                        ? h(AttendanceView, { students: displayStudents, updatePoints, config, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, attendanceRecords, onAttendanceCheckIn: handleAttendanceCheckIn, onAttendanceMaintenance: handleAttendanceMaintenance, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
+                        ? h(AttendanceView, { onboardingStep, onboardingLocationKey, students: displayStudents, updatePoints, config, quotes, messages, setMessages, teacherMessages, setTeacherMessages, studentMessages: messages, setStudentMessages: setMessages, attendanceRecords, onAttendanceCheckIn: handleAttendanceCheckIn, onAttendanceMaintenance: handleAttendanceMaintenance, onUpdateAttendanceConfig: (nextSystemConfig) => { setConfig(sanitizeStoredConfig({ ...config, systemConfig: stripSystemConfigTreasures(nextSystemConfig) })); if (Array.isArray(nextSystemConfig.quotes)) setQuotes(nextSystemConfig.quotes); } })
                         : h("div", { className: "bg-white rounded-xl shadow-sm p-8 text-center space-y-3" },
                             h("div", { className: "text-lg font-bold text-gray-800" }, "考勤模块加载失败"),
                             h("div", { className: "text-sm text-gray-500" }, "请检查 `attendance/module.js` 是否正常加载。")
@@ -1583,8 +1592,9 @@ const INITIAL_TREASURES = [
                 activeTab === 'settings' && (
                     settingsModuleStatus === 'ready' && SettingsView
                         ? h(SettingsView, { 
-                            students: displayStudents, studentProfiles, history, config,
+                            students, studentProfiles, history, config,
                             rawStudents: students,
+                            onboardingStep, onboardingLocationKey, onOpenOnboarding: onboarding.open, onOnboardingConfigSaved: onboarding.onConfigSaved,
                             treasures, storage, logs,
                             setStudents, setStudentProfiles, setHistory, setConfig,
                             setTreasures, setStorage, setLogs,
@@ -1613,6 +1623,7 @@ const INITIAL_TREASURES = [
                         )
                 )
             ),
+            h(OnboardingGuide, { guide: onboarding, students, systemConfig: getSystemConfig(config), syncStatus, testMode, activeTab }),
             h(Modal, { isOpen: modal.open, title: modal.title, onClose: () => setModal({ ...modal, open: false }), onConfirm: modal.onConfirm, type: modal.type }, modal.content)
         );
     };
