@@ -470,6 +470,11 @@
                     if (!res.ok) {
                         throw new Error(data?.error || text || '刷新失败');
                     }
+                    // 请求在途期间本地可能刚产生修改（如上传头像），此时应用旧响应会把新改动盖掉，放弃本次应用。
+                    if (!allowDirtyOverride && isAuto && (isSavingRef.current || isDirtyRef.current)) {
+                        console.log('[自动刷新] 响应到达时本地存在未保存更改，放弃应用旧数据');
+                        return Promise.resolve({ skipped: true, reason: 'dirty-late' });
+                    }
                     if (data && Object.keys(data).length > 0) {
                         const normalized = normalizeFullData(data);
                         const remoteTs = Number(normalized.__meta.updatedAt) || 0;

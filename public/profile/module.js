@@ -51,9 +51,16 @@
             const handleAvatarUpload = async (studentId, mood, file) => {
                 if (!file) return;
                 if (!await requireAdminAuth("修改头像需要维护密码，请输入：")) return;
-                compressImage(file, (base64) => {
-                    updateStudentProfile(studentId, mood === 'happy' ? { avatarHappy: base64 } : { avatarSad: base64 });
-                });
+                compressImage(
+                    file,
+                    (base64) => {
+                        updateStudentProfile(studentId, mood === 'happy' ? { avatarHappy: base64 } : { avatarSad: base64 });
+                    },
+                    (err) => {
+                        console.error('头像图片处理失败:', err);
+                        alert(err?.message || '头像图片读取失败，请换一张 JPG/PNG 格式的图片重试。');
+                    }
+                );
             };
 
             const handleSetTitle = async (studentId, side) => {
@@ -98,8 +105,8 @@
                             },
                             className: "border rounded-lg p-3 flex flex-col items-center gap-2 relative group cursor-pointer hover:shadow-md transition"
                         },
-                        h("label", { className: "absolute top-1 left-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传开心" }, h(Icon, { name: "smile", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(student.id, 'happy', e.target.files[0]) })),
-                        h("label", { className: "absolute top-1 right-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传难过" }, h(Icon, { name: "frown", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => handleAvatarUpload(student.id, 'sad', e.target.files[0]) })),
+                        h("label", { className: "absolute top-1 left-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传开心", onClick: (e) => e.stopPropagation() }, h(Icon, { name: "smile", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => { const file = e.target.files && e.target.files[0]; e.target.value = ''; handleAvatarUpload(student.id, 'happy', file); } })),
+                        h("label", { className: "absolute top-1 right-1 opacity-0 group-hover:opacity-100 cursor-pointer bg-white/80 p-1 rounded z-10", title: "上传难过", onClick: (e) => e.stopPropagation() }, h(Icon, { name: "frown", size: 14 }), h("input", { type: "file", className: "hidden", accept: "image/*", onChange: e => { const file = e.target.files && e.target.files[0]; e.target.value = ''; handleAvatarUpload(student.id, 'sad', file); } })),
                             h("div", { className: "flex items-center gap-2 w-full justify-center" },
                                 (profile.titleLeft || profile.titleRight) && h("div", { className: "absolute -top-2 left-0 right-0 flex justify-center gap-1 pointer-events-none" },
                                     profile.titleLeft && h("span", { className: "bg-amber-500 text-white text-[8px] px-1 rounded-sm shadow-sm" }, profile.titleLeft),

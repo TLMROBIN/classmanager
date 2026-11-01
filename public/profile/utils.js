@@ -109,23 +109,44 @@
         return normalizeStudentProfiles(currentStudentProfiles, currentStudents);
     };
 
-    const compressImage = (file, callback) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
+    const compressImage = (file, callback, onError) => {
+        const fail = (err) => {
+            if (typeof onError === 'function') onError(err instanceof Error ? err : new Error(String(err || '图片处理失败')));
+        };
+        let reader;
+        try {
+            reader = new FileReader();
+        } catch (err) {
+            fail(err);
+            return;
+        }
+        reader.onerror = () => fail(reader.error || new Error('读取文件失败'));
         reader.onload = (e) => {
             const img = new Image();
-            img.src = e.target.result;
             img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 150;
-                const scale = MAX_WIDTH / img.width;
-                canvas.width = MAX_WIDTH;
-                canvas.height = img.height * scale;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                callback(canvas.toDataURL('image/jpeg', 0.7));
+                try {
+                    if (!img.width || !img.height) throw new Error('图片尺寸无效');
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 150;
+                    const scale = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = Math.max(1, Math.round(img.height * scale));
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) throw new Error('无法创建画布');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    callback(canvas.toDataURL('image/jpeg', 0.7));
+                } catch (err) {
+                    fail(err);
+                }
             };
+            img.onerror = () => fail(new Error('图片格式无法识别（手机拍摄的 HEIC 照片请先转为 JPG/PNG）'));
+            img.src = e.target.result;
         };
+        try {
+            reader.readAsDataURL(file);
+        } catch (err) {
+            fail(err);
+        }
     };
 
     const getAvatar = (student, studentProfilesOrMood = 'happy', maybeMood = 'happy') => {
