@@ -5,6 +5,7 @@
             Icon,
             getSystemConfig,
             getCurrentUser,
+            getServerRuntime,
             logout
         } = deps || {};
 
@@ -17,6 +18,7 @@
             const battleEnabled = systemConfig.enabledFeatures?.battle ?? true;
             const petEnabled = systemConfig.enabledFeatures?.pet === true;
             const currentUser = getCurrentUser();
+            const serverRuntime = typeof getServerRuntime === 'function' ? getServerRuntime() : null;
             const tabs = [
                 { id: 'dashboard', label: '仪表盘', icon: 'chart' },
                 { id: 'operations', label: '积分', icon: 'star' },
@@ -63,6 +65,10 @@
                                 syncStatus === 'unsaved' ? '未同步' : '连接异常'
                             )
                         ),
+                        serverRuntime && serverRuntime.version && h("span", {
+                            className: "hidden md:inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-500 font-mono text-xs border border-gray-200",
+                            title: `系统内核 ${serverRuntime.version}${serverRuntime.deploymentLabel ? ` · ${serverRuntime.deploymentLabel}` : ''}`
+                        }, serverRuntime.version),
                         currentUser && h("div", { className: "flex items-center gap-2 border-l pl-3 ml-1" },
                             h("span", { className: "font-medium text-gray-700" }, currentUser.username),
                             currentUser.role === 'admin' && h("a", {

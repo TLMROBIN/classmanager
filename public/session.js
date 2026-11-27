@@ -4,6 +4,7 @@
     const USER_HOME_URL = '/';
 
     let currentUser = null;
+    let serverRuntime = null;
 
     const safeRemoveItem = (storage, key) => {
         try {
@@ -15,6 +16,7 @@
 
     const clearAuthArtifacts = () => {
         currentUser = null;
+        serverRuntime = null;
         safeRemoveItem(localStorage, 'token');
         safeRemoveItem(localStorage, 'user');
         safeRemoveItem(localStorage, 'cm_battle_snapshots_v1');
@@ -54,12 +56,14 @@
 
         if (res.ok && data && data.success && data.user) {
             currentUser = data.user;
+            serverRuntime = data.runtime && typeof data.runtime === 'object' ? data.runtime : null;
             safeRemoveItem(localStorage, 'token');
             safeRemoveItem(localStorage, 'user');
             return currentUser;
         }
 
         currentUser = null;
+        serverRuntime = null;
 
         if (res.status === 401 || res.status === 404) {
             clearAuthArtifacts();
@@ -77,6 +81,10 @@
 
     window.__getCurrentUser__ = function () {
         return currentUser;
+    };
+
+    window.__getServerRuntime__ = function () {
+        return serverRuntime;
     };
 
     window.__isAdmin__ = function () {

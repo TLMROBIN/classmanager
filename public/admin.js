@@ -283,6 +283,13 @@
                 return;
             }
 
+            const runtime = typeof window.__getServerRuntime__ === 'function' ? window.__getServerRuntime__() : null;
+            const badge = document.getElementById('adminVersionBadge');
+            if (badge && runtime && runtime.version) {
+                badge.textContent = `${runtime.version}${runtime.deploymentLabel ? ` · ${runtime.deploymentLabel}` : ''}`;
+                badge.classList.remove('hidden');
+            }
+
             await Promise.all([loadStats(), loadUsers()]);
         } catch (error) {
             console.error('初始化管理员后台失败:', error);

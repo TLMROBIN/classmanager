@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { hashPassword, verifyPassword } = require('./utils/password');
-const { buildHealthReport } = require('./utils/health');
+const { buildHealthReport, APP_VERSION, SCHEMA_VERSION } = require('./utils/health');
 const { applyBankruptcyLiquidation, clearExpiredLiquidatedTreasures } = require('./utils/liquidation');
 const {
     generateToken,
@@ -1813,11 +1813,23 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // ==================== 认证 API ====================
 
+const getServerRuntimeInfo = () => {
+    const capabilities = authAdapter.getCapabilities();
+    const mode = capabilities.mode === 'school' ? 'school' : 'personal';
+    return {
+        version: APP_VERSION,
+        schemaVersion: SCHEMA_VERSION,
+        deploymentMode: mode,
+        deploymentLabel: mode === 'school' ? '校园模式' : '个人模式'
+    };
+};
+
 app.get('/api/auth/providers', (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
         success: true,
-        ...authAdapter.getCapabilities()
+        ...authAdapter.getCapabilities(),
+        runtime: getServerRuntimeInfo()
     });
 });
 
@@ -1874,7 +1886,8 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ 
         success: true,
-        user: { id: req.user.id, username: req.user.username, email: req.user.email, role: req.user.role }
+        user: { id: req.user.id, username: req.user.username, email: req.user.email, role: req.user.role },
+        runtime: getServerRuntimeInfo()
     });
 });
 

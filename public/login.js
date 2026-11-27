@@ -245,6 +245,23 @@
 
     void (async () => {
         try {
+            const res = await fetch('/api/auth/providers', {
+                cache: 'no-store',
+                headers: { Accept: 'application/json' }
+            });
+            const data = res.ok ? await parseJsonResponse(res) : null;
+            const badge = document.getElementById('loginVersionBadge');
+            if (badge && data && data.runtime && data.runtime.version) {
+                badge.textContent = `内核版本 ${data.runtime.version}${data.runtime.deploymentLabel ? ` · ${data.runtime.deploymentLabel}` : ''}`;
+                badge.classList.remove('hidden');
+            }
+        } catch (_) {
+            // Version badge is informational only; ignore network errors on login screen.
+        }
+    })();
+
+    void (async () => {
+        try {
             const user = await window.__verifySession__();
             if (user) {
                 window.__redirectByRole__(user);

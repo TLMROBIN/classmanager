@@ -486,6 +486,12 @@ test('Stage 0 migration dry-run, lossless migration, idempotency, live server & 
                 assert.equal(providersRes.body.schoolName, '实验中学');
                 assert.equal(providersRes.body.passwordLoginEnabled, true);
                 assert.deepEqual(providersRes.body.providers, ['password']);
+                assert.deepEqual(providersRes.body.runtime, {
+                    version: 'v2.0-stage0',
+                    schemaVersion: '2.0-stage0',
+                    deploymentMode: 'school',
+                    deploymentLabel: '校园模式'
+                });
 
                 // Existing user logs in with original password
                 const loginRes = await requestJson(baseUrl, '/api/auth/login', {
@@ -495,6 +501,15 @@ test('Stage 0 migration dry-run, lossless migration, idempotency, live server & 
                 assert.equal(loginRes.status, 200);
                 const cookie = loginRes.cookie;
                 assert.ok(cookie);
+
+                const verifyRes = await requestJson(baseUrl, '/api/auth/verify', { headers: { Cookie: cookie } });
+                assert.equal(verifyRes.status, 200);
+                assert.deepEqual(verifyRes.body.runtime, {
+                    version: 'v2.0-stage0',
+                    schemaVersion: '2.0-stage0',
+                    deploymentMode: 'school',
+                    deploymentLabel: '校园模式'
+                });
 
                 // Read migrated data via V1 API
                 const dataRes = await requestJson(baseUrl, '/api/data', { headers: { Cookie: cookie } });
@@ -776,6 +791,12 @@ test('Stage 0 migration dry-run, lossless migration, idempotency, live server & 
                 assert.equal(providersRes.status, 200);
                 assert.equal(providersRes.body.mode, 'personal');
                 assert.equal(providersRes.body.passwordLoginEnabled, true);
+                assert.deepEqual(providersRes.body.runtime, {
+                    version: 'v2.0-stage0',
+                    schemaVersion: '2.0-stage0',
+                    deploymentMode: 'personal',
+                    deploymentLabel: '个人模式'
+                });
 
                 const loginRes = await requestJson(baseUrl, '/api/auth/login', {
                     method: 'POST',

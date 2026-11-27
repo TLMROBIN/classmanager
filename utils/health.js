@@ -7,6 +7,8 @@ const {
 const { getDeploymentSettings } = require('../kernel/auth-adapter');
 
 const DEFAULT_BACKUP_MAX_AGE_HOURS = 36;
+const SCHEMA_VERSION = '2.0-stage0';
+const APP_VERSION = `v${SCHEMA_VERSION}`;
 
 const normalizeBackupMaxAgeHours = (value) => {
     const parsed = Number(value);
@@ -33,7 +35,7 @@ const buildDatabaseHealth = ({ db, dbPath }) => {
             path: toRelativePath(dbPath),
             journalMode: String(journalMode || ''),
             foreignKeysEnabled: Boolean(foreignKeys),
-            schemaVersion: '2.0-stage0',
+            schemaVersion: SCHEMA_VERSION,
             deploymentMode,
             userCount,
             sidecars: readSourceSidecarStats(dbPath)
@@ -121,5 +123,7 @@ const buildHealthReport = ({ db, dbPath, startedAtMs }) => {
 
 module.exports = {
     buildHealthReport,
-    DEFAULT_BACKUP_MAX_AGE_HOURS
+    DEFAULT_BACKUP_MAX_AGE_HOURS,
+    SCHEMA_VERSION,
+    APP_VERSION
 };

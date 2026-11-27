@@ -317,6 +317,7 @@ const INITIAL_TREASURES = [
             Icon,
             getSystemConfig,
             getCurrentUser: () => window.__getCurrentUser__(),
+            getServerRuntime: () => (typeof window.__getServerRuntime__ === 'function' ? window.__getServerRuntime__() : null),
             logout: () => window.__logout__()
         });
         return window.__NavViewComponent__;
@@ -1486,6 +1487,7 @@ const INITIAL_TREASURES = [
         });
         const onboardingStep = onboarding.step?.id || '';
         const onboardingLocationKey = onboarding.locationKey;
+        const serverRuntime = typeof window.__getServerRuntime__ === 'function' ? window.__getServerRuntime__() : null;
 
         return h("div", { className: "min-h-screen w-full min-w-0 pb-20" },
             h(NavView, { activeTab, setActiveTab, syncStatus, config }),
@@ -1623,6 +1625,9 @@ const INITIAL_TREASURES = [
                         )
                 )
             ),
+            serverRuntime && serverRuntime.version && h("footer", {
+                className: "max-w-6xl mx-auto px-4 mt-8 text-center text-xs text-gray-400"
+            }, `班级自在管理系统 · 内核 ${serverRuntime.version}${serverRuntime.deploymentLabel ? ` · ${serverRuntime.deploymentLabel}` : ''}`),
             h(OnboardingGuide, { guide: onboarding, students, systemConfig: getSystemConfig(config), syncStatus, testMode, activeTab }),
             h(Modal, { isOpen: modal.open, title: modal.title, onClose: () => setModal({ ...modal, open: false }), onConfirm: modal.onConfirm, type: modal.type }, modal.content)
         );
