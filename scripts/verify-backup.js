@@ -49,6 +49,12 @@ const main = async () => {
     console.log(`- page_count: ${verification.pageCount}`);
     console.log(`- users: ${verification.userCount == null ? 'N/A' : verification.userCount}`);
     console.log(`- class_data: ${verification.classDataCount == null ? 'N/A' : verification.classDataCount}`);
+    if (verification.classCount != null) {
+        console.log(`- classes: ${verification.classCount}`);
+        console.log(`- class_enrollments: ${verification.enrollmentCount ?? 0}`);
+        console.log(`- point_ledger: ${verification.ledgerCount ?? 0}`);
+        console.log(`- plugin_storage: ${verification.pluginStorageCount ?? 0}`);
+    }
     console.log(`- SHA256: ${sha256}`);
 
     if (isInsideBackupDir || args['cleanup-sidecars']) {
@@ -67,7 +73,11 @@ const main = async () => {
             pageCount: verification.pageCount,
             rowCounts: {
                 users: verification.userCount,
-                class_data: verification.classDataCount
+                class_data: verification.classDataCount,
+                classes: verification.classCount,
+                class_enrollments: verification.enrollmentCount,
+                point_ledger: verification.ledgerCount,
+                plugin_storage: verification.pluginStorageCount
             }
         };
 

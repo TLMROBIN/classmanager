@@ -205,13 +205,21 @@ const runIntegrityCheck = (dbPath) => {
         const pageCount = db.pragma('page_count', { simple: true });
         const userCount = safeTableCount(db, 'users');
         const classDataCount = safeTableCount(db, 'class_data');
+        const classCount = safeTableCount(db, 'classes');
+        const enrollmentCount = safeTableCount(db, 'class_enrollments');
+        const ledgerCount = safeTableCount(db, 'point_ledger');
+        const pluginStorageCount = safeTableCount(db, 'plugin_storage');
 
         return {
             ok: integrityRows.length === 1 && integrityRows[0] === 'ok',
             integrity,
             pageCount,
             userCount,
-            classDataCount
+            classDataCount,
+            classCount,
+            enrollmentCount,
+            ledgerCount,
+            pluginStorageCount
         };
     } finally {
         db.close();

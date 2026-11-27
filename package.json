@@ -11,6 +11,8 @@
     "init-db": "node database/init.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js",
     "migrate:security": "node scripts/migrate-maintenance-secrets.js",
+    "migrate:v2": "node scripts/migrate-v1-to-v2.js",
+    "migrate:v2:dry-run": "node scripts/migrate-v1-to-v2.js --dry-run",
     "data:audit": "node scripts/audit-class-data.js",
     "data:audit:apply": "node scripts/audit-class-data.js --apply",
     "build:web-assets": "node scripts/build-web-assets.js",

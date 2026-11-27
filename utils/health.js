@@ -4,6 +4,7 @@ const {
     readSourceSidecarStats,
     toRelativePath
 } = require('../scripts/backup-utils');
+const { getDeploymentSettings } = require('../kernel/auth-adapter');
 
 const DEFAULT_BACKUP_MAX_AGE_HOURS = 36;
 
@@ -20,12 +21,20 @@ const buildDatabaseHealth = ({ db, dbPath }) => {
         const journalMode = db.pragma('journal_mode', { simple: true });
         const foreignKeys = db.pragma('foreign_keys', { simple: true });
         const userCount = Number(db.prepare('SELECT COUNT(*) AS count FROM users').get()?.count) || 0;
+        let deploymentMode = 'personal';
+        try {
+            deploymentMode = getDeploymentSettings(db).mode;
+        } catch (_) {
+            deploymentMode = 'personal';
+        }
 
         return {
             ok: true,
             path: toRelativePath(dbPath),
             journalMode: String(journalMode || ''),
             foreignKeysEnabled: Boolean(foreignKeys),
+            schemaVersion: '2.0-stage0',
+            deploymentMode,
             userCount,
             sidecars: readSourceSidecarStats(dbPath)
         };

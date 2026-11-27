@@ -88,7 +88,11 @@ const main = async () => {
             pageCount: verification.pageCount,
             rowCounts: {
                 users: verification.userCount,
-                class_data: verification.classDataCount
+                class_data: verification.classDataCount,
+                classes: verification.classCount,
+                class_enrollments: verification.enrollmentCount,
+                point_ledger: verification.ledgerCount,
+                plugin_storage: verification.pluginStorageCount
             },
             sourceFiles: readSourceSidecarStats(sourceDbPath)
         };

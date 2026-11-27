@@ -20,6 +20,12 @@ const {
 } = require('./middleware/auth');
 const { dbPath, ensureSchema, countAdmins } = require('./database/schema');
 const { stripLegacyAdminPasswordFromConfig } = require('./utils/config-security');
+const { createEventBus } = require('./kernel/event-bus');
+const { ensureOfficialPluginCatalog } = require('./kernel/plugins');
+const { ensureDeploymentSettings, createAuthAdapter } = require('./kernel/auth-adapter');
+const { ensureClassForUser, createV2CompatStore, stringifyComparable } = require('./kernel/v2-store');
+const { createTestSandboxManager } = require('./kernel/sandbox-manager');
+const { findUnmigratedLegacyUsers } = require('./kernel/migrate-v1-to-v2');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -32,6 +38,34 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 ensureSchema(db);
+ensureDeploymentSettings(db);
+ensureOfficialPluginCatalog(db);
+
+const unmigratedLegacyUsers = findUnmigratedLegacyUsers(db);
+if (unmigratedLegacyUsers.length > 0) {
+    console.error('❌ 检测到尚未迁移的 1.x 班级数据，V2 内核服务拒绝启动');
+    console.error(`ℹ️  共 ${unmigratedLegacyUsers.length} 个班级账号仍停留在旧版 class_data 表中，请先执行无损迁移:`);
+    console.error('   npm run migrate:v2 -- --mode=school    # 校园部署（校内服务器推荐）');
+    console.error('   npm run migrate:v2 -- --mode=personal  # 个人部署');
+    db.close();
+    process.exit(1);
+}
+
+const eventBus = createEventBus();
+const testSandboxManager = createTestSandboxManager({ mainDb: db, mainDbPath: dbPath });
+const authAdapter = createAuthAdapter({
+    db,
+    hashPassword,
+    verifyPassword,
+    generateToken,
+    onUserCreated: (user) => {
+        if (user && user.role === 'user') {
+            ensureClassForUser(db, user.id, {
+                title: `${user.username}的班级`
+            });
+        }
+    }
+});
 
 const MAINTENANCE_TOKEN_HEADER = 'x-maintenance-token';
 const TEST_SESSION_HEADER = 'x-test-session';
@@ -90,26 +124,7 @@ const CSP_POLICY = [
     `report-uri ${CSP_REPORT_URI}`
 ].join('; ');
 
-const selectClassDataRows = db.prepare('SELECT data_key, data_value FROM class_data WHERE user_id = ?');
-const selectClassDataValue = db.prepare('SELECT data_value FROM class_data WHERE user_id = ? AND data_key = ?');
 const selectAccessAuthUserById = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?');
-const deleteClassDataKey = db.prepare('DELETE FROM class_data WHERE user_id = ? AND data_key = ?');
-const upsertClassData = db.prepare(`
-    INSERT INTO class_data (user_id, data_key, data_value, updated_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(user_id, data_key)
-    DO UPDATE SET data_value = excluded.data_value, updated_at = CURRENT_TIMESTAMP
-`);
-const selectMaintenanceCredential = db.prepare('SELECT user_id, password_hash, updated_at FROM maintenance_credentials WHERE user_id = ?');
-const insertMaintenanceCredential = db.prepare(`
-    INSERT INTO maintenance_credentials (user_id, password_hash, migrated_from_legacy, updated_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-`);
-const updateMaintenanceCredential = db.prepare(`
-    UPDATE maintenance_credentials
-    SET password_hash = ?, migrated_from_legacy = 0, updated_at = CURRENT_TIMESTAMP
-    WHERE user_id = ?
-`);
 const selectTestSessionById = db.prepare(`
     SELECT id, user_id, status, sim_time_ms, time_speed, created_at, updated_at, expires_at
     FROM test_sessions
@@ -135,57 +150,6 @@ const touchTestSession = db.prepare(`
     WHERE id = ?
 `);
 const deleteTestSessionByIdAndUser = db.prepare('DELETE FROM test_sessions WHERE id = ? AND user_id = ?');
-const deleteTestSessionsByUser = db.prepare('DELETE FROM test_sessions WHERE user_id = ?');
-const deleteExpiredTestSessions = db.prepare(`
-    DELETE FROM test_sessions
-    WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
-`);
-const selectTestClassDataRows = db.prepare(`
-    SELECT data_key, data_value
-    FROM test_class_data
-    WHERE session_id = ? AND user_id = ?
-`);
-const selectTestClassDataValue = db.prepare(`
-    SELECT data_value
-    FROM test_class_data
-    WHERE session_id = ? AND user_id = ? AND data_key = ?
-`);
-const deleteTestClassDataKey = db.prepare(`
-    DELETE FROM test_class_data
-    WHERE session_id = ? AND user_id = ? AND data_key = ?
-`);
-const upsertTestClassData = db.prepare(`
-    INSERT INTO test_class_data (session_id, user_id, data_key, data_value, updated_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(session_id, user_id, data_key)
-    DO UPDATE SET data_value = excluded.data_value, updated_at = CURRENT_TIMESTAMP
-`);
-const copyClassDataToTestSession = db.prepare(`
-    INSERT INTO test_class_data (session_id, user_id, data_key, data_value, updated_at)
-    SELECT ?, user_id, data_key, data_value, CURRENT_TIMESTAMP
-    FROM class_data
-    WHERE user_id = ?
-`);
-const selectTestMaintenanceCredential = db.prepare(`
-    SELECT session_id, user_id, password_hash, updated_at
-    FROM test_maintenance_credentials
-    WHERE session_id = ? AND user_id = ?
-`);
-const insertTestMaintenanceCredential = db.prepare(`
-    INSERT INTO test_maintenance_credentials (session_id, user_id, password_hash, updated_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-`);
-const updateTestMaintenanceCredential = db.prepare(`
-    UPDATE test_maintenance_credentials
-    SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE session_id = ? AND user_id = ?
-`);
-const copyMaintenanceCredentialToTestSession = db.prepare(`
-    INSERT INTO test_maintenance_credentials (session_id, user_id, password_hash, updated_at)
-    SELECT ?, user_id, password_hash, CURRENT_TIMESTAMP
-    FROM maintenance_credentials
-    WHERE user_id = ?
-`);
 
 const DEFAULT_ATTENDANCE_SCHEDULE = [
     { id: 'morning', name: '早读', start: '06:00', end: '07:20', lateTime: '07:00' },
@@ -306,12 +270,7 @@ const getOwnedTestSession = (sessionId, userId) => normalizeTestSession(
     selectOwnedTestSessionById.get(String(sessionId), Number(userId))
 );
 const cleanupExpiredTestSessions = () => {
-    try {
-        return deleteExpiredTestSessions.run();
-    } catch (err) {
-        console.error('清理过期测试会话失败:', err);
-        return { changes: 0 };
-    }
+    return testSandboxManager.cleanupExpiredSandboxes();
 };
 
 const createDataStore = (req, userId = req?.user?.id) => {
@@ -319,69 +278,36 @@ const createDataStore = (req, userId = req?.user?.id) => {
     if (!Number.isFinite(normalizedUserId)) {
         throw new Error('无效用户上下文');
     }
+    const operatorContext = {
+        operatorType: 'teacher',
+        operatorId: String(normalizedUserId),
+        operatorLabel: req?.user?.username || '班主任'
+    };
+
     if (req?.testSession?.id) {
         const sessionId = String(req.testSession.id);
-        return {
-            mode: 'test',
+        const sandboxDb = testSandboxManager.getSessionDb(sessionId);
+        if (!sandboxDb) {
+            throw new Error('测试沙盒数据库不存在或已失效');
+        }
+        return createV2CompatStore({
+            db: sandboxDb,
             userId: normalizedUserId,
+            mode: 'test',
             testSessionId: sessionId,
-            readDataKey(dataKey) {
-                return parseStoredRow(selectTestClassDataValue.get(sessionId, normalizedUserId, dataKey));
-            },
-            readAllData() {
-                return parseStoredRows(selectTestClassDataRows.all(sessionId, normalizedUserId));
-            },
-            upsertDataKey(dataKey, value) {
-                return upsertTestClassData.run(sessionId, normalizedUserId, dataKey, value);
-            },
-            deleteDataKeys(dataKeys) {
-                const keys = Array.isArray(dataKeys) ? dataKeys : [];
-                keys.forEach((dataKey) => {
-                    deleteTestClassDataKey.run(sessionId, normalizedUserId, String(dataKey));
-                });
-            },
-            readMaintenanceCredential() {
-                return selectTestMaintenanceCredential.get(sessionId, normalizedUserId);
-            },
-            insertMaintenanceCredential(passwordHash, migratedFromLegacy = 0) {
-                void migratedFromLegacy;
-                return insertTestMaintenanceCredential.run(sessionId, normalizedUserId, passwordHash);
-            },
-            updateMaintenanceCredential(passwordHash) {
-                return updateTestMaintenanceCredential.run(passwordHash, sessionId, normalizedUserId);
-            }
-        };
+            eventBus,
+            operatorContext
+        });
     }
 
-    return {
-        mode: 'formal',
+    return createV2CompatStore({
+        db,
         userId: normalizedUserId,
+        mode: 'formal',
         testSessionId: null,
-        readDataKey(dataKey) {
-            return parseStoredRow(selectClassDataValue.get(normalizedUserId, dataKey));
-        },
-        readAllData() {
-            return parseStoredRows(selectClassDataRows.all(normalizedUserId));
-        },
-        upsertDataKey(dataKey, value) {
-            return upsertClassData.run(normalizedUserId, dataKey, value);
-        },
-        deleteDataKeys(dataKeys) {
-            const keys = Array.isArray(dataKeys) ? dataKeys : [];
-            keys.forEach((dataKey) => {
-                deleteClassDataKey.run(normalizedUserId, String(dataKey));
-            });
-        },
-        readMaintenanceCredential() {
-            return selectMaintenanceCredential.get(normalizedUserId);
-        },
-        insertMaintenanceCredential(passwordHash, migratedFromLegacy = 0) {
-            return insertMaintenanceCredential.run(normalizedUserId, passwordHash, migratedFromLegacy);
-        },
-        updateMaintenanceCredential(passwordHash) {
-            return updateMaintenanceCredential.run(passwordHash, normalizedUserId);
-        }
-    };
+        eventBus,
+        operatorContext
+    });
 };
 const getRequestDataStore = (req) => req.dataStore || createDataStore(req);
 const getRequestNow = (req) => {
@@ -652,12 +578,11 @@ const buildNextStoredMeta = (existingMeta, now) => {
 
 const persistDataObject = (store, dataObject) => {
     const entries = Object.entries(dataObject || {});
-    const transaction = db.transaction(() => {
+    store.runInTransaction(() => {
         entries.forEach(([key, value]) => {
             store.upsertDataKey(key, JSON.stringify(value));
         });
     });
-    transaction();
 };
 
 const getRulesForDate = (config, dateObj) => {
@@ -1266,7 +1191,7 @@ const persistAttendanceMutation = ({
 }) => {
     const existingMeta = readStoredJson(store, '__meta') || {};
     const nextMeta = buildNextStoredMeta(existingMeta, now);
-    const transaction = db.transaction(() => {
+    store.runInTransaction(() => {
         store.upsertDataKey('attendanceRecords', JSON.stringify(stripDerivedAttendanceRecords(attendanceRecords)));
         if (Array.isArray(students)) {
             store.upsertDataKey('students', JSON.stringify(students));
@@ -1276,7 +1201,6 @@ const persistAttendanceMutation = ({
         }
         store.upsertDataKey('__meta', JSON.stringify(nextMeta));
     });
-    transaction();
     return nextMeta;
 };
 
@@ -1335,10 +1259,19 @@ const resolveTestSessionMiddleware = (req, res, next) => {
     }
 
     if (session.expiresAt && session.expiresAt <= Date.now()) {
+        testSandboxManager.destroySessionSandbox(session.id);
         deleteTestSessionByIdAndUser.run(session.id, session.userId);
         return res.status(410).json({
             error: '测试会话已过期，请重新进入测试模式',
             code: 'TEST_SESSION_EXPIRED'
+        });
+    }
+
+    if (!testSandboxManager.getSessionDb(session.id)) {
+        deleteTestSessionByIdAndUser.run(session.id, session.userId);
+        return res.status(404).json({
+            error: '测试会话不存在或已失效',
+            code: 'TEST_SESSION_INVALID'
         });
     }
 
@@ -1601,7 +1534,7 @@ const sanitizePayloadConfig = (payload) => {
     };
 };
 
-const stringifyComparable = (value) => JSON.stringify(value ?? null);
+// stringifyComparable imported from ./kernel/v2-store (canonical key-order-insensitive comparison)
 
 const getComparableConfigForMaintenance = (config) => {
     const safe = stripLegacyAdminPasswordFromConfig(isPlainObject(config) ? config : {});
@@ -1880,47 +1813,26 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // ==================== 认证 API ====================
 
-const normalizeUsername = (value) => String(value || '').trim();
-const selectUserIdByUsername = db.prepare('SELECT id FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
-const selectUserByUsername = db.prepare('SELECT * FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
-const selectUserPasswordByUsername = db.prepare('SELECT id, username, password_hash FROM users WHERE lower(trim(username)) = lower(?) LIMIT 1');
+app.get('/api/auth/providers', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        ...authAdapter.getCapabilities()
+    });
+});
 
 // 注册
 app.post('/api/auth/register', (req, res) => {
-    const username = normalizeUsername(req.body?.username);
-    const password = String(req.body?.password || '');
-    const email = String(req.body?.email || '').trim();
-    
-    if (!username || !password) {
-        return res.status(400).json({ error: '用户名和密码不能为空' });
-    }
-    
-    if (username.length < 3 || username.length > 20) {
-        return res.status(400).json({ error: '用户名长度需在3-20个字符之间' });
-    }
-    
-    if (password.length < 6) {
-        return res.status(400).json({ error: '密码长度至少6个字符' });
-    }
-    
-    const existingUser = selectUserIdByUsername.get(username);
-    if (existingUser) {
-        return res.status(400).json({ error: '用户名已存在' });
-    }
-    
-    const passwordHash = hashPassword(password);
-    
     try {
-        const result = db.prepare(`
-            INSERT INTO users (username, password_hash, email)
-            VALUES (?, ?, ?)
-        `).run(username, passwordHash, email || null);
-        
-        const user = db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
-        
-        const token = generateToken(user);
-
-        sendAuthSuccess(req, res, user, token);
+        const result = authAdapter.registerPasswordUser({
+            username: req.body?.username,
+            password: req.body?.password,
+            email: req.body?.email
+        });
+        if (!result.ok) {
+            return res.status(result.status).json({ error: result.error });
+        }
+        sendAuthSuccess(req, res, result.user, result.token);
     } catch (err) {
         console.error('注册失败:', err);
         res.status(500).json({ error: '注册失败，请重试' });
@@ -1929,57 +1841,28 @@ app.post('/api/auth/register', (req, res) => {
 
 // 登录
 app.post('/api/auth/login', (req, res) => {
-    const username = normalizeUsername(req.body?.username);
-    const password = String(req.body?.password || '');
-    
-    if (!username || !password) {
-        return res.status(400).json({ error: '用户名和密码不能为空' });
+    const result = authAdapter.authenticatePassword({
+        username: req.body?.username,
+        password: req.body?.password
+    });
+    if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
     }
-    
-    const user = selectUserByUsername.get(username);
-    
-    if (!user) {
-        return res.status(401).json({ error: '用户名或密码错误' });
-    }
-    
-    if (!verifyPassword(password, user.password_hash)) {
-        return res.status(401).json({ error: '用户名或密码错误' });
-    }
-    
-    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
-    
-    const token = generateToken(user);
-
-    sendAuthSuccess(req, res, user, token);
+    sendAuthSuccess(req, res, result.user, result.token);
 });
 
 // 修改密码
 app.post('/api/auth/change-password', (req, res) => {
-    const username = normalizeUsername(req.body?.username);
-    const currentPassword = String(req.body?.currentPassword || '');
-    const newPassword = String(req.body?.newPassword || '');
-
-    if (!username || !currentPassword || !newPassword) {
-        return res.status(400).json({ error: '用户名、当前密码和新密码不能为空' });
-    }
-
-    if (newPassword.length < 6) {
-        return res.status(400).json({ error: '新密码长度至少6个字符' });
-    }
-
-    const user = selectUserPasswordByUsername.get(username);
-    if (!user || !verifyPassword(currentPassword, user.password_hash)) {
-        return res.status(401).json({ error: '用户名或当前密码错误' });
-    }
-
-    if (verifyPassword(newPassword, user.password_hash)) {
-        return res.status(400).json({ error: '新密码不能与当前密码相同' });
-    }
-
     try {
-        const passwordHash = hashPassword(newPassword);
-        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
-        res.json({ success: true, message: '密码修改成功，请使用新密码登录' });
+        const result = authAdapter.changePassword({
+            username: req.body?.username,
+            currentPassword: req.body?.currentPassword,
+            newPassword: req.body?.newPassword
+        });
+        if (!result.ok) {
+            return res.status(result.status).json({ error: result.error });
+        }
+        res.json({ success: true, message: result.message });
     } catch (err) {
         console.error('修改密码失败:', err);
         res.status(500).json({ error: '修改密码失败，请重试' });
@@ -2015,7 +1898,7 @@ app.post('/api/test-sessions', authMiddleware, userMiddleware, (req, res) => {
     try {
         cleanupExpiredTestSessions();
         db.transaction(() => {
-            deleteTestSessionsByUser.run(req.user.id);
+            testSandboxManager.destroyUserSandboxes(req.user.id);
             insertTestSession.run(
                 sessionId,
                 req.user.id,
@@ -2023,8 +1906,10 @@ app.post('/api/test-sessions', authMiddleware, userMiddleware, (req, res) => {
                 timeSpeed,
                 toSqlDateTime(expiresAtMs)
             );
-            copyClassDataToTestSession.run(sessionId, req.user.id);
-            copyMaintenanceCredentialToTestSession.run(sessionId, req.user.id);
+            testSandboxManager.createSessionSandbox({
+                sessionId,
+                userId: req.user.id
+            });
         })();
 
         res.json({
@@ -2106,7 +1991,12 @@ app.patch('/api/test-sessions/:id', authMiddleware, userMiddleware, (req, res) =
 
 app.delete('/api/test-sessions/:id', authMiddleware, userMiddleware, (req, res) => {
     try {
-        const result = deleteTestSessionByIdAndUser.run(String(req.params.id), Number(req.user.id));
+        const targetSessionId = String(req.params.id);
+        const ownedSession = getOwnedTestSession(targetSessionId, req.user.id);
+        const result = deleteTestSessionByIdAndUser.run(targetSessionId, Number(req.user.id));
+        if (ownedSession || result.changes > 0) {
+            testSandboxManager.destroySessionSandbox(targetSessionId);
+        }
         res.json({
             success: true,
             deleted: result.changes > 0
@@ -2331,6 +2221,15 @@ app.post(['/api/attendance/check-in', '/api/attendance/checkin'], authMiddleware
             now
         });
 
+        store.emitAttendanceRecorded({
+            studentId: student.id,
+            studentName,
+            status: record.status,
+            slot: currentSession.id,
+            timestamp: nowTs,
+            sourcePluginId: 'official.attendance'
+        });
+
         res.json(buildAttendanceApiPayload({
             config,
             sourceStudents: nextStudents,
@@ -2395,6 +2294,7 @@ app.post('/api/attendance/maintenance', authMiddleware, userMiddleware, resolveT
         const nextAttendanceRecords = cloneAttendanceRecords(attendanceRecords);
         let changed = false;
         let pointsChanged = false;
+        const attendanceEvents = [];
 
         items.forEach((item) => {
             const currentRecords = buildAttendanceRecordsForResponse({
@@ -2445,6 +2345,13 @@ app.post('/api/attendance/maintenance', authMiddleware, userMiddleware, resolveT
                     pointsChanged = undoResult.changed || pointsChanged;
                 }
                 changed = true;
+                attendanceEvents.push({
+                    studentId: student?.id,
+                    studentName: item.studentName,
+                    status: 'ok',
+                    slot: item.sessionId,
+                    timestamp: nowTs
+                });
                 return;
             }
 
@@ -2477,6 +2384,13 @@ app.post('/api/attendance/maintenance', authMiddleware, userMiddleware, resolveT
                 pointsChanged = penaltyResult.changed || pointsChanged;
             }
             changed = true;
+            attendanceEvents.push({
+                studentId: student?.id,
+                studentName: item.studentName,
+                status: 'absent',
+                slot: item.sessionId,
+                timestamp: nowTs
+            });
         });
 
         const nextMeta = changed
@@ -2488,6 +2402,15 @@ app.post('/api/attendance/maintenance', authMiddleware, userMiddleware, resolveT
                 now
             })
             : (readStoredJson(store, '__meta') || {});
+
+        if (changed) {
+            attendanceEvents.forEach((ev) => {
+                store.emitAttendanceRecorded({
+                    ...ev,
+                    sourcePluginId: 'official.attendance'
+                });
+            });
+        }
 
         res.json(buildAttendanceApiPayload({
             config,
@@ -2703,9 +2626,13 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
         }
         data.__meta = normalizedIncomingMeta;
         const protectedTreasureDomain = getProtectedTreasureDomain(store, data, incomingMeta);
+        const WRITE_KEY_PRIORITY = { config: 0, students: 1, studentProfiles: 2, history: 3, examArchives: 4 };
+        const orderedEntries = Object.entries(data).sort(([leftKey], [rightKey]) => (
+            (WRITE_KEY_PRIORITY[leftKey] ?? 10) - (WRITE_KEY_PRIORITY[rightKey] ?? 10)
+        ));
 
-        const transaction = db.transaction(() => {
-            for (const [key, value] of Object.entries(data)) {
+        store.runInTransaction(() => {
+            for (const [key, value] of orderedEntries) {
                 let finalValue = protectedTreasureDomain && Object.prototype.hasOwnProperty.call(protectedTreasureDomain, key)
                     ? protectedTreasureDomain[key]
                     : value;
@@ -2728,8 +2655,6 @@ app.post('/api/data', authMiddleware, userMiddleware, resolveTestSessionMiddlewa
                 store.upsertDataKey(key, JSON.stringify(finalValue));
             }
         });
-        
-        transaction();
         
         console.log(`[${new Date().toLocaleTimeString()}] 用户 ${req.user.username}${store.mode === 'test' ? `（测试会话 ${store.testSessionId}）` : ''} 数据已保存`);
         res.json({
@@ -2885,7 +2810,7 @@ app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTest
     const expectedUpdatedAt = expectedUpdatedAtResult.value;
 
     try {
-        const runTransaction = db.transaction(() => {
+        const operationResult = store.runInTransaction(() => {
             const existingMeta = readStoredJson(store, '__meta') || {};
             const existingUpdatedAt = Number(existingMeta.updatedAt) || 0;
             const existingStudents = getStoredStudents(store);
@@ -2979,7 +2904,13 @@ app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTest
             ));
 
             store.upsertDataKey('students', JSON.stringify(pointResult.students));
-            store.upsertDataKey('history', JSON.stringify(pointResult.history));
+            store.upsertDataKey('history', JSON.stringify(pointResult.history), {
+                operatorContext: {
+                    operatorType: 'agent',
+                    operatorId: `agent:${req.user.id}`,
+                    operatorLabel: 'Agent API'
+                }
+            });
             store.upsertDataKey('__meta', JSON.stringify(nextMeta));
 
             return {
@@ -2990,7 +2921,6 @@ app.post('/api/agent/points/adjust', authMiddleware, userMiddleware, resolveTest
             };
         });
 
-        const operationResult = runTransaction();
         if (operationResult.error) {
             return res.status(operationResult.error.status).json(operationResult.error);
         }
@@ -3034,7 +2964,7 @@ app.post('/api/agent/points/set', authMiddleware, userMiddleware, resolveTestSes
     const store = getRequestDataStore(req);
     const now = getRequestNow(req);
     try {
-        const result = db.transaction(() => {
+        const result = store.runInTransaction(() => {
             const meta = readStoredJson(store, '__meta') || {};
             const students = getStoredStudents(store);
             const history = getStoredHistory(store);
@@ -3072,10 +3002,16 @@ app.post('/api/agent/points/set', authMiddleware, userMiddleware, resolveTestSes
             };
             const nextMeta = buildNextStoredMeta(meta, now);
             store.upsertDataKey('students', JSON.stringify(students.map(s => s === resolved.student ? student : s)));
-            store.upsertDataKey('history', JSON.stringify([record, ...history]));
+            store.upsertDataKey('history', JSON.stringify([record, ...history]), {
+                operatorContext: {
+                    operatorType: 'agent',
+                    operatorId: `agent:${req.user.id}`,
+                    operatorLabel: 'Agent API'
+                }
+            });
             store.upsertDataKey('__meta', JSON.stringify(nextMeta));
             return { record, student, updatedAt: nextMeta.updatedAt };
-        })();
+        });
         if (result.error) return res.status(result.error.status).json(result.error);
         res.json(buildAgentOperationResponse(result));
     } catch (err) {
@@ -3118,7 +3054,17 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
     try {
         const users = db.prepare(`
             SELECT u.id, u.username, u.email, u.role, u.created_at, u.last_login,
-                   (SELECT COUNT(*) FROM class_data WHERE user_id = u.id) as data_count
+                   COALESCE(
+                       NULLIF(
+                           (SELECT COUNT(*) FROM plugin_storage ps INNER JOIN classes c ON c.id = ps.class_id WHERE c.owner_teacher_id = u.id)
+                           + (SELECT COUNT(*) FROM class_enrollments ce INNER JOIN classes c ON c.id = ce.class_id WHERE c.owner_teacher_id = u.id AND ce.status = 'active')
+                           + (SELECT COUNT(*) FROM point_ledger pl INNER JOIN classes c ON c.id = pl.class_id WHERE c.owner_teacher_id = u.id AND pl.status = 'applied'),
+                           0
+                       ),
+                       (SELECT COUNT(*) FROM class_data WHERE user_id = u.id)
+                   ) as data_count,
+                   (SELECT COUNT(*) FROM class_enrollments ce INNER JOIN classes c ON c.id = ce.class_id WHERE c.owner_teacher_id = u.id AND ce.status = 'active') as student_count,
+                   (SELECT COUNT(*) FROM point_ledger pl INNER JOIN classes c ON c.id = pl.class_id WHERE c.owner_teacher_id = u.id AND pl.status = 'applied') as ledger_count
             FROM users u
             ORDER BY u.created_at DESC
         `).all();
@@ -3147,9 +3093,13 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) =
             return res.status(400).json({ error: '系统至少需要保留一个管理员账户' });
         }
 
-        db.prepare('DELETE FROM maintenance_credentials WHERE user_id = ?').run(userId);
-        db.prepare('DELETE FROM class_data WHERE user_id = ?').run(userId);
-        const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+        const result = db.transaction(() => {
+            testSandboxManager.destroyUserSandboxes(userId);
+            db.prepare('DELETE FROM maintenance_credentials WHERE user_id = ?').run(userId);
+            db.prepare('DELETE FROM class_data WHERE user_id = ?').run(userId);
+            db.prepare('DELETE FROM classes WHERE owner_teacher_id = ?').run(userId);
+            return db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+        })();
         if (result.changes === 0) return res.status(404).json({ error: '用户不存在' });
         
         res.json({ success: true, message: '用户已删除' });
@@ -3264,13 +3214,21 @@ app.put('/api/admin/users/:id/maintenance-password', authMiddleware, adminMiddle
 app.get('/api/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
     try {
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-        const dataCount = db.prepare('SELECT COUNT(*) as count FROM class_data').get().count;
+        const classCount = db.prepare('SELECT COUNT(*) as count FROM classes').get().count;
+        const enrollmentCount = db.prepare("SELECT COUNT(*) as count FROM class_enrollments WHERE status = 'active'").get().count;
+        const ledgerCount = db.prepare("SELECT COUNT(*) as count FROM point_ledger WHERE status = 'applied'").get().count;
+        const pluginStorageCount = db.prepare('SELECT COUNT(*) as count FROM plugin_storage').get().count;
+        const legacyDataCount = db.prepare('SELECT COUNT(*) as count FROM class_data').get().count;
+        const totalDataRecords = Math.max(pluginStorageCount + enrollmentCount + ledgerCount, legacyDataCount);
         
         res.json({
             success: true,
             stats: {
                 totalUsers: userCount,
-                totalDataRecords: dataCount
+                totalDataRecords,
+                totalClasses: classCount,
+                totalEnrollments: enrollmentCount,
+                totalLedgerEntries: ledgerCount
             }
         });
     } catch (err) {
@@ -3358,6 +3316,7 @@ const finishShutdown = (exitCode) => {
         shutdownTimer = null;
     }
     try {
+        testSandboxManager.closeAll();
         db.close();
     } catch (err) {
         console.error('关闭 SQLite 连接失败:', err);

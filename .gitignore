@@ -57,3 +57,7 @@ Thumbs.db
 /.workbuddy/
 /.impeccable/critique/
 /.worktrees/
+
+# V2 isolated test sandbox databases
+database/.test-sandboxes/
+.test-sandboxes/
